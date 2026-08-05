@@ -525,6 +525,54 @@ function greedyPair(players, playedSet, lastOpp) {
   return pairs;
 }
 
+/** 出場次序：3 個位置，值為選手 beys 陣列 index（0/1/2），未定為 null */
+function emptyBeyOrder() {
+  return [null, null, null];
+}
+
+function normalizeBeyOrder(order) {
+  if (!Array.isArray(order) || order.length !== 3) return emptyBeyOrder();
+  return order.map((v) => {
+    if (v === null || v === undefined || v === "") return null;
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) && n >= 0 && n <= 2 ? n : null;
+  });
+}
+
+function isBeyOrderComplete(order) {
+  const o = normalizeBeyOrder(order);
+  if (o.some((x) => x === null)) return false;
+  // 三隻應各用一次（排列）
+  return new Set(o).size === 3;
+}
+
+function beyShortAt(player, beyIndex) {
+  if (!player || beyIndex === null || beyIndex === undefined) return "—";
+  normalizePlayer(player);
+  const b = player.beys?.[beyIndex];
+  if (!b) return "—";
+  return beyLabel(b, { short: true });
+}
+
+/** 顯示：① UX15 3-60 O ／ ② … */
+function formatBeyOrderLines(player, order) {
+  const o = normalizeBeyOrder(order);
+  return [0, 1, 2].map((slot) => {
+    const idx = o[slot];
+    const label = idx === null ? "未定" : beyShortAt(player, idx);
+    return { slot: slot + 1, beyIndex: idx, label };
+  });
+}
+
+function formatBeyOrderCompact(player, order) {
+  if (!isBeyOrderComplete(order) && !normalizeBeyOrder(order).some((x) => x !== null)) {
+    return "次序未登記";
+  }
+  return formatBeyOrderLines(player, order)
+    .map((x) => `${x.slot}.${x.label}`)
+    .join(" → ");
+}
+
 function createRoundFromPairs(pairs, roundNum) {
   const raw = pairs.map((pair, i) => ({
     id: uid("m"),
@@ -535,12 +583,29 @@ function createRoundFromPairs(pairs, roundNum) {
     p1Bp: 0,
     p2Bp: 0,
     done: false,
+    p1BeyOrder: emptyBeyOrder(),
+    p2BeyOrder: emptyBeyOrder(),
   }));
   return {
     round: roundNum,
     locked: false,
     matches: assignMatchZones(raw),
   };
+}
+
+function findMatchById(matchId) {
+  for (const r of state.rounds) {
+    const m = r.matches.find((x) => x.id === matchId);
+    if (m) return { match: m, round: r };
+  }
+  return null;
+}
+
+function ensureMatchBeyOrders(m) {
+  if (!m.p1BeyOrder) m.p1BeyOrder = emptyBeyOrder();
+  else m.p1BeyOrder = normalizeBeyOrder(m.p1BeyOrder);
+  if (!m.p2BeyOrder) m.p2BeyOrder = emptyBeyOrder();
+  else m.p2BeyOrder = normalizeBeyOrder(m.p2BeyOrder);
 }
 
 function saveSettingsFromForm() {
@@ -1574,6 +1639,8 @@ function applyManualPairings(pairIds) {
       p1Bp: 0,
       p2Bp: 0,
       done: false,
+      p1BeyOrder: emptyBeyOrder(),
+      p2BeyOrder: emptyBeyOrder(),
     }))
   );
   saveState();
@@ -2022,6 +2089,7 @@ function setPairingsViewMode(mode) {
 }
 
 function renderMatchCardStaff(m, round, statsMap) {
+  ensureMatchBeyOrders(m);
   const p1 = playerById(m.p1);
   const p2 = playerById(m.p2);
   const same = p1 && p2 && p1.church === p2.church;
@@ -2031,6 +2099,24 @@ function renderMatchCardStaff(m, round, statsMap) {
   const pre2 = m.done ? s2.swissPoints - (m.winner === m.p2 ? 1 : 0) : s2.swissPoints;
   const zLabel = m.zoneLabel || zoneLabel(m.zone ?? 0);
   const zCode = m.zoneCode || zoneCode(m.zone ?? 0);
+  const o1ok = isBeyOrderComplete(m.p1BeyOrder);
+  const o2ok = isBeyOrderComplete(m.p2BeyOrder);
+  const orderReady = o1ok && o2ok;
+
+  const orderBlock = (player, order, side) => {
+    const lines = formatBeyOrderLines(player, order);
+    const ok = isBeyOrderComplete(order);
+    return `
+      <div class="bey-order-box ${ok ? "ready" : "pending"}">
+        <div class="bey-order-title">${ok ? "出場次序 ✓" : "出場次序（未齊）"}</div>
+        ${lines
+          .map(
+            (L) =>
+              `<div class="bey-order-line"><span class="bey-slot">${L.slot}</span><span class="bey-lab">${escapeHtml(L.label)}</span></div>`
+          )
+          .join("")}
+      </div>`;
+  };
 
   return `
     <div class="match-card ${m.done ? "done" : ""} ${same ? "same-church" : "diff-church"}" data-zone="${zCode}">
@@ -2038,12 +2124,14 @@ function renderMatchCardStaff(m, round, statsMap) {
         <span class="match-num">場次 ${m.table}</span>
         <span class="zone-badge zone-${zCode}">報到：${escapeHtml(zLabel)}</span>
         <span class="vs-tag ${same ? "same" : "diff"}">${same ? "同教會" : "不同教會"}</span>
+        <span class="vs-tag ${orderReady ? "diff" : "same"}">${orderReady ? "次序已定" : "次序未定"}</span>
       </div>
       <div class="match-players">
         <div class="player-side ${m.done && m.winner === m.p1 ? "winner" : ""} ${m.done && m.winner === m.p2 ? "loser" : ""}">
           <div class="p-name">${escapeHtml(p1?.name || "?")}</div>
           <div class="p-meta"><span class="church-tag ${p1?.church}">${churchLabel(p1?.church)}</span></div>
           <div class="p-meta">本輪前 ${pre1} 勝</div>
+          ${orderBlock(p1, m.p1BeyOrder, "p1")}
           ${m.done ? `<div class="p-bp">${m.p1Bp}</div>` : ""}
         </div>
         <div class="vs-center">VS</div>
@@ -2051,17 +2139,23 @@ function renderMatchCardStaff(m, round, statsMap) {
           <div class="p-name">${escapeHtml(p2?.name || "?")}</div>
           <div class="p-meta"><span class="church-tag ${p2?.church}">${churchLabel(p2?.church)}</span></div>
           <div class="p-meta">本輪前 ${pre2} 勝</div>
+          ${orderBlock(p2, m.p2BeyOrder, "p2")}
           ${m.done ? `<div class="p-bp">${m.p2Bp}</div>` : ""}
         </div>
       </div>
       <div class="match-actions">
         ${
           round.locked
-            ? `<button class="btn btn-ghost btn-sm" disabled>${m.done ? "已鎖定" : "未完成"}</button>`
-            : m.done
-              ? `<button class="btn btn-secondary btn-sm btn-edit-score" data-id="${m.id}">修改結果</button>
-                 <button class="btn btn-ghost btn-sm btn-clear-score" data-id="${m.id}">清除</button>`
-              : `<button class="btn btn-primary btn-sm btn-enter-score" data-id="${m.id}">輸入結果</button>`
+            ? `<button class="btn btn-ghost btn-sm" disabled>${m.done ? "已鎖定" : "未完成"}</button>
+               <button class="btn btn-secondary btn-sm btn-bey-order" data-id="${m.id}">看出場次序</button>`
+            : `
+               <button class="btn btn-secondary btn-sm btn-bey-order" data-id="${m.id}">${orderReady ? "修改出場次序" : "登記出場次序"}</button>
+               ${
+                 m.done
+                   ? `<button class="btn btn-secondary btn-sm btn-edit-score" data-id="${m.id}">修改結果</button>
+                      <button class="btn btn-ghost btn-sm btn-clear-score" data-id="${m.id}">清除</button>`
+                   : `<button class="btn btn-primary btn-sm btn-enter-score" data-id="${m.id}">輸入結果</button>`
+               }`
         }
       </div>
     </div>`;
@@ -2105,6 +2199,17 @@ function renderProjectionBoard(round) {
           const score = m.done
             ? `<span class="zg-score">${m.p1Bp}–${m.p2Bp}</span>`
             : `<span class="zg-live">對戰中</span>`;
+          ensureMatchBeyOrders(m);
+          const ord1 = isBeyOrderComplete(m.p1BeyOrder)
+            ? formatBeyOrderLines(p1, m.p1BeyOrder)
+                .map((L) => L.label)
+                .join("→")
+            : "";
+          const ord2 = isBeyOrderComplete(m.p2BeyOrder)
+            ? formatBeyOrderLines(p2, m.p2BeyOrder)
+                .map((L) => L.label)
+                .join("→")
+            : "";
           return `
             <div class="zg-match ${m.done ? "is-done" : ""}">
               <div class="zg-pair">
@@ -2118,6 +2223,14 @@ function renderProjectionBoard(round) {
                 <span class="church-tag ${p2?.church || ""}">${churchLabel(p2?.church)}</span>
                 ${score}
               </div>
+              ${
+                ord1 || ord2
+                  ? `<div class="zg-order">
+                      ${ord1 ? `<div class="zg-order-line"><b>1.</b> ${escapeHtml(ord1)}</div>` : ""}
+                      ${ord2 ? `<div class="zg-order-line"><b>2.</b> ${escapeHtml(ord2)}</div>` : ""}
+                    </div>`
+                  : ""
+              }
             </div>`;
         })
         .join('<div class="zg-divider" aria-hidden="true"></div>');
@@ -2251,6 +2364,157 @@ function renderPairings() {
       if (confirm("清除此場結果？")) clearMatchResult(btn.dataset.id);
     });
   });
+  grid.querySelectorAll(".btn-bey-order").forEach((btn) => {
+    btn.addEventListener("click", () => openBeyOrderModal(btn.dataset.id));
+  });
+}
+
+// ─── 出場次序登記 ────────────────────────────────────────
+let beyOrderMatchId = null;
+
+function openBeyOrderModal(matchId) {
+  const found = findMatchById(matchId);
+  if (!found) {
+    toast("搵唔到該場比賽", "error");
+    return;
+  }
+  const { match: m, round } = found;
+  ensureMatchBeyOrders(m);
+  beyOrderMatchId = matchId;
+  const p1 = playerById(m.p1);
+  const p2 = playerById(m.p2);
+  if (!p1 || !p2) return;
+  normalizePlayer(p1);
+  normalizePlayer(p2);
+
+  const locked = !!round.locked;
+  document.getElementById("beyOrderModalTitle").textContent =
+    `出場次序 · 場次 ${m.table} · ${p1.name} vs ${p2.name}`;
+  document.getElementById("beyOrderModalBody").innerHTML = `
+    <div class="hint" style="margin-top:0">
+      雙方先定<strong>第 1／2／3 場</strong>出場陀螺（用已登記嘅 3 隻）。
+      一般規則：三隻各用一次，順序賽前向裁判申報。
+    </div>
+    <div class="bey-order-modal-grid">
+      ${renderBeyOrderEditor("p1", p1, m.p1BeyOrder, locked)}
+      ${renderBeyOrderEditor("p2", p2, m.p2BeyOrder, locked)}
+    </div>
+    <div class="btn-row wrap mt-16">
+      ${
+        locked
+          ? ""
+          : `
+        <button type="button" class="btn btn-ghost" id="btnOrderDefault">用登記順序（1→2→3）</button>
+        <button type="button" class="btn btn-primary" id="btnSaveBeyOrder" style="margin-left:auto">儲存出場次序</button>
+      `
+      }
+      ${locked ? `<button type="button" class="btn btn-secondary" id="btnCloseBeyOrder2" style="margin-left:auto">關閉</button>` : ""}
+    </div>
+  `;
+  document.getElementById("beyOrderModal").classList.remove("hidden");
+
+  document.getElementById("btnOrderDefault")?.addEventListener("click", () => {
+    // 預設：陀螺1→2→3
+    for (const side of ["p1", "p2"]) {
+      for (let slot = 0; slot < 3; slot++) {
+        const sel = document.getElementById(`order-${side}-${slot}`);
+        if (sel) sel.value = String(slot);
+      }
+    }
+  });
+  document.getElementById("btnSaveBeyOrder")?.addEventListener("click", () => saveBeyOrderFromModal());
+  document.getElementById("btnCloseBeyOrder2")?.addEventListener("click", closeBeyOrderModal);
+}
+
+function renderBeyOrderEditor(side, player, order, locked) {
+  normalizePlayer(player);
+  const o = normalizeBeyOrder(order);
+  const slotsFixed = [0, 1, 2]
+    .map((slot) => {
+      const selected = o[slot];
+      const opts = [0, 1, 2]
+        .map((i) => {
+          const lab = beyShortAt(player, i);
+          const empty = !lab || lab === "—" || lab === "（未登記）";
+          const sel = selected === i ? "selected" : "";
+          return `<option value="${i}" ${empty ? "disabled" : ""} ${sel}>陀螺${i + 1}：${escapeHtml(empty ? "（未登記）" : lab)}</option>`;
+        })
+        .join("");
+      return `
+        <label class="order-slot">
+          <span class="order-slot-num">第 ${slot + 1} 場</span>
+          <select class="input select" id="order-${side}-${slot}" ${locked ? "disabled" : ""}>
+            <option value="" ${selected === null ? "selected" : ""}>— 選擇陀螺 —</option>
+            ${opts}
+          </select>
+        </label>`;
+    })
+    .join("");
+
+  return `
+    <div class="order-editor">
+      <div class="order-editor-head">
+        <strong>${escapeHtml(player.name)}</strong>
+        <span class="church-tag ${player.church}">${churchLabel(player.church)}</span>
+      </div>
+      <div class="order-slots">${slotsFixed}</div>
+    </div>`;
+}
+
+function saveBeyOrderFromModal() {
+  const found = findMatchById(beyOrderMatchId);
+  if (!found) return;
+  const { match: m, round } = found;
+  if (round.locked) {
+    toast("本輪已鎖定，無法改次序", "error");
+    return;
+  }
+
+  const readSide = (side) => {
+    const arr = [];
+    for (let slot = 0; slot < 3; slot++) {
+      const el = document.getElementById(`order-${side}-${slot}`);
+      const v = el?.value;
+      arr.push(v === "" || v === undefined ? null : parseInt(v, 10));
+    }
+    return normalizeBeyOrder(arr);
+  };
+
+  const o1 = readSide("p1");
+  const o2 = readSide("p2");
+
+  // 警告重複
+  const checkDup = (o, name) => {
+    const used = o.filter((x) => x !== null);
+    if (used.length !== new Set(used).size) {
+      return `${name}：同一隻陀螺用咗超過一次`;
+    }
+    return null;
+  };
+  const p1 = playerById(m.p1);
+  const p2 = playerById(m.p2);
+  const d1 = checkDup(o1, p1?.name);
+  const d2 = checkDup(o2, p2?.name);
+  if (d1 || d2) {
+    if (!confirm([d1, d2].filter(Boolean).join("\n") + "\n\n仍要儲存？")) return;
+  }
+
+  m.p1BeyOrder = o1;
+  m.p2BeyOrder = o2;
+  saveState();
+  closeBeyOrderModal();
+  render();
+  toast(
+    isBeyOrderComplete(o1) && isBeyOrderComplete(o2)
+      ? "雙方出場次序已登記"
+      : "已儲存（尚有未定位置）",
+    "success"
+  );
+}
+
+function closeBeyOrderModal() {
+  document.getElementById("beyOrderModal")?.classList.add("hidden");
+  beyOrderMatchId = null;
 }
 
 function renderSettings() {
@@ -3072,11 +3336,15 @@ function init() {
   document.getElementById("btnManualPair").addEventListener("click", openManualModal);
   document.getElementById("btnCloseScore").addEventListener("click", closeScoreModal);
   document.getElementById("btnCloseManual").addEventListener("click", closeManualModal);
+  document.getElementById("btnCloseBeyOrder")?.addEventListener("click", closeBeyOrderModal);
   document.getElementById("scoreModal").addEventListener("click", (e) => {
     if (e.target.id === "scoreModal") closeScoreModal();
   });
   document.getElementById("manualModal").addEventListener("click", (e) => {
     if (e.target.id === "manualModal") closeManualModal();
+  });
+  document.getElementById("beyOrderModal")?.addEventListener("click", (e) => {
+    if (e.target.id === "beyOrderModal") closeBeyOrderModal();
   });
 
   document.getElementById("btnStartKnockout").addEventListener("click", startKnockout);
