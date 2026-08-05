@@ -3,7 +3,8 @@
  * 16 人 · 4 輪瑞士制 · 先到 4 分 Match · localStorage
  */
 
-const STORAGE_KEY = "baoluo-cup-v1";
+const STORAGE_KEY = "baoluo-cup-v2";
+const STORAGE_KEY_LEGACY = "baoluo-cup-v1";
 const TOTAL_PLAYERS = 16;
 const SWISS_ROUNDS = 4;
 const MATCH_TARGET = 4;
@@ -20,10 +21,25 @@ const DEMO_PLAYERS = [
   ["馬啟聰", "ky"], ["楊曉彤", "ky"], ["羅偉業", "ky"], ["許心怡", "ky"],
 ];
 
+/** Demo decks for event-day practice (complete 3 beys) */
+const DEMO_DECKS = [
+  [
+    { blade: "劍龍", ratchet: "3-60", bit: "平 (Ball)" },
+    { blade: "鳳凰", ratchet: "9-60", bit: "針 (Needle)" },
+    { blade: "地獄鎖鏈", ratchet: "5-70", bit: "斜 (Taper)" },
+  ],
+  [
+    { blade: "神仗", ratchet: "1-60", bit: "高平 (High Ball)" },
+    { blade: "弓龍", ratchet: "4-80", bit: "尖 (Point)" },
+    { blade: "騎士盾", ratchet: "9-80", bit: "平底 (Flat)" },
+  ],
+];
+
 // ─── State ───────────────────────────────────────────────
 function defaultState() {
   return {
-    players: [], // { id, name, church }
+    // players: { id, name, church, beys[3], deckChecked }
+    players: [],
     phase: "setup", // setup | swiss | knockout | done
     currentRound: 0, // 1..4 when swiss
     rounds: [], // { round, locked, matches: [{ id, p1, p2, winner, p1Bp, p2Bp, done }] }
@@ -32,14 +48,23 @@ function defaultState() {
   };
 }
 
+function migratePlayers(players) {
+  return (players || []).map((p) => normalizePlayer({ ...p }));
+}
+
 let state = loadState();
 
 function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    let raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      raw = localStorage.getItem(STORAGE_KEY_LEGACY);
+    }
     if (!raw) return defaultState();
     const parsed = JSON.parse(raw);
-    return { ...defaultState(), ...parsed };
+    const st = { ...defaultState(), ...parsed };
+    st.players = migratePlayers(st.players);
+    return st;
   } catch {
     return defaultState();
   }
@@ -424,6 +449,16 @@ function createRoundFromPairs(pairs, roundNum) {
 }
 
 // ─── Actions ─────────────────────────────────────────────
+function makePlayer(name, church, beys) {
+  return normalizePlayer({
+    id: uid("p"),
+    name,
+    church,
+    beys: beys || emptyBeys(),
+    deckChecked: false,
+  });
+}
+
 function addPlayer(name, church) {
   name = (name || "").trim();
   if (!name) {
@@ -435,16 +470,17 @@ function addPlayer(name, church) {
     return false;
   }
   if (state.phase !== "setup") {
-    toast("比賽已開始，無法新增選手（可在名單中改名）", "error");
+    toast("比賽已開始，無法新增選手（可改名或補登陀螺）", "error");
     return false;
   }
   if (!CHURCH[church]) {
     toast("教會無效", "error");
     return false;
   }
-  state.players.push({ id: uid("p"), name, church });
+  state.players.push(makePlayer(name, church));
   saveState();
   render();
+  toast(`已預先登記：${name}`, "success");
   return true;
 }
 
@@ -494,27 +530,35 @@ function importPlayers(text) {
       toast(`無法辨識教會：${line}`, "error");
       continue;
     }
-    // skip duplicate names
     const name = parts[0];
     if (state.players.some((p) => p.name === name) || added.some((p) => p.name === name)) continue;
-    added.push({ id: uid("p"), name, church });
+    added.push(makePlayer(name, church));
   }
   state.players.push(...added);
   saveState();
   render();
-  toast(`已匯入 ${added.length} 人`, "success");
+  toast(`已預先登記 ${added.length} 人（陀螺待當日登記）`, "success");
 }
 
 function fillDemo() {
   if (state.phase !== "setup") return;
-  state.players = DEMO_PLAYERS.map(([name, church]) => ({
-    id: uid("p"),
-    name,
-    church,
-  }));
+  state.players = DEMO_PLAYERS.map(([name, church], i) => {
+    const template = DEMO_DECKS[i % DEMO_DECKS.length];
+    const beys = template.map((t) => ({
+      blade: t.blade,
+      ratchet: t.ratchet,
+      bit: t.bit,
+      bladeCustom: "",
+      ratchetCustom: "",
+      bitCustom: "",
+    }));
+    const p = makePlayer(name, church, beys);
+    p.deckChecked = true;
+    return p;
+  });
   saveState();
   render();
-  toast("已填入 16 人示範資料", "success");
+  toast("已填入 16 人 + 示範陀螺配置", "success");
 }
 
 function startTournament() {
@@ -522,7 +566,23 @@ function startTournament() {
     toast(`需要剛好 ${TOTAL_PLAYERS} 人（目前 ${state.players.length}）`, "error");
     return;
   }
-  if (!confirm("確定開始比賽並產生第 1 輪配對？開始後不可刪除選手。")) return;
+  const incomplete = state.players.filter((p) => !isDeckComplete(p));
+  if (incomplete.length) {
+    const names = incomplete
+      .slice(0, 5)
+      .map((p) => p.name)
+      .join("、");
+    const more = incomplete.length > 5 ? ` 等 ${incomplete.length} 人` : "";
+    if (
+      !confirm(
+        `尚有 ${incomplete.length} 人未完成 3 隻陀螺登記（${names}${more}）。\n仍要開始比賽？（可稍後在選手頁補登）`
+      )
+    ) {
+      return;
+    }
+  } else if (!confirm("確定開始比賽並產生第 1 輪配對？開始後不可刪除選手。")) {
+    return;
+  }
 
   state.phase = "swiss";
   state.currentRound = 1;
@@ -533,6 +593,188 @@ function startTournament() {
   render();
   switchTab("pairings");
   toast("第 1 輪配對已產生", "success");
+}
+
+// ─── Deck registration modal ─────────────────────────────
+let deckEditPlayerId = null;
+let deckEditBeyIndex = 0;
+/** Working copy while modal open */
+let deckDraft = null;
+
+function openDeckModal(playerId) {
+  const p = playerById(playerId);
+  if (!p) return;
+  normalizePlayer(p);
+  deckEditPlayerId = playerId;
+  deckEditBeyIndex = 0;
+  deckDraft = JSON.parse(JSON.stringify(p.beys));
+  document.getElementById("deckModalTitle").textContent = `登記陀螺 · ${p.name}`;
+  renderDeckModal();
+  document.getElementById("deckModal").classList.remove("hidden");
+}
+
+function closeDeckModal() {
+  document.getElementById("deckModal").classList.add("hidden");
+  deckEditPlayerId = null;
+  deckDraft = null;
+}
+
+function renderDeckModal() {
+  const p = playerById(deckEditPlayerId);
+  if (!p || !deckDraft) return;
+  const body = document.getElementById("deckModalBody");
+  const bey = deckDraft[deckEditBeyIndex];
+  const draftPlayer = { beys: deckDraft };
+  const warnings = checkDeckRestrictions(draftPlayer);
+  const completeCount = deckDraft.filter(isBeyComplete).length;
+
+  const tabs = deckDraft
+    .map((b, i) => {
+      const done = isBeyComplete(b);
+      return `<button type="button" class="bey-tab ${i === deckEditBeyIndex ? "active" : ""} ${done ? "done" : ""}" data-bey="${i}">
+        陀螺 ${i + 1}${done ? " ✓" : ""}
+      </button>`;
+    })
+    .join("");
+
+  body.innerHTML = `
+    <div class="deck-player-meta">
+      <span class="church-tag ${p.church}">${churchLabel(p.church)}</span>
+      <span class="meta">已完成 ${completeCount} / 3 隻 · 點選零件勾選登記</span>
+    </div>
+    <div class="bey-tabs">${tabs}</div>
+    <div class="deck-preview">
+      <div>陀螺 ${deckEditBeyIndex + 1}：<strong>${escapeHtml(beyLabel(bey))}</strong></div>
+    </div>
+    ${
+      warnings.length
+        ? `<div class="deck-restrict-warn">⚠ 限制提示：${warnings.map(escapeHtml).join("；")}</div>`
+        : completeCount === 3
+          ? `<div class="deck-restrict-ok">✓ 三隻已齊，未見明顯違規</div>`
+          : ""
+    }
+    ${renderPartPicker("上蓋 Blade", "blade", PARTS.blades, bey)}
+    ${renderPartPicker("固鎖 Ratchet", "ratchet", PARTS.ratchets, bey)}
+    ${renderPartPicker("軸心 Bit", "bit", PARTS.bits, bey)}
+    <div class="btn-row wrap mt-16">
+      <button type="button" class="btn btn-ghost" id="btnClearBey">清空此陀螺</button>
+      <button type="button" class="btn btn-secondary" id="btnCopyBey" ${deckEditBeyIndex === 0 ? "disabled" : ""}>複製陀螺1配置</button>
+      <button type="button" class="btn btn-primary" id="btnSaveDeck" style="margin-left:auto">儲存 3 隻配置</button>
+    </div>
+  `;
+
+  body.querySelectorAll(".bey-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      deckEditBeyIndex = Number(btn.dataset.bey);
+      renderDeckModal();
+    });
+  });
+
+  body.querySelectorAll(".chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const field = chip.dataset.field;
+      const value = chip.dataset.value;
+      const isCustom = chip.dataset.custom === "1";
+      const cur = deckDraft[deckEditBeyIndex];
+      // toggle off if same
+      if (cur[field] === value && !isCustom) {
+        cur[field] = "";
+        cur[field + "Custom"] = "";
+      } else {
+        cur[field] = value;
+        if (!isCustom) cur[field + "Custom"] = "";
+      }
+      renderDeckModal();
+    });
+  });
+
+  body.querySelectorAll(".custom-part-input input").forEach((inp) => {
+    inp.addEventListener("input", () => {
+      const field = inp.dataset.field;
+      deckDraft[deckEditBeyIndex][field + "Custom"] = inp.value;
+      // live preview without full re-render of focus
+      const prev = body.querySelector(".deck-preview strong");
+      if (prev) prev.textContent = beyLabel(deckDraft[deckEditBeyIndex]);
+    });
+    inp.addEventListener("change", () => {
+      saveState(); // no-op draft
+      renderDeckModal();
+    });
+  });
+
+  document.getElementById("btnClearBey").addEventListener("click", () => {
+    deckDraft[deckEditBeyIndex] = emptyBey();
+    renderDeckModal();
+  });
+  document.getElementById("btnCopyBey")?.addEventListener("click", () => {
+    deckDraft[deckEditBeyIndex] = JSON.parse(JSON.stringify(deckDraft[0]));
+    renderDeckModal();
+  });
+  document.getElementById("btnSaveDeck").addEventListener("click", saveDeckFromModal);
+}
+
+function renderPartPicker(title, field, catalog, bey) {
+  const selected = bey[field] || "";
+  const isCustomSelected = selected.includes("其他") || catalog.some((c) => c.custom && c.name === selected);
+  const chips = catalog
+    .map((item) => {
+      const sel = selected === item.name;
+      const tier =
+        item.tier === "T0"
+          ? '<span class="tier t0">T0</span>'
+          : item.tier === "T1"
+            ? '<span class="tier t1">T1</span>'
+            : "";
+      return `<button type="button" class="chip ${sel ? "selected" : ""}" data-field="${field}" data-value="${escapeAttr(item.name)}" data-custom="${item.custom ? "1" : "0"}">
+        <input type="checkbox" ${sel ? "checked" : ""} tabindex="-1" />
+        <span>${escapeHtml(item.name)}</span>
+        ${tier}
+      </button>`;
+    })
+    .join("");
+
+  return `
+    <div class="part-block">
+      <h4>${title} <span class="req">必選</span></h4>
+      <div class="chip-grid">${chips}</div>
+      <div class="custom-part-input ${isCustomSelected ? "show" : ""}">
+        <input class="input" data-field="${field}" placeholder="輸入自訂${title.includes("上蓋") ? "上蓋" : title.includes("固鎖") ? "固鎖" : "軸心"}名稱" value="${escapeAttr(bey[field + "Custom"] || "")}" />
+      </div>
+    </div>
+  `;
+}
+
+function saveDeckFromModal() {
+  const p = playerById(deckEditPlayerId);
+  if (!p || !deckDraft) return;
+
+  // validate custom fields filled
+  for (let i = 0; i < 3; i++) {
+    const b = deckDraft[i];
+    for (const f of ["blade", "ratchet", "bit"]) {
+      if ((b[f] || "").includes("其他") && !(b[f + "Custom"] || "").trim()) {
+        deckEditBeyIndex = i;
+        renderDeckModal();
+        toast(`陀螺 ${i + 1}：選了「其他」請填寫名稱`, "error");
+        return;
+      }
+    }
+  }
+
+  const warnings = checkDeckRestrictions({ beys: deckDraft });
+  if (warnings.length) {
+    if (!confirm("檢測到限制提示：\n· " + warnings.join("\n· ") + "\n\n仍要儲存？")) return;
+  }
+
+  p.beys = JSON.parse(JSON.stringify(deckDraft));
+  p.deckChecked = isDeckComplete(p);
+  saveState();
+  closeDeckModal();
+  render();
+  toast(
+    p.deckChecked ? `${p.name} 陀螺登記完成（3/3）` : `${p.name} 已儲存（完成 ${deckProgress(p)}/3）`,
+    "success"
+  );
 }
 
 function regeneratePairing() {
@@ -770,14 +1012,36 @@ function downloadText(filename, text, mime = "text/plain;charset=utf-8") {
 
 function exportStandingsCsv() {
   const ranked = rankedPlayers();
-  const lines = ["排名,姓名,教會,勝,負,瑞士分,比賽總分,狀態"];
+  const lines = [
+    "排名,姓名,教會,勝,負,瑞士分,比賽總分,陀螺1上蓋,陀螺1固鎖,陀螺1軸心,陀螺2上蓋,陀螺2固鎖,陀螺2軸心,陀螺3上蓋,陀螺3固鎖,陀螺3軸心,狀態",
+  ];
   for (const p of ranked) {
+    normalizePlayer(p);
     const status = p.rank <= 4 ? "晉級" : "";
-    lines.push([p.rank, p.name, churchFull(p.church), p.wins, p.losses, p.swissPoints, p.battlePoints, status].join(","));
+    const parts = [];
+    for (let i = 0; i < 3; i++) {
+      const b = p.beys[i];
+      parts.push(partDisplay(b, "blade"), partDisplay(b, "ratchet"), partDisplay(b, "bit"));
+    }
+    lines.push(
+      [
+        p.rank,
+        p.name,
+        churchFull(p.church),
+        p.wins,
+        p.losses,
+        p.swissPoints,
+        p.battlePoints,
+        ...parts,
+        status,
+      ]
+        .map((x) => `"${String(x).replace(/"/g, '""')}"`)
+        .join(",")
+    );
   }
   downloadText("寶螺盃_排名.csv", lines.join("\n"), "text/csv;charset=utf-8");
   document.getElementById("exportPreview").textContent = lines.join("\n");
-  toast("已匯出排名 CSV", "success");
+  toast("已匯出排名 CSV（含陀螺）", "success");
 }
 
 function exportMatchesCsv() {
@@ -807,6 +1071,16 @@ function exportTextReport() {
   t += "【排名】\n";
   ranked.forEach((p) => {
     t += `${p.rank}. ${p.name}（${churchLabel(p.church)}） 勝${p.wins}  總分${p.battlePoints}${p.rank <= 4 ? " ★晉級" : ""}${p.tied ? " ＝同分" : ""}\n`;
+  });
+  t += "\n【陀螺登記】\n";
+  state.players.forEach((p, i) => {
+    normalizePlayer(p);
+    t += `${i + 1}. ${p.name}（${churchLabel(p.church)}）${isDeckComplete(p) ? " ✓" : " 未齊"}\n`;
+    p.beys.forEach((b, bi) => {
+      t += `   陀螺${bi + 1}: ${beyLabel(b)}\n`;
+    });
+    const w = checkDeckRestrictions(p);
+    if (w.length) t += `   提示: ${w.join("；")}\n`;
   });
   t += "\n【各輪對戰】\n";
   for (const r of state.rounds) {
@@ -851,6 +1125,7 @@ function importJsonFile(file) {
       if (!data.players || !Array.isArray(data.players)) throw new Error("格式錯誤");
       if (!confirm("還原會覆蓋目前資料，確定？")) return;
       state = { ...defaultState(), ...data };
+      state.players = migratePlayers(state.players);
       saveState();
       render();
       toast("已還原備份", "success");
@@ -896,42 +1171,96 @@ function renderHeaderTime() {
 }
 
 function renderPlayers() {
+  state.players.forEach(normalizePlayer);
+
   document.getElementById("playerCount").textContent = `${state.players.length} / ${TOTAL_PLAYERS}`;
   const kcc = state.players.filter((p) => p.church === "kcc").length;
   const ky = state.players.filter((p) => p.church === "ky").length;
+  const deckDone = state.players.filter((p) => isDeckComplete(p)).length;
+  const deckPartial = state.players.filter((p) => {
+    const n = deckProgress(p);
+    return n > 0 && n < 3;
+  }).length;
+  const deckNone = state.players.length - deckDone - deckPartial;
+
   document.getElementById("churchSummary").innerHTML = `
     <span><span class="church-tag kcc">九龍城</span> <strong>${kcc}</strong> 人</span>
     <span><span class="church-tag ky">基蔭</span> <strong>${ky}</strong> 人</span>
   `;
 
-  const tbody = document.querySelector("#playerTable tbody");
-  tbody.innerHTML = state.players
-    .map(
-      (p, i) => `
-    <tr>
-      <td>${i + 1}</td>
-      <td><input class="inline-edit" data-id="${p.id}" value="${escapeAttr(p.name)}" ${state.phase !== "setup" && state.phase !== "swiss" && state.phase !== "knockout" && state.phase !== "done" ? "" : ""} /></td>
-      <td>
-        <select class="input select church-select" data-id="${p.id}" style="min-height:40px;padding:6px 10px" ${state.phase !== "setup" ? "disabled" : ""}>
-          <option value="kcc" ${p.church === "kcc" ? "selected" : ""}>九龍城</option>
-          <option value="ky" ${p.church === "ky" ? "selected" : ""}>基蔭</option>
-        </select>
-      </td>
-      <td>
-        ${state.phase === "setup" ? `<button class="btn btn-ghost btn-sm btn-del" data-id="${p.id}">刪除</button>` : ""}
-      </td>
-    </tr>`
-    )
-    .join("");
+  document.getElementById("deckSummaryBar").innerHTML = `
+    <span class="ds-item">已預登姓名 <strong>${state.players.length}</strong> / ${TOTAL_PLAYERS}</span>
+    <span class="ds-item ok">陀螺齊 3 隻 <strong>${deckDone}</strong></span>
+    <span class="ds-item warn">部分登記 <strong>${deckPartial}</strong></span>
+    <span class="ds-item">未登陀螺 <strong>${deckNone}</strong></span>
+  `;
 
-  tbody.querySelectorAll(".inline-edit").forEach((inp) => {
+  const list = document.getElementById("playerCards");
+  if (!state.players.length) {
+    list.innerHTML = `<div class="empty"><div class="big">📝</div>尚未登記選手。<br>可先預先匯入／輸入 16 人姓名，活動當日再按「登記陀螺」。</div>`;
+  } else {
+    list.innerHTML = state.players
+      .map((p, i) => {
+        const prog = deckProgress(p);
+        const complete = prog === 3;
+        const partial = prog > 0 && prog < 3;
+        const statusClass = complete ? "complete" : partial ? "partial" : "name-only";
+        const statusText = complete ? "陀螺已齊 3/3" : partial ? `陀螺登記中 ${prog}/3` : "僅預登姓名";
+        const cardClass = complete ? "deck-done" : partial ? "deck-partial" : "";
+        const warnings = complete ? checkDeckRestrictions(p) : [];
+        const beyMinis = (p.beys || emptyBeys())
+          .map((b, bi) => {
+            const empty = !partDisplay(b, "blade") && !partDisplay(b, "ratchet") && !partDisplay(b, "bit");
+            return `<div class="pc-bey-mini ${empty ? "empty" : ""}">
+              <div class="bn">陀螺 ${bi + 1}</div>
+              <div class="bv">${escapeHtml(beyLabel(b))}</div>
+            </div>`;
+          })
+          .join("");
+
+        return `
+        <div class="player-card ${cardClass}" data-id="${p.id}">
+          <div class="pc-top">
+            <span class="pc-num">#${i + 1}</span>
+            <div class="pc-name">
+              <input type="text" class="pc-name-input" data-id="${p.id}" value="${escapeAttr(p.name)}" maxlength="20" />
+            </div>
+            <div class="pc-church">
+              <select class="input select church-select" data-id="${p.id}" ${state.phase !== "setup" ? "disabled" : ""}>
+                <option value="kcc" ${p.church === "kcc" ? "selected" : ""}>九龍城</option>
+                <option value="ky" ${p.church === "ky" ? "selected" : ""}>基蔭</option>
+              </select>
+            </div>
+            <span class="pc-status ${statusClass}">${statusText}</span>
+            <div class="pc-actions">
+              <button type="button" class="btn btn-primary btn-sm btn-deck" data-id="${p.id}">
+                ${complete ? "修改陀螺" : "登記陀螺"}
+              </button>
+              ${
+                state.phase === "setup"
+                  ? `<button type="button" class="btn btn-ghost btn-sm btn-del" data-id="${p.id}">刪除</button>`
+                  : ""
+              }
+            </div>
+          </div>
+          <div class="pc-beys">${beyMinis}</div>
+          ${warnings.length ? `<div class="pc-warn">⚠ ${warnings.map(escapeHtml).join("；")}</div>` : ""}
+        </div>`;
+      })
+      .join("");
+  }
+
+  list.querySelectorAll(".pc-name-input").forEach((inp) => {
     inp.addEventListener("change", () => updatePlayerName(inp.dataset.id, inp.value));
   });
-  tbody.querySelectorAll(".church-select").forEach((sel) => {
+  list.querySelectorAll(".church-select").forEach((sel) => {
     sel.addEventListener("change", () => updatePlayerChurch(sel.dataset.id, sel.value));
   });
-  tbody.querySelectorAll(".btn-del").forEach((btn) => {
+  list.querySelectorAll(".btn-del").forEach((btn) => {
     btn.addEventListener("click", () => removePlayer(btn.dataset.id));
+  });
+  list.querySelectorAll(".btn-deck").forEach((btn) => {
+    btn.addEventListener("click", () => openDeckModal(btn.dataset.id));
   });
 
   const startBtn = document.getElementById("btnStartTournament");
@@ -1516,6 +1845,10 @@ function init() {
     }
   });
   document.getElementById("btnStartTournament").addEventListener("click", startTournament);
+  document.getElementById("btnCloseDeck").addEventListener("click", closeDeckModal);
+  document.getElementById("deckModal").addEventListener("click", (e) => {
+    if (e.target.id === "deckModal") closeDeckModal();
+  });
   document.getElementById("btnRegenPairing").addEventListener("click", regeneratePairing);
   document.getElementById("btnLockRound").addEventListener("click", lockRoundAndAdvance);
   document.getElementById("btnManualPair").addEventListener("click", openManualModal);
