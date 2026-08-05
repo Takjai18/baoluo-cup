@@ -929,8 +929,15 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   margin-bottom: 2px;
 }
 .pc-bey-mini .bv {
-  font-weight: 700;
+  font-weight: 800;
   color: var(--text);
+  word-break: break-word;
+  font-size: 0.9rem;
+}
+.pc-bey-mini .bv-sub {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 2px;
   word-break: break-word;
 }
 .pc-bey-mini.empty .bv { color: var(--muted); font-weight: 500; }
@@ -1076,4 +1083,103 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   margin-bottom: 12px;
   font-size: 0.85rem;
   font-weight: 700;
+}
+
+/* Series filter + blade search */
+.series-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.series-chip {
+  min-height: 40px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: #0f172a;
+  color: var(--muted);
+  font-weight: 800;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+.series-chip:hover { border-color: #64748b; color: var(--text); }
+.series-chip.active {
+  border-color: var(--primary);
+  background: #1e3a5f;
+  color: #fff;
+}
+
+.blade-search {
+  margin-bottom: 8px;
+}
+
+.blade-option-list {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #0f172a;
+  -webkit-overflow-scrolling: touch;
+}
+.blade-option {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 64px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  text-align: left;
+  padding: 10px 12px;
+  border: none;
+  border-bottom: 1px solid #1e293b;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+.blade-option:last-child { border-bottom: none; }
+.blade-option:hover { background: #1e293b; }
+.blade-option.selected {
+  background: #1e3a5f;
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+.bo-code {
+  font-weight: 900;
+  color: #93c5fd;
+  font-size: 0.85rem;
+}
+.bo-name { font-weight: 800; }
+.bo-en {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.part-select {
+  font-size: 1.1rem;
+  font-weight: 800;
+  min-height: 52px;
+}
+
+.chip-compact .chip {
+  min-height: 36px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+}
+
+.combo-short {
+  font-size: 1.05rem;
+  margin-bottom: 4px;
+}
+.combo-full {
+  font-size: 0.8rem;
+  word-break: break-word;
+}
+.empty-mini {
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
 }

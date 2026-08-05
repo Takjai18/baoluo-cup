@@ -24,16 +24,25 @@ const DEMO_PLAYERS = [
 /** Demo decks for event-day practice (complete 3 beys) */
 const DEMO_DECKS = [
   [
-    { blade: "劍龍", ratchet: "3-60", bit: "平 (Ball)" },
-    { blade: "鳳凰", ratchet: "9-60", bit: "針 (Needle)" },
-    { blade: "地獄鎖鏈", ratchet: "5-70", bit: "斜 (Taper)" },
+    { bladeId: "bx-01", ratchet: "3-60", bit: "J" },
+    { bladeId: "bx-23", ratchet: "9-60", bit: "H" },
+    { bladeId: "bx-21", ratchet: "5-70", bit: "T" },
   ],
   [
-    { blade: "神仗", ratchet: "1-60", bit: "高平 (High Ball)" },
-    { blade: "弓龍", ratchet: "4-80", bit: "尖 (Point)" },
-    { blade: "騎士盾", ratchet: "9-80", bit: "平底 (Flat)" },
+    { bladeId: "ux-03", ratchet: "1-60", bit: "B" },
+    { bladeId: "ux-01", ratchet: "4-80", bit: "P" },
+    { bladeId: "bx-04", ratchet: "9-80", bit: "F" },
   ],
 ];
+
+function demoBeyFromTemplate(t) {
+  const bey = emptyBey();
+  const blade = findBladeById(t.bladeId);
+  if (blade) applyBladeToBey(bey, blade);
+  bey.ratchet = t.ratchet;
+  bey.bit = t.bit;
+  return bey;
+}
 
 // ─── State ───────────────────────────────────────────────
 function defaultState() {
@@ -544,14 +553,7 @@ function fillDemo() {
   if (state.phase !== "setup") return;
   state.players = DEMO_PLAYERS.map(([name, church], i) => {
     const template = DEMO_DECKS[i % DEMO_DECKS.length];
-    const beys = template.map((t) => ({
-      blade: t.blade,
-      ratchet: t.ratchet,
-      bit: t.bit,
-      bladeCustom: "",
-      ratchetCustom: "",
-      bitCustom: "",
-    }));
+    const beys = template.map(demoBeyFromTemplate);
     const p = makePlayer(name, church, beys);
     p.deckChecked = true;
     return p;
@@ -600,6 +602,9 @@ let deckEditPlayerId = null;
 let deckEditBeyIndex = 0;
 /** Working copy while modal open */
 let deckDraft = null;
+/** Blade picker UI state */
+let bladeSeriesFilter = "ALL";
+let bladeSearchQuery = "";
 
 function openDeckModal(playerId) {
   const p = playerById(playerId);
@@ -607,7 +612,9 @@ function openDeckModal(playerId) {
   normalizePlayer(p);
   deckEditPlayerId = playerId;
   deckEditBeyIndex = 0;
-  deckDraft = JSON.parse(JSON.stringify(p.beys));
+  deckDraft = p.beys.map((b) => normalizeBey(JSON.parse(JSON.stringify(b))));
+  bladeSeriesFilter = "ALL";
+  bladeSearchQuery = "";
   document.getElementById("deckModalTitle").textContent = `登記陀螺 · ${p.name}`;
   renderDeckModal();
   document.getElementById("deckModal").classList.remove("hidden");
@@ -637,14 +644,18 @@ function renderDeckModal() {
     })
     .join("");
 
+  const shortCombo = beyLabel(bey, { short: true });
+  const fullCombo = beyLabel(bey);
+
   body.innerHTML = `
     <div class="deck-player-meta">
       <span class="church-tag ${p.church}">${churchLabel(p.church)}</span>
-      <span class="meta">已完成 ${completeCount} / 3 隻 · 點選零件勾選登記</span>
+      <span class="meta">已完成 ${completeCount} / 3 隻 · 上蓋可搜尋 · 固鎖／軸心下拉選</span>
     </div>
     <div class="bey-tabs">${tabs}</div>
     <div class="deck-preview">
-      <div>陀螺 ${deckEditBeyIndex + 1}：<strong>${escapeHtml(beyLabel(bey))}</strong></div>
+      <div class="combo-short">組合：<strong>${escapeHtml(shortCombo)}</strong></div>
+      <div class="combo-full meta">${escapeHtml(fullCombo)}</div>
     </div>
     ${
       warnings.length
@@ -653,9 +664,9 @@ function renderDeckModal() {
           ? `<div class="deck-restrict-ok">✓ 三隻已齊，未見明顯違規</div>`
           : ""
     }
-    ${renderPartPicker("上蓋 Blade", "blade", PARTS.blades, bey)}
-    ${renderPartPicker("固鎖 Ratchet", "ratchet", PARTS.ratchets, bey)}
-    ${renderPartPicker("軸心 Bit", "bit", PARTS.bits, bey)}
+    ${renderBladePicker(bey)}
+    ${renderRatchetPicker(bey)}
+    ${renderBitPicker(bey)}
     <div class="btn-row wrap mt-16">
       <button type="button" class="btn btn-ghost" id="btnClearBey">清空此陀螺</button>
       <button type="button" class="btn btn-secondary" id="btnCopyBey" ${deckEditBeyIndex === 0 ? "disabled" : ""}>複製陀螺1配置</button>
@@ -663,71 +674,32 @@ function renderDeckModal() {
     </div>
   `;
 
-  body.querySelectorAll(".bey-tab").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      deckEditBeyIndex = Number(btn.dataset.bey);
-      renderDeckModal();
-    });
-  });
-
-  body.querySelectorAll(".chip").forEach((chip) => {
-    chip.addEventListener("click", () => {
-      const field = chip.dataset.field;
-      const value = chip.dataset.value;
-      const isCustom = chip.dataset.custom === "1";
-      const cur = deckDraft[deckEditBeyIndex];
-      // toggle off if same
-      if (cur[field] === value && !isCustom) {
-        cur[field] = "";
-        cur[field + "Custom"] = "";
-      } else {
-        cur[field] = value;
-        if (!isCustom) cur[field + "Custom"] = "";
-      }
-      renderDeckModal();
-    });
-  });
-
-  body.querySelectorAll(".custom-part-input input").forEach((inp) => {
-    inp.addEventListener("input", () => {
-      const field = inp.dataset.field;
-      deckDraft[deckEditBeyIndex][field + "Custom"] = inp.value;
-      // live preview without full re-render of focus
-      const prev = body.querySelector(".deck-preview strong");
-      if (prev) prev.textContent = beyLabel(deckDraft[deckEditBeyIndex]);
-    });
-    inp.addEventListener("change", () => {
-      saveState(); // no-op draft
-      renderDeckModal();
-    });
-  });
-
-  document.getElementById("btnClearBey").addEventListener("click", () => {
-    deckDraft[deckEditBeyIndex] = emptyBey();
-    renderDeckModal();
-  });
-  document.getElementById("btnCopyBey")?.addEventListener("click", () => {
-    deckDraft[deckEditBeyIndex] = JSON.parse(JSON.stringify(deckDraft[0]));
-    renderDeckModal();
-  });
-  document.getElementById("btnSaveDeck").addEventListener("click", saveDeckFromModal);
+  bindDeckModalEvents(body);
 }
 
-function renderPartPicker(title, field, catalog, bey) {
-  const selected = bey[field] || "";
-  const isCustomSelected = selected.includes("其他") || catalog.some((c) => c.custom && c.name === selected);
-  const chips = catalog
-    .map((item) => {
-      const sel = selected === item.name;
+function renderBladePicker(bey) {
+  const seriesBtns = ["ALL", "BX", "UX", "CX", "OTHER"]
+    .map((s) => {
+      const label = SERIES_LABELS[s] || s;
+      return `<button type="button" class="series-chip ${bladeSeriesFilter === s ? "active" : ""}" data-series="${s}">${label}</button>`;
+    })
+    .join("");
+
+  const isCxOrCustom = bey.bladeId === "custom" || bey.series === "CX" || bladeSeriesFilter === "CX";
+  const list = filterBlades(bladeSeriesFilter, bladeSearchQuery);
+  const options = list
+    .map((b) => {
+      const sel = bey.bladeId === b.id;
       const tier =
-        item.tier === "T0"
+        b.tier === "T0"
           ? '<span class="tier t0">T0</span>'
-          : item.tier === "T1"
+          : b.tier === "T1"
             ? '<span class="tier t1">T1</span>'
             : "";
-      return `<button type="button" class="chip ${sel ? "selected" : ""}" data-field="${field}" data-value="${escapeAttr(item.name)}" data-custom="${item.custom ? "1" : "0"}">
-        <input type="checkbox" ${sel ? "checked" : ""} tabindex="-1" />
-        <span>${escapeHtml(item.name)}</span>
+      return `<button type="button" class="blade-option ${sel ? "selected" : ""}" data-blade-id="${b.id}">
+        <span class="bo-code">${escapeHtml(b.code)}</span>
+        <span class="bo-name">${escapeHtml(b.name)}</span>
+        <span class="bo-en">${escapeHtml(b.en)}</span>
         ${tier}
       </button>`;
     })
@@ -735,28 +707,216 @@ function renderPartPicker(title, field, catalog, bey) {
 
   return `
     <div class="part-block">
-      <h4>${title} <span class="req">必選</span></h4>
-      <div class="chip-grid">${chips}</div>
-      <div class="custom-part-input ${isCustomSelected ? "show" : ""}">
-        <input class="input" data-field="${field}" placeholder="輸入自訂${title.includes("上蓋") ? "上蓋" : title.includes("固鎖") ? "固鎖" : "軸心"}名稱" value="${escapeAttr(bey[field + "Custom"] || "")}" />
+      <h4>上蓋 Blade <span class="req">必選</span></h4>
+      <div class="series-row">${seriesBtns}</div>
+      ${
+        bladeSeriesFilter === "CX"
+          ? `<div class="hint" style="margin:8px 0">CX 系列（主刃＋輔助戰刃＋鎖定紋章）請自由輸入完整名稱。</div>
+             <input class="input" id="bladeCustomInput" placeholder="例：主刃名稱 + 紋章（自填）" value="${escapeAttr(bey.bladeCustom || bey.bladeName || "")}" />`
+          : `
+      <input class="input blade-search" id="bladeSearchInput" placeholder="搜尋：編號 / 中文 / 英文（例 UX15、鮫鯊、Shark）" value="${escapeAttr(bladeSearchQuery)}" />
+      <div class="blade-option-list" id="bladeOptionList">
+        ${options || '<div class="empty-mini">無符合結果，可改搜尋或選 CX 自填</div>'}
+      </div>
+      <div class="btn-row mt-8">
+        <button type="button" class="btn btn-ghost btn-sm" id="btnBladeCustom">改為自由輸入…</button>
+        ${
+          bey.bladeId === "custom"
+            ? `<input class="input" id="bladeCustomInput" style="flex:1" placeholder="自訂上蓋名稱" value="${escapeAttr(bey.bladeCustom || "")}" />`
+            : ""
+        }
+      </div>`
+      }
+    </div>
+  `;
+}
+
+function renderRatchetPicker(bey) {
+  const opts = PARTS.ratchets
+    .map((r) => `<option value="${r}" ${bey.ratchet === r ? "selected" : ""}>${r}</option>`)
+    .join("");
+  return `
+    <div class="part-block">
+      <h4>固鎖 Ratchet <span class="req">必選</span></h4>
+      <select class="input select part-select" id="ratchetSelect">
+        <option value="">— 選擇固鎖 —</option>
+        ${opts}
+      </select>
+      <div class="chip-grid chip-compact mt-8">
+        ${["1-60", "3-60", "4-60", "5-60", "9-60", "3-70", "5-70", "9-70", "4-80", "9-80", "M-85"]
+          .filter((r) => PARTS.ratchets.includes(r))
+          .map(
+            (r) =>
+              `<button type="button" class="chip ${bey.ratchet === r ? "selected" : ""}" data-quick-ratchet="${r}">
+                <input type="checkbox" ${bey.ratchet === r ? "checked" : ""} tabindex="-1" />
+                <span>${r}</span>
+              </button>`
+          )
+          .join("")}
       </div>
     </div>
   `;
+}
+
+function renderBitPicker(bey) {
+  const { freq, rest } = sortedBits();
+  const optGroup = (label, codes) =>
+    `<optgroup label="${label}">${codes
+      .map((c) => `<option value="${c}" ${bey.bit === c ? "selected" : ""}>${c}</option>`)
+      .join("")}</optgroup>`;
+
+  return `
+    <div class="part-block">
+      <h4>軸心 Bit <span class="req">必選（代碼）</span></h4>
+      <select class="input select part-select" id="bitSelect">
+        <option value="">— 選擇軸心代碼 —</option>
+        ${optGroup("常用", freq)}
+        ${optGroup("全部", rest)}
+      </select>
+      <div class="chip-grid chip-compact mt-8">
+        ${freq
+          .map(
+            (c) =>
+              `<button type="button" class="chip ${bey.bit === c ? "selected" : ""}" data-quick-bit="${c}">
+                <input type="checkbox" ${bey.bit === c ? "checked" : ""} tabindex="-1" />
+                <span>${c}</span>
+              </button>`
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function bindDeckModalEvents(body) {
+  body.querySelectorAll(".bey-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      deckEditBeyIndex = Number(btn.dataset.bey);
+      bladeSearchQuery = "";
+      renderDeckModal();
+    });
+  });
+
+  body.querySelectorAll(".series-chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      bladeSeriesFilter = btn.dataset.series;
+      bladeSearchQuery = "";
+      if (bladeSeriesFilter === "CX") {
+        const bey = deckDraft[deckEditBeyIndex];
+        bey.bladeId = "custom";
+        bey.series = "CX";
+        bey.bladeCode = "";
+        bey.bladeEn = "";
+        if (!bey.bladeCustom) bey.bladeName = "";
+      }
+      renderDeckModal();
+    });
+  });
+
+  const search = body.querySelector("#bladeSearchInput");
+  if (search) {
+    search.addEventListener("input", () => {
+      bladeSearchQuery = search.value;
+      // re-render list only would lose focus — full re-render ok with restore
+      const pos = search.selectionStart;
+      renderDeckModal();
+      const again = document.getElementById("bladeSearchInput");
+      if (again) {
+        again.focus();
+        try {
+          again.setSelectionRange(pos, pos);
+        } catch (_) {}
+      }
+    });
+  }
+
+  body.querySelectorAll(".blade-option").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const blade = findBladeById(btn.dataset.bladeId);
+      if (!blade) return;
+      applyBladeToBey(deckDraft[deckEditBeyIndex], blade);
+      bladeSearchQuery = "";
+      renderDeckModal();
+    });
+  });
+
+  document.getElementById("btnBladeCustom")?.addEventListener("click", () => {
+    const bey = deckDraft[deckEditBeyIndex];
+    bey.bladeId = "custom";
+    bey.series = bey.series === "CX" ? "CX" : "OTHER";
+    bey.bladeCode = "";
+    bey.bladeEn = "";
+    bey.bladeName = bey.bladeCustom || "";
+    renderDeckModal();
+    document.getElementById("bladeCustomInput")?.focus();
+  });
+
+  document.getElementById("bladeCustomInput")?.addEventListener("input", (e) => {
+    const bey = deckDraft[deckEditBeyIndex];
+    bey.bladeId = "custom";
+    bey.bladeCustom = e.target.value;
+    bey.bladeName = e.target.value;
+    if (!bey.series) bey.series = bladeSeriesFilter === "CX" ? "CX" : "OTHER";
+    const short = body.querySelector(".combo-short strong");
+    const full = body.querySelector(".combo-full");
+    if (short) short.textContent = beyLabel(bey, { short: true });
+    if (full) full.textContent = beyLabel(bey);
+  });
+
+  document.getElementById("ratchetSelect")?.addEventListener("change", (e) => {
+    deckDraft[deckEditBeyIndex].ratchet = e.target.value;
+    renderDeckModal();
+  });
+  document.getElementById("bitSelect")?.addEventListener("change", (e) => {
+    deckDraft[deckEditBeyIndex].bit = e.target.value;
+    renderDeckModal();
+  });
+
+  body.querySelectorAll("[data-quick-ratchet]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const v = btn.dataset.quickRatchet;
+      const bey = deckDraft[deckEditBeyIndex];
+      bey.ratchet = bey.ratchet === v ? "" : v;
+      renderDeckModal();
+    });
+  });
+  body.querySelectorAll("[data-quick-bit]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const v = btn.dataset.quickBit;
+      const bey = deckDraft[deckEditBeyIndex];
+      bey.bit = bey.bit === v ? "" : v;
+      renderDeckModal();
+    });
+  });
+
+  document.getElementById("btnClearBey")?.addEventListener("click", () => {
+    deckDraft[deckEditBeyIndex] = emptyBey();
+    bladeSearchQuery = "";
+    renderDeckModal();
+  });
+  document.getElementById("btnCopyBey")?.addEventListener("click", () => {
+    deckDraft[deckEditBeyIndex] = normalizeBey(JSON.parse(JSON.stringify(deckDraft[0])));
+    renderDeckModal();
+  });
+  document.getElementById("btnSaveDeck")?.addEventListener("click", saveDeckFromModal);
 }
 
 function saveDeckFromModal() {
   const p = playerById(deckEditPlayerId);
   if (!p || !deckDraft) return;
 
-  // validate custom fields filled
   for (let i = 0; i < 3; i++) {
     const b = deckDraft[i];
-    for (const f of ["blade", "ratchet", "bit"]) {
-      if ((b[f] || "").includes("其他") && !(b[f + "Custom"] || "").trim()) {
-        deckEditBeyIndex = i;
-        renderDeckModal();
-        toast(`陀螺 ${i + 1}：選了「其他」請填寫名稱`, "error");
-        return;
+    if ((b.bladeId === "custom" || b.series === "CX") && !(b.bladeCustom || b.bladeName || "").trim()) {
+      // only error if they started filling ratchet/bit or left incomplete custom
+      if (b.ratchet || b.bit || b.bladeId === "custom") {
+        const hasAny = b.ratchet || b.bit || (b.bladeCustom || "").trim();
+        if (hasAny && !(b.bladeCustom || b.bladeName || "").trim()) {
+          deckEditBeyIndex = i;
+          renderDeckModal();
+          toast(`陀螺 ${i + 1}：請填寫上蓋名稱`, "error");
+          return;
+        }
       }
     }
   }
@@ -766,7 +926,7 @@ function saveDeckFromModal() {
     if (!confirm("檢測到限制提示：\n· " + warnings.join("\n· ") + "\n\n仍要儲存？")) return;
   }
 
-  p.beys = JSON.parse(JSON.stringify(deckDraft));
+  p.beys = deckDraft.map((b) => normalizeBey(JSON.parse(JSON.stringify(b))));
   p.deckChecked = isDeckComplete(p);
   saveState();
   closeDeckModal();
@@ -1013,7 +1173,7 @@ function downloadText(filename, text, mime = "text/plain;charset=utf-8") {
 function exportStandingsCsv() {
   const ranked = rankedPlayers();
   const lines = [
-    "排名,姓名,教會,勝,負,瑞士分,比賽總分,陀螺1上蓋,陀螺1固鎖,陀螺1軸心,陀螺2上蓋,陀螺2固鎖,陀螺2軸心,陀螺3上蓋,陀螺3固鎖,陀螺3軸心,狀態",
+    "排名,姓名,教會,勝,負,瑞士分,比賽總分,陀螺1組合,陀螺1上蓋,陀螺1固鎖,陀螺1軸心,陀螺2組合,陀螺2上蓋,陀螺2固鎖,陀螺2軸心,陀螺3組合,陀螺3上蓋,陀螺3固鎖,陀螺3軸心,狀態",
   ];
   for (const p of ranked) {
     normalizePlayer(p);
@@ -1021,7 +1181,12 @@ function exportStandingsCsv() {
     const parts = [];
     for (let i = 0; i < 3; i++) {
       const b = p.beys[i];
-      parts.push(partDisplay(b, "blade"), partDisplay(b, "ratchet"), partDisplay(b, "bit"));
+      parts.push(
+        beyLabel(b, { short: true }),
+        partDisplayBlade(b),
+        partDisplay(b, "ratchet"),
+        partDisplay(b, "bit")
+      );
     }
     lines.push(
       [
@@ -1210,10 +1375,11 @@ function renderPlayers() {
         const warnings = complete ? checkDeckRestrictions(p) : [];
         const beyMinis = (p.beys || emptyBeys())
           .map((b, bi) => {
-            const empty = !partDisplay(b, "blade") && !partDisplay(b, "ratchet") && !partDisplay(b, "bit");
+            const empty = !isBeyComplete(b) && !partDisplayBlade(b) && !partDisplay(b, "ratchet") && !partDisplay(b, "bit");
             return `<div class="pc-bey-mini ${empty ? "empty" : ""}">
-              <div class="bn">陀螺 ${bi + 1}</div>
-              <div class="bv">${escapeHtml(beyLabel(b))}</div>
+              <div class="bn">陀螺 ${bi + 1}${getBeyTier(b) ? ` · ${getBeyTier(b)}` : ""}</div>
+              <div class="bv">${escapeHtml(beyLabel(b, { short: true }))}</div>
+              <div class="bv-sub">${empty ? "" : escapeHtml(beyLabel(b))}</div>
             </div>`;
           })
           .join("");
