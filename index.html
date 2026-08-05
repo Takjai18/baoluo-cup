@@ -27,7 +27,8 @@
 
     <!-- Nav -->
     <nav class="nav" id="mainNav">
-      <button class="nav-btn active" data-tab="players">① 選手</button>
+      <button class="nav-btn active" data-tab="settings">⓪ 大會設定</button>
+      <button class="nav-btn" data-tab="players">① 選手</button>
       <button class="nav-btn" data-tab="pairings">② 對戰表</button>
       <button class="nav-btn" data-tab="standings">③ 排名</button>
       <button class="nav-btn" data-tab="ties">④ 同分</button>
@@ -36,8 +37,70 @@
     </nav>
 
     <main class="main">
+      <!-- ===== SETTINGS ===== -->
+      <section id="tab-settings" class="tab active">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>大會設定</h2>
+            <div class="btn-row">
+              <button class="btn btn-primary" id="btnSaveSettings" type="button">儲存設定</button>
+            </div>
+          </div>
+          <div class="hint">
+            現場對戰盤可能有 <strong>2–4</strong> 個，裁判人數亦可能不同。
+            系統以 <strong>min(裁判人數, 對戰盤數量)</strong> 作為可用報到站，將本輪 8 場分派到
+            <strong>A 區、B 區、C 區、D 區…</strong>，方便選手到指定裁判／對戰盤報到。
+          </div>
+          <div class="settings-grid">
+            <label class="settings-field">
+              <span class="section-label">裁判人數</span>
+              <select id="setReferees" class="input select part-select">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4" selected>4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+              </select>
+            </label>
+            <label class="settings-field">
+              <span class="section-label">對戰盤數量</span>
+              <select id="setStadiums" class="input select part-select">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4" selected>4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+              </select>
+            </label>
+            <label class="settings-field">
+              <span class="section-label">瑞士制輪次</span>
+              <select id="setSwissRounds" class="input select part-select">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4" selected>4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+              </select>
+            </label>
+          </div>
+          <div id="settingsPreview" class="mt-16"></div>
+          <div class="hint mt-16" style="margin-bottom:0">
+            例：3 個對戰盤 + 4 名裁判 → 可用 3 站（A／B／C 區）。
+            8 場會輪流分派：場 1→A、場 2→B、場 3→C、場 4→A…。
+            更改設定後，<strong>未鎖定</strong> 的本輪會即時重分區。
+          </div>
+        </div>
+      </section>
+
       <!-- ===== PLAYERS ===== -->
-      <section id="tab-players" class="tab active">
+      <section id="tab-players" class="tab">
         <div class="panel">
           <div class="panel-header">
             <h2>選手登記 <span class="badge" id="playerCount">0 / 16</span></h2>
@@ -109,10 +172,11 @@
 
           <div class="hint" id="pairingHint">
             配對原則：① 同分優先互打 → ② 同分時優先不同教會 → ③ 盡量避開重複對手。
-            每場 Match 先到 <strong>4 分</strong>（Extreme 3 / Over·Burst 2 / Spin 1）。
+            每場 Match 先到 <strong>4 分</strong>。報到區由「大會設定」的裁判／對戰盤數量決定（A／B／C／D 區）。
           </div>
 
-          <div id="matchGrid" class="match-grid"></div>
+          <div class="deck-summary-bar" id="zoneSummaryBar"></div>
+          <div id="matchGrid" class="match-grid-wrap"></div>
 
           <div class="panel-footer" id="roundProgress"></div>
         </div>

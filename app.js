@@ -6,8 +6,65 @@
 const STORAGE_KEY = "baoluo-cup-v2";
 const STORAGE_KEY_LEGACY = "baoluo-cup-v1";
 const TOTAL_PLAYERS = 16;
-const SWISS_ROUNDS = 4;
 const MATCH_TARGET = 4;
+/** 報到區代號（按可用站點數取前 N 個） */
+const ZONE_CODES = ["A", "B", "C", "D", "E", "F", "G", "H"];
+
+function defaultSettings() {
+  return {
+    referees: 4, // 裁判人數
+    stadiums: 4, // 對戰盤數量（建議 2–4）
+    swissRounds: 4, // 瑞士制輪次
+  };
+}
+
+function normalizeSettings(s) {
+  const d = defaultSettings();
+  const src = s && typeof s === "object" ? s : {};
+  let referees = parseInt(src.referees, 10);
+  let stadiums = parseInt(src.stadiums, 10);
+  let swissRounds = parseInt(src.swissRounds, 10);
+  if (!Number.isFinite(referees) || referees < 1) referees = d.referees;
+  if (!Number.isFinite(stadiums) || stadiums < 1) stadiums = d.stadiums;
+  if (!Number.isFinite(swissRounds) || swissRounds < 1) swissRounds = d.swissRounds;
+  referees = Math.min(8, Math.max(1, referees));
+  stadiums = Math.min(8, Math.max(1, stadiums));
+  swissRounds = Math.min(8, Math.max(1, swissRounds));
+  return { referees, stadiums, swissRounds };
+}
+
+/** 實際可用報到站 = min(裁判, 對戰盤) */
+function getActiveStations() {
+  const s = normalizeSettings(state.settings);
+  return Math.max(1, Math.min(s.referees, s.stadiums));
+}
+
+function getSwissRounds() {
+  return normalizeSettings(state.settings).swissRounds;
+}
+
+function zoneCode(zoneIndex) {
+  return ZONE_CODES[zoneIndex] || String(zoneIndex + 1);
+}
+
+function zoneLabel(zoneIndex) {
+  return `${zoneCode(zoneIndex)} 區`;
+}
+
+/** 將本輪各場分配到 A/B/C… 區（round-robin） */
+function assignMatchZones(matches) {
+  const n = getActiveStations();
+  return matches.map((m, i) => {
+    const zone = i % n;
+    return {
+      ...m,
+      table: i + 1,
+      zone,
+      zoneCode: zoneCode(zone),
+      zoneLabel: zoneLabel(zone),
+    };
+  });
+}
 
 const CHURCH = {
   kcc: { id: "kcc", short: "九龍城", full: "九龍城基督徒會" },
@@ -49,9 +106,10 @@ function defaultState() {
   return {
     // players: { id, name, church, beys[3], deckChecked }
     players: [],
+    settings: defaultSettings(),
     phase: "setup", // setup | swiss | knockout | done
-    currentRound: 0, // 1..4 when swiss
-    rounds: [], // { round, locked, matches: [{ id, p1, p2, winner, p1Bp, p2Bp, done }] }
+    currentRound: 0, // 1..N when swiss
+    rounds: [], // { round, locked, matches: [{ id, p1, p2, zone, zoneLabel, winner, p1Bp, p2Bp, done }] }
     knockout: null, // { semis: [], third: null, final: null }
     updatedAt: null,
   };
@@ -72,7 +130,23 @@ function loadState() {
     if (!raw) return defaultState();
     const parsed = JSON.parse(raw);
     const st = { ...defaultState(), ...parsed };
+    st.settings = normalizeSettings(parsed.settings || st.settings);
     st.players = migratePlayers(st.players);
+    // 補上舊場次 zone（若無）
+    const stations = Math.max(1, Math.min(st.settings.referees, st.settings.stadiums));
+    st.rounds = (st.rounds || []).map((r) => ({
+      ...r,
+      matches: (r.matches || []).map((m, i) => {
+        if (m.zone != null && m.zoneCode) return m;
+        const zone = i % stations;
+        return {
+          ...m,
+          zone,
+          zoneCode: ZONE_CODES[zone] || String(zone + 1),
+          zoneLabel: `${ZONE_CODES[zone] || zone + 1} 區`,
+        };
+      }),
+    }));
     return st;
   } catch {
     return defaultState();
@@ -452,20 +526,39 @@ function greedyPair(players, playedSet, lastOpp) {
 }
 
 function createRoundFromPairs(pairs, roundNum) {
+  const raw = pairs.map((pair, i) => ({
+    id: uid("m"),
+    table: i + 1,
+    p1: pair[0].id,
+    p2: pair[1].id,
+    winner: null,
+    p1Bp: 0,
+    p2Bp: 0,
+    done: false,
+  }));
   return {
     round: roundNum,
     locked: false,
-    matches: pairs.map((pair, i) => ({
-      id: uid("m"),
-      table: i + 1,
-      p1: pair[0].id,
-      p2: pair[1].id,
-      winner: null,
-      p1Bp: 0,
-      p2Bp: 0,
-      done: false,
-    })),
+    matches: assignMatchZones(raw),
   };
+}
+
+function saveSettingsFromForm() {
+  const referees = parseInt(document.getElementById("setReferees")?.value, 10);
+  const stadiums = parseInt(document.getElementById("setStadiums")?.value, 10);
+  const swissRounds = parseInt(document.getElementById("setSwissRounds")?.value, 10);
+  state.settings = normalizeSettings({ referees, stadiums, swissRounds });
+
+  // 未鎖定輪次重新分配報到區
+  state.rounds.forEach((r) => {
+    if (!r.locked) r.matches = assignMatchZones(r.matches);
+  });
+  saveState();
+  render();
+  toast(
+    `已儲存：裁判 ${state.settings.referees} · 對戰盤 ${state.settings.stadiums} · 可用站 ${getActiveStations()} · 瑞士 ${getSwissRounds()} 輪`,
+    "success"
+  );
 }
 
 // ─── Church radio helpers（二選一，原生互斥）────────────
@@ -1431,7 +1524,7 @@ function lockRoundAndAdvance() {
   }
   if (round.locked) return;
 
-  const isLast = state.currentRound >= SWISS_ROUNDS;
+  const isLast = state.currentRound >= getSwissRounds();
   const msg = isLast
     ? "鎖定第 4 輪並結算排名？前 4 名將晉級淘汰賽。"
     : `鎖定第 ${state.currentRound} 輪並產生第 ${state.currentRound + 1} 輪配對？`;
@@ -1471,16 +1564,18 @@ function applyManualPairings(pairIds) {
     toast("請確保每位選手恰好出現一次", "error");
     return;
   }
-  round.matches = pairIds.map((pair, i) => ({
-    id: uid("m"),
-    table: i + 1,
-    p1: pair[0],
-    p2: pair[1],
-    winner: null,
-    p1Bp: 0,
-    p2Bp: 0,
-    done: false,
-  }));
+  round.matches = assignMatchZones(
+    pairIds.map((pair, i) => ({
+      id: uid("m"),
+      table: i + 1,
+      p1: pair[0],
+      p2: pair[1],
+      winner: null,
+      p1Bp: 0,
+      p2Bp: 0,
+      done: false,
+    }))
+  );
   saveState();
   closeManualModal();
   render();
@@ -1489,7 +1584,7 @@ function applyManualPairings(pairIds) {
 
 // Knockout
 function startKnockout() {
-  if (state.phase !== "knockout" && !(state.phase === "swiss" && state.rounds.every((r) => r.locked) && state.rounds.length === SWISS_ROUNDS)) {
+  if (state.phase !== "knockout" && !(state.phase === "swiss" && state.rounds.every((r) => r.locked) && state.rounds.length === getSwissRounds())) {
     toast("請先完成 4 輪瑞士制", "error");
     return;
   }
@@ -1637,17 +1732,28 @@ function exportStandingsCsv() {
 }
 
 function exportMatchesCsv() {
-  const lines = ["輪次,桌號,選手1,教會1,選手2,教會2,勝方,P1比賽分,P2比賽分,同教會"];
+  const lines = ["輪次,場次,報到區,選手1,教會1,選手2,教會2,勝方,P1比賽分,P2比賽分,同教會"];
   for (const r of state.rounds) {
     for (const m of r.matches) {
       const p1 = playerById(m.p1);
       const p2 = playerById(m.p2);
       const w = m.winner ? playerById(m.winner)?.name : "";
       const same = p1 && p2 && p1.church === p2.church ? "是" : "否";
-      lines.push([
-        r.round, m.table, p1?.name || "", churchLabel(p1?.church),
-        p2?.name || "", churchLabel(p2?.church), w, m.p1Bp, m.p2Bp, same,
-      ].join(","));
+      lines.push(
+        [
+          r.round,
+          m.table,
+          m.zoneLabel || zoneLabel(m.zone ?? 0),
+          p1?.name || "",
+          churchLabel(p1?.church),
+          p2?.name || "",
+          churchLabel(p2?.church),
+          w,
+          m.p1Bp,
+          m.p2Bp,
+          same,
+        ].join(",")
+      );
     }
   }
   downloadText("寶螺盃_對戰紀錄.csv", lines.join("\n"), "text/csv;charset=utf-8");
@@ -1717,6 +1823,7 @@ function importJsonFile(file) {
       if (!data.players || !Array.isArray(data.players)) throw new Error("格式錯誤");
       if (!confirm("還原會覆蓋目前資料，確定？")) return;
       state = { ...defaultState(), ...data };
+      state.settings = normalizeSettings(data.settings || state.settings);
       state.players = migratePlayers(state.players);
       saveState();
       render();
@@ -1741,12 +1848,13 @@ function render() {
   document.getElementById("phasePill").textContent = phaseLabel();
   document.getElementById("roundPill").textContent =
     state.phase === "swiss"
-      ? `第 ${state.currentRound} / ${SWISS_ROUNDS} 輪`
+      ? `第 ${state.currentRound} / ${getSwissRounds()} 輪`
       : state.phase === "setup"
         ? "未開始"
         : state.phase === "knockout" || state.phase === "done"
           ? "淘汰賽"
           : "—";
+  renderSettings();
   renderPlayers();
   renderPairings();
   renderStandings();
@@ -1887,6 +1995,52 @@ function escapeHtml(s) {
     .replace(/>/g, "&gt;");
 }
 
+function renderMatchCard(m, round, statsMap) {
+  const p1 = playerById(m.p1);
+  const p2 = playerById(m.p2);
+  const same = p1 && p2 && p1.church === p2.church;
+  const s1 = statsMap[m.p1] || { swissPoints: 0, battlePoints: 0 };
+  const s2 = statsMap[m.p2] || { swissPoints: 0, battlePoints: 0 };
+  const pre1 = m.done ? s1.swissPoints - (m.winner === m.p1 ? 1 : 0) : s1.swissPoints;
+  const pre2 = m.done ? s2.swissPoints - (m.winner === m.p2 ? 1 : 0) : s2.swissPoints;
+  const zLabel = m.zoneLabel || zoneLabel(m.zone ?? 0);
+  const zCode = m.zoneCode || zoneCode(m.zone ?? 0);
+
+  return `
+    <div class="match-card ${m.done ? "done" : ""} ${same ? "same-church" : "diff-church"}" data-zone="${zCode}">
+      <div class="match-top">
+        <span class="match-num">場次 ${m.table}</span>
+        <span class="zone-badge zone-${zCode}">報到：${escapeHtml(zLabel)}</span>
+        <span class="vs-tag ${same ? "same" : "diff"}">${same ? "同教會對賽" : "不同教會對賽"}</span>
+      </div>
+      <div class="match-players">
+        <div class="player-side ${m.done && m.winner === m.p1 ? "winner" : ""} ${m.done && m.winner === m.p2 ? "loser" : ""}">
+          <div class="p-name">${escapeHtml(p1?.name || "?")}</div>
+          <div class="p-meta"><span class="church-tag ${p1?.church}">${churchLabel(p1?.church)}</span></div>
+          <div class="p-meta">本輪前 ${pre1} 勝 · 總分 ${m.done ? s1.battlePoints - (m.p1Bp || 0) : s1.battlePoints}</div>
+          ${m.done ? `<div class="p-bp">${m.p1Bp}</div>` : ""}
+        </div>
+        <div class="vs-center">VS</div>
+        <div class="player-side ${m.done && m.winner === m.p2 ? "winner" : ""} ${m.done && m.winner === m.p1 ? "loser" : ""}">
+          <div class="p-name">${escapeHtml(p2?.name || "?")}</div>
+          <div class="p-meta"><span class="church-tag ${p2?.church}">${churchLabel(p2?.church)}</span></div>
+          <div class="p-meta">本輪前 ${pre2} 勝 · 總分 ${m.done ? s2.battlePoints - (m.p2Bp || 0) : s2.battlePoints}</div>
+          ${m.done ? `<div class="p-bp">${m.p2Bp}</div>` : ""}
+        </div>
+      </div>
+      <div class="match-actions">
+        ${
+          round.locked
+            ? `<button class="btn btn-ghost btn-sm" disabled>${m.done ? "已鎖定" : "未完成"}</button>`
+            : m.done
+              ? `<button class="btn btn-secondary btn-sm btn-edit-score" data-id="${m.id}">修改結果</button>
+                 <button class="btn btn-ghost btn-sm btn-clear-score" data-id="${m.id}">清除</button>`
+              : `<button class="btn btn-primary btn-sm btn-enter-score" data-id="${m.id}">輸入結果</button>`
+        }
+      </div>
+    </div>`;
+}
+
 function renderPairings() {
   const grid = document.getElementById("matchGrid");
   const round = currentRoundObj();
@@ -1895,6 +2049,7 @@ function renderPairings() {
   const regenBtn = document.getElementById("btnRegenPairing");
   const manualBtn = document.getElementById("btnManualPair");
   const progress = document.getElementById("roundProgress");
+  const zoneBar = document.getElementById("zoneSummaryBar");
 
   if (!round) {
     badge.textContent = "—";
@@ -1903,70 +2058,71 @@ function renderPairings() {
     regenBtn.disabled = true;
     manualBtn.disabled = true;
     progress.textContent = "";
+    if (zoneBar) zoneBar.innerHTML = "";
     return;
   }
 
-  badge.textContent = `第 ${round.round} 輪${round.locked ? " · 已鎖定" : ""}`;
+  // 確保 zone 與最新設定一致（未鎖定時）
+  if (!round.locked) {
+    round.matches = assignMatchZones(round.matches);
+  }
+
+  const stations = getActiveStations();
+  const settings = normalizeSettings(state.settings);
+  badge.textContent = `第 ${round.round} 輪${round.locked ? " · 已鎖定" : ""} · ${stations} 站`;
   const doneCount = round.matches.filter((m) => m.done).length;
-  progress.textContent = `完成進度：${doneCount} / ${round.matches.length} 場`;
+  progress.textContent = `完成進度：${doneCount} / ${round.matches.length} 場 · 報到站 ${stations} 個（min 裁判${settings.referees}／對戰盤${settings.stadiums}）`;
   lockBtn.disabled = round.locked || doneCount < round.matches.length;
   lockBtn.textContent =
-    round.round >= SWISS_ROUNDS
-      ? "鎖定第 4 輪 · 結算晉級"
+    round.round >= getSwissRounds()
+      ? `鎖定第 ${getSwissRounds()} 輪 · 結算晉級`
       : `鎖定本輪 · 進入第 ${round.round + 1} 輪`;
   regenBtn.disabled = round.locked || state.phase !== "swiss";
   manualBtn.disabled = round.locked || state.phase !== "swiss";
 
-  // Stats map for current points display
   const statsMap = {};
   state.players.forEach((p) => {
     statsMap[p.id] = getPlayerStats(p.id);
   });
 
-  grid.innerHTML = round.matches
-    .map((m) => {
-      const p1 = playerById(m.p1);
-      const p2 = playerById(m.p2);
-      const same = p1 && p2 && p1.church === p2.church;
-      const s1 = statsMap[m.p1] || { swissPoints: 0, battlePoints: 0 };
-      const s2 = statsMap[m.p2] || { swissPoints: 0, battlePoints: 0 };
-      // For completed matches, show pre-match? We show current cumulative which includes this match if done — OK for display
-      // Better: show swiss points as of start of round for pairing context
-      const pre1 = m.done ? s1.swissPoints - (m.winner === m.p1 ? 1 : 0) : s1.swissPoints;
-      const pre2 = m.done ? s2.swissPoints - (m.winner === m.p2 ? 1 : 0) : s2.swissPoints;
+  // 按區分組
+  const byZone = {};
+  for (let z = 0; z < stations; z++) byZone[z] = [];
+  round.matches.forEach((m) => {
+    const z = m.zone != null ? m.zone : 0;
+    if (!byZone[z]) byZone[z] = [];
+    byZone[z].push(m);
+  });
 
+  if (zoneBar) {
+    zoneBar.innerHTML = Object.keys(byZone)
+      .sort((a, b) => Number(a) - Number(b))
+      .map((z) => {
+        const list = byZone[z];
+        const done = list.filter((m) => m.done).length;
+        return `<span class="ds-item zone-chip zone-${zoneCode(Number(z))}"><strong>${zoneLabel(Number(z))}</strong> ${done}/${list.length} 場</span>`;
+      })
+      .join("");
+  }
+
+  grid.innerHTML = Object.keys(byZone)
+    .sort((a, b) => Number(a) - Number(b))
+    .map((z) => {
+      const zNum = Number(z);
+      const list = byZone[z];
+      const names = list
+        .flatMap((m) => [playerById(m.p1)?.name, playerById(m.p2)?.name])
+        .filter(Boolean);
       return `
-      <div class="match-card ${m.done ? "done" : ""} ${same ? "same-church" : "diff-church"}">
-        <div class="match-top">
-          <span class="match-num">桌 ${m.table}</span>
-          <span class="vs-tag ${same ? "same" : "diff"}">${same ? "同教會對賽" : "不同教會對賽"}</span>
-        </div>
-        <div class="match-players">
-          <div class="player-side ${m.done && m.winner === m.p1 ? "winner" : ""} ${m.done && m.winner === m.p2 ? "loser" : ""}">
-            <div class="p-name">${escapeHtml(p1?.name || "?")}</div>
-            <div class="p-meta"><span class="church-tag ${p1?.church}">${churchLabel(p1?.church)}</span></div>
-            <div class="p-meta">本輪前 ${pre1} 勝 · 總分 ${m.done ? (s1.battlePoints - (m.p1Bp || 0)) : s1.battlePoints}</div>
-            ${m.done ? `<div class="p-bp">${m.p1Bp}</div>` : ""}
+        <div class="zone-section zone-${zoneCode(zNum)}">
+          <div class="zone-section-header">
+            <h3 class="zone-title">📍 ${zoneLabel(zNum)} · 請到此報到</h3>
+            <span class="meta">${list.length} 場 · 選手：${names.map(escapeHtml).join("、")}</span>
           </div>
-          <div class="vs-center">VS</div>
-          <div class="player-side ${m.done && m.winner === m.p2 ? "winner" : ""} ${m.done && m.winner === m.p1 ? "loser" : ""}">
-            <div class="p-name">${escapeHtml(p2?.name || "?")}</div>
-            <div class="p-meta"><span class="church-tag ${p2?.church}">${churchLabel(p2?.church)}</span></div>
-            <div class="p-meta">本輪前 ${pre2} 勝 · 總分 ${m.done ? (s2.battlePoints - (m.p2Bp || 0)) : s2.battlePoints}</div>
-            ${m.done ? `<div class="p-bp">${m.p2Bp}</div>` : ""}
+          <div class="match-grid zone-matches">
+            ${list.map((m) => renderMatchCard(m, round, statsMap)).join("")}
           </div>
-        </div>
-        <div class="match-actions">
-          ${
-            round.locked
-              ? `<button class="btn btn-ghost btn-sm" disabled>${m.done ? "已鎖定" : "未完成"}</button>`
-              : m.done
-                ? `<button class="btn btn-secondary btn-sm btn-edit-score" data-id="${m.id}">修改結果</button>
-                   <button class="btn btn-ghost btn-sm btn-clear-score" data-id="${m.id}">清除</button>`
-                : `<button class="btn btn-primary btn-sm btn-enter-score" data-id="${m.id}">輸入結果</button>`
-          }
-        </div>
-      </div>`;
+        </div>`;
     })
     .join("");
 
@@ -1978,6 +2134,30 @@ function renderPairings() {
       if (confirm("清除此場結果？")) clearMatchResult(btn.dataset.id);
     });
   });
+}
+
+function renderSettings() {
+  const s = normalizeSettings(state.settings);
+  const refEl = document.getElementById("setReferees");
+  const stEl = document.getElementById("setStadiums");
+  const swEl = document.getElementById("setSwissRounds");
+  if (refEl) refEl.value = s.referees;
+  if (stEl) stEl.value = s.stadiums;
+  if (swEl) swEl.value = s.swissRounds;
+
+  const stations = getActiveStations();
+  const preview = document.getElementById("settingsPreview");
+  if (preview) {
+    const zones = Array.from({ length: stations }, (_, i) => zoneLabel(i)).join("、");
+    preview.innerHTML = `
+      <div class="hint" style="margin:0">
+        <strong>實際可用報到站：${stations}</strong>
+        ＝ min(裁判 ${s.referees}，對戰盤 ${s.stadiums})<br>
+        本輪對戰會分派到：<strong>${zones}</strong><br>
+        瑞士制共 <strong>${s.swissRounds}</strong> 輪 · 每輪 8 場（16 人）
+        ${state.phase !== "setup" && state.phase !== "swiss" ? "<br><span class='meta'>比賽進行中仍可改裁判／對戰盤；未鎖定輪次會重分區。</span>" : ""}
+      </div>`;
+  }
 }
 
 function renderStandings() {
@@ -2017,7 +2197,7 @@ function renderStandings() {
         <td><strong>${p.swissPoints}</strong></td>
         <td>${p.battlePoints}</td>
         <td class="record-mini">${rec}</td>
-        <td>${p.rank <= 4 && (state.phase !== "setup") ? (completedRounds >= SWISS_ROUNDS || state.phase === "knockout" || state.phase === "done" ? '<span class="qualify-badge">晉級</span>' : "前段") : ""}</td>
+        <td>${p.rank <= 4 && (state.phase !== "setup") ? (completedRounds >= getSwissRounds() || state.phase === "knockout" || state.phase === "done" ? '<span class="qualify-badge">晉級</span>' : "前段") : ""}</td>
       </tr>`;
     })
     .join("");
@@ -2106,13 +2286,13 @@ function renderKnockout() {
   const btn = document.getElementById("btnStartKnockout");
   const canStart =
     (state.phase === "knockout" && !state.knockout) ||
-    (state.rounds.length === SWISS_ROUNDS && state.rounds.every((r) => r.locked) && !state.knockout);
+    (state.rounds.length === getSwissRounds() && state.rounds.every((r) => r.locked) && !state.knockout);
   btn.disabled = !canStart && !!state.knockout;
   if (state.knockout) btn.disabled = true;
-  else btn.disabled = !(state.rounds.length === SWISS_ROUNDS && state.rounds.every((r) => r.locked));
+  else btn.disabled = !(state.rounds.length === getSwissRounds() && state.rounds.every((r) => r.locked));
 
   if (!state.knockout) {
-    const ready = state.rounds.length === SWISS_ROUNDS && state.rounds.every((r) => r.locked);
+    const ready = state.rounds.length === getSwissRounds() && state.rounds.every((r) => r.locked);
     box.innerHTML = ready
       ? `<div class="empty"><div class="big">🏆</div>瑞士制已完成。按上方按鈕產生準決賽（1vs4、2vs3）。</div>`
       : `<div class="empty"><div class="big">🏆</div>完成 4 輪瑞士制後可產生淘汰賽。</div>`;
@@ -2547,6 +2727,29 @@ function init() {
       render();
     }
   });
+  document.getElementById("btnSaveSettings")?.addEventListener("click", saveSettingsFromForm);
+  ["setReferees", "setStadiums", "setSwissRounds"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("change", () => {
+      // 即時預覽（未儲存）
+      const referees = parseInt(document.getElementById("setReferees")?.value, 10);
+      const stadiums = parseInt(document.getElementById("setStadiums")?.value, 10);
+      const swissRounds = parseInt(document.getElementById("setSwissRounds")?.value, 10);
+      const tmp = normalizeSettings({ referees, stadiums, swissRounds });
+      const stations = Math.max(1, Math.min(tmp.referees, tmp.stadiums));
+      const preview = document.getElementById("settingsPreview");
+      if (preview) {
+        const zones = Array.from({ length: stations }, (_, i) => zoneLabel(i)).join("、");
+        preview.innerHTML = `
+          <div class="hint" style="margin:0">
+            <strong>預覽 · 可用報到站：${stations}</strong>
+            ＝ min(裁判 ${tmp.referees}，對戰盤 ${tmp.stadiums})<br>
+            會分派到：<strong>${zones}</strong> · 瑞士 <strong>${tmp.swissRounds}</strong> 輪
+            <br><span class="meta">按「儲存設定」後生效</span>
+          </div>`;
+      }
+    });
+  });
+
   document.getElementById("btnStartTournament").addEventListener("click", startTournament);
   document.getElementById("btnCloseDeck").addEventListener("click", closeDeckModal);
   document.getElementById("deckModal").addEventListener("click", (e) => {

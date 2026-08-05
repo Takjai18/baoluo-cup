@@ -467,8 +467,76 @@ select.input option, .select option {
   font-family: ui-monospace, monospace;
 }
 
+/* Settings */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+}
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(30, 41, 59, 0.75);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+/* Zone sections on pairings */
+.match-grid-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.zone-section {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 12px 14px 14px;
+  border-left: 4px solid #3b9eff;
+}
+.zone-section.zone-A { border-left-color: #38bdf8; }
+.zone-section.zone-B { border-left-color: #f472b6; }
+.zone-section.zone-C { border-left-color: #fbbf24; }
+.zone-section.zone-D { border-left-color: #34d399; }
+.zone-section.zone-E { border-left-color: #a78bfa; }
+.zone-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.zone-title {
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 0.02em;
+}
+.zone-badge {
+  font-size: 0.8rem;
+  font-weight: 900;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 102, 255, 0.25);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  white-space: nowrap;
+}
+.zone-badge.zone-A { background: rgba(56, 189, 248, 0.2); color: #7dd3fc; border-color: #38bdf8; }
+.zone-badge.zone-B { background: rgba(244, 114, 182, 0.2); color: #f9a8d4; border-color: #f472b6; }
+.zone-badge.zone-C { background: rgba(251, 191, 36, 0.2); color: #fcd34d; border-color: #fbbf24; }
+.zone-badge.zone-D { background: rgba(52, 211, 153, 0.2); color: #6ee7b7; border-color: #34d399; }
+.zone-chip.zone-A { border-color: #38bdf8 !important; color: #7dd3fc !important; }
+.zone-chip.zone-B { border-color: #f472b6 !important; color: #f9a8d4 !important; }
+.zone-chip.zone-C { border-color: #fbbf24 !important; color: #fcd34d !important; }
+.zone-chip.zone-D { border-color: #34d399 !important; color: #6ee7b7 !important; }
+
 /* Match cards */
-.match-grid {
+.match-grid,
+.zone-matches {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 12px;
