@@ -2789,13 +2789,28 @@ function closeManualModal() {
 }
 
 // ─── Tabs ────────────────────────────────────────────────
+const TAB_STORAGE_KEY = "baoluo-cup-active-tab";
+const VALID_TABS = ["settings", "players", "pairings", "standings", "ties", "knockout", "export"];
+
+function getSavedTab() {
+  try {
+    const t = localStorage.getItem(TAB_STORAGE_KEY);
+    if (t && VALID_TABS.includes(t)) return t;
+  } catch (_) {}
+  return "settings";
+}
+
 function switchTab(name) {
+  if (!VALID_TABS.includes(name)) name = "settings";
   document.querySelectorAll(".nav-btn").forEach((b) => {
     b.classList.toggle("active", b.dataset.tab === name);
   });
   document.querySelectorAll(".tab").forEach((t) => {
     t.classList.toggle("active", t.id === "tab-" + name);
   });
+  try {
+    localStorage.setItem(TAB_STORAGE_KEY, name);
+  } catch (_) {}
   // 只有對戰表 + 投影模式先加 body class
   document.body.classList.toggle(
     "projection-mode",
@@ -2810,6 +2825,9 @@ function init() {
   document.querySelectorAll(".nav-btn").forEach((btn) => {
     btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
+  // 還原上次分頁（例如喺對戰表 refresh 會返對戰表）
+  switchTab(getSavedTab());
+
 
   // 新增選手：教會二選一（radio，原生互斥）
   const newChurchRoot = document.getElementById("newChurchChecks");
