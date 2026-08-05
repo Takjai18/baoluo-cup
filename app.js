@@ -675,28 +675,62 @@ function renderBladePicker(bey) {
     })
     .join("");
 
+  const isCxMode = bladeSeriesFilter === "CX" || bey.series === "CX" || bey.bladeId === "cx";
+
+  // 選中顯示
+  let selectedCompact = "";
+  if (bey.series === "CX" || bey.bladeId === "cx") {
+    selectedCompact = cxComboLabel(bey) || bey.cxProduct || "CX 組裝中";
+  } else if (bey.bladeId && bey.bladeId !== "custom" && bey.bladeId !== "cx") {
+    const selectedBlade = findBladeById(bey.bladeId);
+    selectedCompact = selectedBlade ? bladeStaffLabel(selectedBlade) : "";
+  } else if (bey.bladeId === "custom") {
+    selectedCompact = bey.bladeCustom || "自訂";
+  }
+
+  return `
+    <div class="part-block">
+      <h4>上蓋 Blade <span class="req">必選</span>
+        ${selectedCompact ? `<span class="selected-compact">已選 <strong>${escapeHtml(selectedCompact)}</strong></span>` : ""}
+      </h4>
+      <div class="series-row">${seriesBtns}</div>
+      ${
+        bladeSeriesFilter === "CX" || (bladeSeriesFilter === "ALL" && bey.series === "CX")
+          ? renderCxAssembler(bey)
+          : renderBxUxBladePicker(bey)
+      }
+    </div>
+  `;
+}
+
+function renderBxUxBladePicker(bey) {
   const list = filterBlades(bladeSeriesFilter, bladeSearchQuery);
   const exactHit =
     bladeSearchQuery.trim() && list.length
       ? findBladeByQuery(bladeSearchQuery) || (list.length === 1 ? list[0] : null)
       : null;
+  // CX 虛擬 blade 在 BX/UX 模式不應 quick confirm（除非 ALL）
   const canQuickConfirm =
-    exactHit && list.some((b) => b.id === exactHit.id);
+    exactHit &&
+    exactHit.series !== "CX" &&
+    list.some((b) => b.id === exactHit.id || (exactHit.series === "CX" && b.compact === exactHit.compact));
 
-  const selectedBlade = bey.bladeId ? findBladeById(bey.bladeId) : null;
-  const selectedCompact = selectedBlade ? bladeStaffLabel(selectedBlade) : "";
+  // 若輸入 CX 碼，提示轉 CX 分頁
+  const cxHint = /^CX\d/i.test(normalizeCodeQuery(bladeSearchQuery));
 
   const options = list
     .map((b) => {
-      const sel = bey.bladeId === b.id;
-      const compact = bladeCompactCode(b);
+      const sel = bey.bladeId === b.id || (b.series === "CX" && bey.cxProduct === b.compact);
+      const compact = b.series === "CX" ? b.compact || bladeCompactCode(b) : bladeCompactCode(b);
       const tier =
         b.tier === "T0"
           ? '<span class="tier t0">T0</span>'
           : b.tier === "T1"
             ? '<span class="tier t1">T1</span>'
-            : "";
-      return `<button type="button" class="blade-option ${sel ? "selected" : ""}" data-blade-id="${b.id}">
+            : b.series === "CX"
+              ? `<span class="tier ${b.cxType === "expand" ? "t0" : "t1"}">${b.cxType === "expand" ? "Expand" : "標準"}</span>`
+              : "";
+      return `<button type="button" class="blade-option ${sel ? "selected" : ""}" data-blade-id="${escapeAttr(b.id)}" data-series="${b.series}" data-compact="${escapeAttr(b.compact || "")}" data-cx-type="${escapeAttr(b.cxType || "")}">
         <span class="bo-code">${escapeHtml(compact)}</span>
         <span class="bo-name">${escapeHtml(b.name)}</span>
         <span class="bo-en">${escapeHtml(b.series)}</span>
@@ -706,53 +740,335 @@ function renderBladePicker(bey) {
     .join("");
 
   return `
-    <div class="part-block">
-      <h4>上蓋 Blade <span class="req">必選</span>
-        ${selectedCompact ? `<span class="selected-compact">已選 <strong>${escapeHtml(selectedCompact)}</strong></span>` : ""}
-      </h4>
-      <div class="series-row">${seriesBtns}</div>
-      ${
-        bladeSeriesFilter === "CX"
-          ? `<div class="hint" style="margin:8px 0">CX 系列請自由輸入名稱。</div>
-             <input class="input" id="bladeCustomInput" placeholder="例：主刃名稱 + 紋章（自填）" value="${escapeAttr(bey.bladeCustom || bey.bladeName || "")}" />`
-          : `
       <div class="blade-code-entry">
         <input class="input blade-search" id="bladeSearchInput" inputmode="text" autocomplete="off"
-          placeholder="輸入系列+編號（例 BX49、UX15）後 Enter 確認"
+          placeholder="輸入 BX49 / UX15 / CX07 / CX15 後 Enter"
           value="${escapeAttr(bladeSearchQuery)}" />
         ${
-          canQuickConfirm
+          canQuickConfirm && exactHit.series !== "CX"
             ? `<button type="button" class="btn btn-primary" id="btnConfirmBlade">確認 ${escapeHtml(bladeCompactCode(exactHit))}</button>`
-            : ""
+            : exactHit && exactHit.series === "CX"
+              ? `<button type="button" class="btn btn-primary" id="btnConfirmBlade">確認 ${escapeHtml(exactHit.compact || "")}</button>`
+              : ""
         }
       </div>
-      <div class="hint" style="margin:8px 0 6px">直接打 <strong>BX49</strong> / <strong>UX15</strong> 即可，唔使揀完整名。Enter 或按「確認」入選。</div>
+      <div class="hint" style="margin:8px 0 6px">
+        打 <strong>BX49</strong> / <strong>UX15</strong> / <strong>CX07</strong> / <strong>CX15</strong> 即可。
+        ${cxHint ? "（偵測到 CX 編號，Enter 後進入 CX 組件選擇）" : ""}
+      </div>
       <div class="blade-option-list" id="bladeOptionList">
-        ${options || '<div class="empty-mini">無符合結果 — 試 BX49、UX15，或選 CX 自填</div>'}
+        ${options || '<div class="empty-mini">無符合結果 — 試 BX49、UX15、CX07</div>'}
       </div>
       <div class="btn-row mt-8">
         <button type="button" class="btn btn-ghost btn-sm" id="btnBladeCustom">改為自由輸入…</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnGoCx">改用 CX 組裝…</button>
         ${
           bey.bladeId === "custom"
             ? `<input class="input" id="bladeCustomInput" style="flex:1" placeholder="自訂上蓋名稱" value="${escapeAttr(bey.bladeCustom || "")}" />`
             : ""
         }
+      </div>
+  `;
+}
+
+function renderCxAssembler(bey) {
+  // 確保 CX 狀態
+  const type = bey.cxType || resolveCxType(bey.cxProduct) || "standard";
+  const isExpand = type === "expand";
+  const productOpts = PARTS.cx.products
+    .map(
+      (p) =>
+        `<option value="${p.compact}" ${bey.cxProduct === p.compact ? "selected" : ""}>${p.compact} · ${
+          p.type === "expand" ? "Expand" : "標準"
+        }</option>`
+    )
+    .join("");
+
+  const lockOpts = PARTS.cx.lockChips
+    .map(
+      (c) =>
+        `<option value="${escapeAttr(c.name)}" ${bey.lockChip === c.name ? "selected" : ""}>${escapeHtml(
+          c.name
+        )}</option>`
+    )
+    .join("");
+
+  const mainList = isExpand ? PARTS.cx.metalBlades : PARTS.cx.mainBlades;
+  const mainLabel = isExpand ? "金屬戰刃" : "主刃";
+  const mainOpts = mainList
+    .map(
+      (c) =>
+        `<option value="${escapeAttr(c.name)}" ${bey.mainBlade === c.name ? "selected" : ""}>${escapeHtml(
+          c.name
+        )}</option>`
+    )
+    .join("");
+
+  const assistChips = PARTS.cx.assistBlades
+    .map(
+      (a) =>
+        `<button type="button" class="chip ${bey.assistBlade === a.code ? "selected" : ""}" data-cx-assist="${a.code}">
+          <input type="checkbox" ${bey.assistBlade === a.code ? "checked" : ""} tabindex="-1" />
+          <span>${a.code}</span>
+        </button>`
+    )
+    .join("");
+
+  const overChips = PARTS.cx.overBlades
+    .map(
+      (o) =>
+        `<button type="button" class="chip ${bey.overBlade === o.code ? "selected" : ""}" data-cx-over="${o.code}">
+          <input type="checkbox" ${bey.overBlade === o.code ? "checked" : ""} tabindex="-1" />
+          <span>${o.code}</span>
+        </button>`
+    )
+    .join("");
+
+  const preview = cxComboLabel(bey) || "（未完成）";
+  const complete = isCxBladeComplete(bey);
+
+  return `
+    <div class="cx-assembler">
+      <div class="hint" style="margin:0 0 10px">
+        <strong>標準 CX</strong>（CX01–CX12，如 CX07）：紋章 + 主刃 + 輔助戰刃<br>
+        <strong>Expand CX</strong>（CX13+，如 CX15）：紋章 + 金屬戰刃 + <strong>超越戰刃</strong> + 輔助戰刃
+      </div>
+
+      <div class="cx-type-row">
+        <button type="button" class="series-chip ${!isExpand ? "active" : ""}" data-cx-type-set="standard">標準 CX</button>
+        <button type="button" class="series-chip ${isExpand ? "active" : ""}" data-cx-type-set="expand">Expand CX</button>
+      </div>
+
+      <div class="cx-field">
+        <label>產品編號（可選）</label>
+        <div class="blade-code-entry">
+          <select class="input select part-select" id="cxProductSelect">
+            <option value="">— 選擇 CX01–CX18 —</option>
+            ${productOpts}
+          </select>
+          <input class="input blade-search" id="cxProductInput" placeholder="或輸入 CX07 / CX15" value="${escapeAttr(
+            bey.cxProduct || ""
+          )}" />
+        </div>
+      </div>
+
+      <div class="cx-field">
+        <label>鎖定紋章 <span class="req">必選</span></label>
+        <select class="input select part-select" id="cxLockSelect">
+          <option value="">— 選擇紋章 —</option>
+          ${lockOpts}
+          <option value="__custom__" ${bey.lockChip === "__custom__" ? "selected" : ""}>其他（自填）</option>
+        </select>
+        <input class="input mt-8 ${bey.lockChip === "__custom__" ? "" : "hidden"}" id="cxLockCustom"
+          placeholder="自訂紋章名稱" value="${escapeAttr(bey.lockChipCustom || "")}" />
+        <div class="chip-grid chip-compact mt-8">
+          ${PARTS.cx.lockChips
+            .slice(0, 12)
+            .map(
+              (c) =>
+                `<button type="button" class="chip ${bey.lockChip === c.name ? "selected" : ""}" data-cx-lock="${escapeAttr(
+                  c.name
+                )}"><span>${escapeHtml(c.name)}</span></button>`
+            )
+            .join("")}
+        </div>
+      </div>
+
+      <div class="cx-field">
+        <label>${mainLabel} <span class="req">必選</span></label>
+        <select class="input select part-select" id="cxMainSelect">
+          <option value="">— 選擇${mainLabel} —</option>
+          ${mainOpts}
+          <option value="__custom__" ${bey.mainBlade === "__custom__" ? "selected" : ""}>其他（自填）</option>
+        </select>
+        <input class="input mt-8 ${bey.mainBlade === "__custom__" ? "" : "hidden"}" id="cxMainCustom"
+          placeholder="自訂${mainLabel}名稱" value="${escapeAttr(bey.mainBladeCustom || "")}" />
+        <div class="chip-grid chip-compact mt-8">
+          ${mainList
+            .map(
+              (c) =>
+                `<button type="button" class="chip ${bey.mainBlade === c.name ? "selected" : ""}" data-cx-main="${escapeAttr(
+                  c.name
+                )}"><span>${escapeHtml(c.name)}</span></button>`
+            )
+            .join("")}
+        </div>
+      </div>
+
+      ${
+        isExpand
+          ? `<div class="cx-field cx-over-required">
+        <label>超越戰刃 <span class="req">Expand 必選（代碼）</span></label>
+        <div class="chip-grid chip-compact">${overChips}</div>
+        ${!(bey.overBlade || "").trim() ? `<div class="score-note warn">⚠ Expand 必須選擇超越戰刃（B / G / F / P / O）</div>` : ""}
       </div>`
+          : `<div class="hint" style="margin:0 0 10px">標準 CX 無需超越戰刃</div>`
       }
+
+      <div class="cx-field">
+        <label>輔助戰刃 <span class="req">必選（代碼）</span></label>
+        <div class="chip-grid chip-compact">${assistChips}</div>
+      </div>
+
+      <div class="deck-preview">
+        <div class="combo-short">CX 組合：<strong>${escapeHtml(preview)}</strong>
+          ${complete ? '<span class="selected-compact">✓ 完整</span>' : '<span class="meta">未齊</span>'}
+        </div>
+        <div class="combo-full meta">${isExpand ? "Expand" : "標準"} · 輔助／超越只顯示英文字母</div>
+      </div>
     </div>
   `;
 }
 
 function selectBladeByStaffCode(query) {
-  const list = filterBlades(bladeSeriesFilter, query);
+  const list = filterBlades(bladeSeriesFilter === "CX" ? "ALL" : bladeSeriesFilter, query);
   let blade = findBladeByQuery(query);
   if (!blade && list.length === 1) blade = list[0];
   if (!blade) return false;
+
+  // CX 產品 → 進入組裝
+  if (blade.series === "CX" || (blade.compact && /^CX/i.test(blade.compact))) {
+    const compact = blade.compact || normalizeCodeQuery(query);
+    const bey = deckDraft[deckEditBeyIndex];
+    applyCxProductToBey(bey, compact);
+    bladeSeriesFilter = "CX";
+    bladeSearchQuery = "";
+    renderDeckModal();
+    toast(`已選 ${compact}（${bey.cxType === "expand" ? "Expand" : "標準"}）— 請選紋章／主刃／輔助`, "success");
+    return true;
+  }
+
   applyBladeToBey(deckDraft[deckEditBeyIndex], blade);
   bladeSearchQuery = "";
+  if (bladeSeriesFilter === "CX") bladeSeriesFilter = blade.series || "ALL";
   renderDeckModal();
   toast(`已選上蓋 ${bladeCompactCode(blade)}`, "success");
   return true;
+}
+
+function bindCxAssemblerEvents(body) {
+  const bey = deckDraft[deckEditBeyIndex];
+  if (!bey) return;
+
+  body.querySelectorAll("[data-cx-type-set]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      bey.series = "CX";
+      bey.bladeId = "cx";
+      bey.cxType = btn.dataset.cxTypeSet;
+      if (bey.cxType !== "expand") bey.overBlade = "";
+      // 主刃列表切換時若當前主刃不在新列表，可保留或清空
+      const list = bey.cxType === "expand" ? PARTS.cx.metalBlades : PARTS.cx.mainBlades;
+      if (bey.mainBlade && bey.mainBlade !== "__custom__" && !list.some((m) => m.name === bey.mainBlade)) {
+        bey.mainBlade = "";
+        bey.mainBladeCustom = "";
+      }
+      syncCxDisplayFields(bey);
+      renderDeckModal();
+    });
+  });
+
+  document.getElementById("cxProductSelect")?.addEventListener("change", (e) => {
+    if (e.target.value) applyCxProductToBey(bey, e.target.value);
+    else {
+      bey.cxProduct = "";
+      syncCxDisplayFields(bey);
+    }
+    renderDeckModal();
+  });
+
+  const cxProdIn = document.getElementById("cxProductInput");
+  if (cxProdIn) {
+    cxProdIn.addEventListener("change", () => {
+      const v = cxProdIn.value.trim();
+      if (v) applyCxProductToBey(bey, v);
+      renderDeckModal();
+    });
+    cxProdIn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const v = cxProdIn.value.trim();
+        if (v) {
+          applyCxProductToBey(bey, v);
+          renderDeckModal();
+        }
+      }
+    });
+  }
+
+  document.getElementById("cxLockSelect")?.addEventListener("change", (e) => {
+    bey.series = "CX";
+    bey.bladeId = "cx";
+    bey.lockChip = e.target.value;
+    if (bey.lockChip !== "__custom__") bey.lockChipCustom = "";
+    syncCxDisplayFields(bey);
+    renderDeckModal();
+  });
+  document.getElementById("cxLockCustom")?.addEventListener("input", (e) => {
+    bey.lockChip = "__custom__";
+    bey.lockChipCustom = e.target.value;
+    syncCxDisplayFields(bey);
+    const prev = body.querySelector(".combo-short strong");
+    if (prev) prev.textContent = cxComboLabel(bey) || "（未完成）";
+  });
+  body.querySelectorAll("[data-cx-lock]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      bey.series = "CX";
+      bey.bladeId = "cx";
+      bey.lockChip = btn.dataset.cxLock;
+      bey.lockChipCustom = "";
+      syncCxDisplayFields(bey);
+      renderDeckModal();
+    });
+  });
+
+  document.getElementById("cxMainSelect")?.addEventListener("change", (e) => {
+    bey.series = "CX";
+    bey.bladeId = "cx";
+    bey.mainBlade = e.target.value;
+    if (bey.mainBlade !== "__custom__") bey.mainBladeCustom = "";
+    syncCxDisplayFields(bey);
+    renderDeckModal();
+  });
+  document.getElementById("cxMainCustom")?.addEventListener("input", (e) => {
+    bey.mainBlade = "__custom__";
+    bey.mainBladeCustom = e.target.value;
+    syncCxDisplayFields(bey);
+    const prev = body.querySelector(".combo-short strong");
+    if (prev) prev.textContent = cxComboLabel(bey) || "（未完成）";
+  });
+  body.querySelectorAll("[data-cx-main]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      bey.series = "CX";
+      bey.bladeId = "cx";
+      bey.mainBlade = btn.dataset.cxMain;
+      bey.mainBladeCustom = "";
+      syncCxDisplayFields(bey);
+      renderDeckModal();
+    });
+  });
+
+  body.querySelectorAll("[data-cx-assist]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const c = btn.dataset.cxAssist;
+      bey.series = "CX";
+      bey.bladeId = "cx";
+      bey.assistBlade = bey.assistBlade === c ? "" : c;
+      syncCxDisplayFields(bey);
+      renderDeckModal();
+    });
+  });
+
+  body.querySelectorAll("[data-cx-over]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const c = btn.dataset.cxOver;
+      bey.series = "CX";
+      bey.bladeId = "cx";
+      bey.cxType = "expand";
+      bey.overBlade = bey.overBlade === c ? "" : c;
+      syncCxDisplayFields(bey);
+      renderDeckModal();
+    });
+  });
 }
 
 function renderRatchetPicker(bey) {
@@ -821,21 +1137,25 @@ function bindDeckModalEvents(body) {
     });
   });
 
-  body.querySelectorAll(".series-chip").forEach((btn) => {
+  body.querySelectorAll(".series-chip[data-series]").forEach((btn) => {
     btn.addEventListener("click", () => {
       bladeSeriesFilter = btn.dataset.series;
       bladeSearchQuery = "";
       if (bladeSeriesFilter === "CX") {
         const bey = deckDraft[deckEditBeyIndex];
-        bey.bladeId = "custom";
         bey.series = "CX";
-        bey.bladeCode = "";
-        bey.bladeEn = "";
-        if (!bey.bladeCustom) bey.bladeName = "";
+        bey.bladeId = "cx";
+        if (!bey.cxType) bey.cxType = resolveCxType(bey.cxProduct) || "standard";
+        syncCxDisplayFields(bey);
       }
       renderDeckModal();
     });
   });
+
+  // CX 組裝事件
+  if (bladeSeriesFilter === "CX" || deckDraft[deckEditBeyIndex]?.series === "CX") {
+    bindCxAssemblerEvents(body);
+  }
 
   const search = body.querySelector("#bladeSearchInput");
   if (search) {
@@ -857,7 +1177,7 @@ function bindDeckModalEvents(body) {
         const q = search.value.trim();
         if (!q) return;
         if (!selectBladeByStaffCode(q)) {
-          toast("搵唔到呢個編號，請用 BX49 / UX15 格式", "error");
+          toast("搵唔到呢個編號，請用 BX49 / UX15 / CX07 格式", "error");
         }
       }
     });
@@ -870,6 +1190,15 @@ function bindDeckModalEvents(body) {
 
   body.querySelectorAll(".blade-option").forEach((btn) => {
     btn.addEventListener("click", () => {
+      if (btn.dataset.series === "CX" || (btn.dataset.compact || "").startsWith("CX")) {
+        const compact = btn.dataset.compact || btn.dataset.bladeId;
+        applyCxProductToBey(deckDraft[deckEditBeyIndex], compact);
+        bladeSeriesFilter = "CX";
+        bladeSearchQuery = "";
+        renderDeckModal();
+        toast(`已選 ${normalizeCodeQuery(compact)} — 請完成 CX 組件`, "success");
+        return;
+      }
       const blade = findBladeById(btn.dataset.bladeId);
       if (!blade) return;
       applyBladeToBey(deckDraft[deckEditBeyIndex], blade);
@@ -879,10 +1208,21 @@ function bindDeckModalEvents(body) {
     });
   });
 
+  document.getElementById("btnGoCx")?.addEventListener("click", () => {
+    bladeSeriesFilter = "CX";
+    const bey = deckDraft[deckEditBeyIndex];
+    bey.series = "CX";
+    bey.bladeId = "cx";
+    if (!bey.cxType) bey.cxType = "standard";
+    syncCxDisplayFields(bey);
+    renderDeckModal();
+  });
+
   document.getElementById("btnBladeCustom")?.addEventListener("click", () => {
     const bey = deckDraft[deckEditBeyIndex];
+    Object.assign(bey, emptyCxParts());
     bey.bladeId = "custom";
-    bey.series = bey.series === "CX" ? "CX" : "OTHER";
+    bey.series = "OTHER";
     bey.bladeCode = "";
     bey.bladeEn = "";
     bey.bladeName = bey.bladeCustom || "";
@@ -946,17 +1286,31 @@ function saveDeckFromModal() {
 
   for (let i = 0; i < 3; i++) {
     const b = deckDraft[i];
-    if ((b.bladeId === "custom" || b.series === "CX") && !(b.bladeCustom || b.bladeName || "").trim()) {
-      // only error if they started filling ratchet/bit or left incomplete custom
-      if (b.ratchet || b.bit || b.bladeId === "custom") {
-        const hasAny = b.ratchet || b.bit || (b.bladeCustom || "").trim();
-        if (hasAny && !(b.bladeCustom || b.bladeName || "").trim()) {
-          deckEditBeyIndex = i;
-          renderDeckModal();
-          toast(`陀螺 ${i + 1}：請填寫上蓋名稱`, "error");
-          return;
+    const hasParts = b.ratchet || b.bit || partDisplayBlade(b) || b.lockChip || b.mainBlade;
+
+    // CX 完整度檢查
+    if (b.series === "CX" || b.bladeId === "cx") {
+      if (hasParts && !isCxBladeComplete(b)) {
+        deckEditBeyIndex = i;
+        bladeSeriesFilter = "CX";
+        renderDeckModal();
+        const type = b.cxType || "standard";
+        if (type === "expand" && !(b.overBlade || "").trim()) {
+          toast(`陀螺 ${i + 1}：Expand CX 必須選擇超越戰刃`, "error");
+        } else {
+          toast(`陀螺 ${i + 1}：CX 請完成紋章 + 主刃 + 輔助戰刃`, "error");
         }
+        return;
       }
+      syncCxDisplayFields(b);
+      continue;
+    }
+
+    if (b.bladeId === "custom" && hasParts && !(b.bladeCustom || b.bladeName || "").trim()) {
+      deckEditBeyIndex = i;
+      renderDeckModal();
+      toast(`陀螺 ${i + 1}：請填寫上蓋名稱`, "error");
+      return;
     }
   }
 

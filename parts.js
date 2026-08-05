@@ -91,15 +91,122 @@ const PARTS = {
 
   /** 常用軸心（排序置頂） */
   bitsFrequent: ["H", "LR", "R", "FB", "O", "LO", "P", "E", "J", "L", "K", "UF", "A"],
+
+  /**
+   * CX 系列組件
+   * 標準 CX（≤CX12）：鎖定紋章 + 主刃 + 輔助戰刃
+   * Expand CX（≥CX13）：鎖定紋章 + 金屬戰刃 + 超越戰刃 + 輔助戰刃
+   */
+  cx: {
+    /** 產品編號 → 類型；未列但 ≥13 視為 expand */
+    products: [
+      { code: "CX-01", compact: "CX01", type: "standard" },
+      { code: "CX-02", compact: "CX02", type: "standard" },
+      { code: "CX-03", compact: "CX03", type: "standard" },
+      { code: "CX-04", compact: "CX04", type: "standard" },
+      { code: "CX-05", compact: "CX05", type: "standard" },
+      { code: "CX-06", compact: "CX06", type: "standard" },
+      { code: "CX-07", compact: "CX07", type: "standard" },
+      { code: "CX-08", compact: "CX08", type: "standard" },
+      { code: "CX-09", compact: "CX09", type: "standard" },
+      { code: "CX-10", compact: "CX10", type: "standard" },
+      { code: "CX-11", compact: "CX11", type: "standard" },
+      { code: "CX-12", compact: "CX12", type: "standard" },
+      { code: "CX-13", compact: "CX13", type: "expand" },
+      { code: "CX-14", compact: "CX14", type: "expand" },
+      { code: "CX-15", compact: "CX15", type: "expand" },
+      { code: "CX-16", compact: "CX16", type: "expand" },
+      { code: "CX-17", compact: "CX17", type: "expand" },
+      { code: "CX-18", compact: "CX18", type: "expand" },
+    ],
+
+    lockChips: [
+      { name: "蒼龍", en: "Dran" },
+      { name: "魔導", en: "Wizard" },
+      { name: "英仙", en: "Perseus" },
+      { name: "惡魔", en: "Hells" },
+      { name: "騎士", en: "Knight" },
+      { name: "龍王", en: "Bahamut" },
+      { name: "鳳凰", en: "Phoenix" },
+      { name: "獅王", en: "Leon" },
+      { name: "天馬", en: "Pegasus" },
+      { name: "極狐", en: "Fox" },
+      { name: "戰神", en: "Valkyrie" },
+      { name: "帝王", en: "Emperor" },
+      { name: "巨鯨", en: "Whale" },
+      { name: "戰犀", en: "Rhino" },
+      { name: "狼", en: "Wolf" },
+      { name: "三頭犬", en: "Cerberus" },
+      { name: "邪神", en: "Ragna" },
+      { name: "獨角獸", en: "Unicorn" },
+      { name: "腕龍", en: "Brachio" },
+      { name: "黃蜂", en: "Hornet" },
+      { name: "海怪", en: "Kraken" },
+      { name: "雄鹿", en: "Stag" },
+      { name: "太陽", en: "Sol" },
+    ],
+
+    /** 標準主刃 */
+    mainBlades: [
+      { name: "勇氣", en: "Brave" },
+      { name: "至尊", en: "Arc" },
+      { name: "幽冥", en: "Dark" },
+      { name: "獵魂", en: "Reaper" },
+      { name: "九尾", en: "Brush" },
+      { name: "爆擊", en: "Blast" },
+      { name: "烈焰", en: "Flame" },
+      { name: "日蝕", en: "Eclipse" },
+      { name: "狩獵", en: "Hunt" },
+      { name: "威能", en: "Might" },
+      { name: "獠牙", en: "Fang" },
+      { name: "伏特", en: "Volt" },
+    ],
+
+    /** Expand 金屬戰刃 */
+    metalBlades: [
+      { name: "閃擊", en: "Blitz" },
+      { name: "要塞", en: "Fortress" },
+      { name: "狂怒", en: "Rage" },
+      { name: "三角", en: "Delta" },
+      { name: "鞭打", en: "Whip" },
+    ],
+
+    /** 輔助戰刃 — UI 只顯示代碼 */
+    assistBlades: [
+      { code: "S" }, { code: "R" }, { code: "B" }, { code: "T" },
+      { code: "C" }, { code: "J" }, { code: "A" }, { code: "W" },
+      { code: "D" }, { code: "F" }, { code: "H" }, { code: "K" },
+      { code: "M" }, { code: "V" }, { code: "E" }, { code: "Z" },
+      { code: "O" }, { code: "G" },
+    ],
+
+    /** 超越戰刃（僅 Expand）— UI 只顯示代碼 */
+    overBlades: [
+      { code: "B" }, { code: "G" }, { code: "F" }, { code: "P" }, { code: "O" },
+    ],
+  },
 };
 
 const SERIES_LABELS = {
   ALL: "全部",
   BX: "BX 系列",
   UX: "UX 系列",
-  CX: "CX（自填）",
+  CX: "CX 系列",
   OTHER: "其他／限制款",
 };
+
+function emptyCxParts() {
+  return {
+    cxProduct: "",
+    cxType: "standard", // standard | expand
+    lockChip: "",
+    lockChipCustom: "",
+    mainBlade: "",
+    mainBladeCustom: "",
+    assistBlade: "",
+    overBlade: "",
+  };
+}
 
 function emptyBey() {
   return {
@@ -111,6 +218,7 @@ function emptyBey() {
     bladeCustom: "",
     ratchet: "",
     bit: "",
+    ...emptyCxParts(),
   };
 }
 
@@ -136,7 +244,7 @@ function normalizeBey(b) {
   const out = emptyBey();
 
   // 新結構
-  if (b.bladeId || b.bladeCode || b.bladeName || b.bladeCustom) {
+  if (b.bladeId || b.bladeCode || b.bladeName || b.bladeCustom || b.series === "CX" || b.lockChip) {
     out.bladeId = b.bladeId || "";
     out.bladeCode = b.bladeCode || "";
     out.bladeName = b.bladeName || "";
@@ -145,6 +253,23 @@ function normalizeBey(b) {
     out.bladeCustom = b.bladeCustom || "";
     out.ratchet = b.ratchet || "";
     out.bit = normalizeBitCode(b.bit || "");
+    // CX fields
+    out.cxProduct = b.cxProduct || "";
+    out.cxType = b.cxType === "expand" ? "expand" : b.cxType === "standard" ? "standard" : "";
+    out.lockChip = b.lockChip || "";
+    out.lockChipCustom = b.lockChipCustom || "";
+    out.mainBlade = b.mainBlade || "";
+    out.mainBladeCustom = b.mainBladeCustom || "";
+    out.assistBlade = (b.assistBlade || "").toUpperCase();
+    out.overBlade = (b.overBlade || "").toUpperCase();
+    if (out.series === "CX" || out.lockChip || out.cxProduct) {
+      out.series = "CX";
+      out.bladeId = out.bladeId || "cx";
+      if (!out.cxType) {
+        out.cxType = resolveCxType(out.cxProduct) || "standard";
+      }
+      syncCxDisplayFields(out);
+    }
     return out;
   }
 
@@ -154,7 +279,7 @@ function normalizeBey(b) {
   const oldBlade = (b.blade || "").trim();
   if (oldBlade.includes("其他") || oldBlade === "其他（自填）") {
     out.bladeId = "custom";
-    out.series = "CX";
+    out.series = "OTHER";
     out.bladeCustom = b.bladeCustom || "";
     out.bladeName = out.bladeCustom;
   } else if (oldBlade) {
@@ -169,6 +294,75 @@ function normalizeBey(b) {
     }
   }
   return out;
+}
+
+function resolveCxType(productCode) {
+  if (!productCode) return null;
+  const n = normalizeCodeQuery(productCode);
+  const hit = PARTS.cx.products.find(
+    (p) => p.compact === n || normalizeCodeQuery(p.code) === n
+  );
+  if (hit) return hit.type;
+  const m = n.match(/^CX(\d{1,3})$/);
+  if (m) {
+    const num = parseInt(m[1], 10);
+    if (num >= 13) return "expand";
+    if (num >= 1) return "standard";
+  }
+  return null;
+}
+
+function cxLockDisplay(bey) {
+  if ((bey.lockChip || "") === "__custom__") return (bey.lockChipCustom || "").trim();
+  return (bey.lockChip || "").trim();
+}
+
+function cxMainDisplay(bey) {
+  if ((bey.mainBlade || "") === "__custom__") return (bey.mainBladeCustom || "").trim();
+  return (bey.mainBlade || "").trim();
+}
+
+/** 組出 CX 顯示字串：標準「蒼龍 勇氣 J」／Expand「龍王 閃擊 B K」 */
+function cxComboLabel(bey, opts = {}) {
+  const lock = cxLockDisplay(bey);
+  const main = cxMainDisplay(bey);
+  const assist = (bey.assistBlade || "").toUpperCase();
+  const over = (bey.overBlade || "").toUpperCase();
+  const type = bey.cxType || resolveCxType(bey.cxProduct) || "standard";
+  const parts = [];
+  if (opts.withProduct && bey.cxProduct) {
+    parts.push(normalizeCodeQuery(bey.cxProduct) || bey.cxProduct);
+  }
+  if (lock) parts.push(lock);
+  if (main) parts.push(main);
+  if (type === "expand") {
+    if (over) parts.push(over);
+    if (assist) parts.push(assist);
+  } else {
+    if (assist) parts.push(assist);
+  }
+  return parts.join(" ") || "";
+}
+
+function syncCxDisplayFields(bey) {
+  if (bey.series !== "CX") return bey;
+  const label = cxComboLabel(bey);
+  bey.bladeName = label;
+  bey.bladeCode = bey.cxProduct ? normalizeCodeQuery(bey.cxProduct) : "CX";
+  bey.bladeEn = bey.cxType === "expand" ? "Expand" : "Standard";
+  bey.bladeCustom = label;
+  return bey;
+}
+
+function isCxBladeComplete(bey) {
+  if (bey.series !== "CX" && bey.bladeId !== "cx") return false;
+  const lock = cxLockDisplay(bey);
+  const main = cxMainDisplay(bey);
+  const assist = (bey.assistBlade || "").trim();
+  const type = bey.cxType || resolveCxType(bey.cxProduct) || "standard";
+  if (!lock || !main || !assist) return false;
+  if (type === "expand" && !(bey.overBlade || "").trim()) return false;
+  return true;
 }
 
 function stripBitName(s) {
@@ -268,6 +462,21 @@ function findBladeByQuery(q) {
   if (!t) return null;
   const compact = normalizeCodeQuery(t);
 
+  // CX 產品碼 → 回傳虛擬 blade 物件（由 UI 處理組件）
+  if (/^CX\d{1,3}$/i.test(compact)) {
+    const type = resolveCxType(compact) || "standard";
+    return {
+      id: "cx",
+      code: compact.replace(/^(CX)(\d+)$/i, (_, s, n) => `CX-${parseInt(n, 10)}`),
+      name: type === "expand" ? "Expand CX" : "Standard CX",
+      en: type === "expand" ? "Expand" : "Standard",
+      series: "CX",
+      tier: "",
+      cxType: type,
+      compact,
+    };
+  }
+
   // 1) 精確精簡碼：BX49、UX15
   const exactCompact = PARTS.blades.find((b) => bladeCompactCode(b) === compact);
   if (exactCompact) return exactCompact;
@@ -305,6 +514,22 @@ function applyBladeToBey(bey, blade) {
   bey.bladeEn = blade.en;
   bey.series = blade.series;
   bey.bladeCustom = "";
+  // 清除 CX 組件
+  Object.assign(bey, emptyCxParts());
+}
+
+function applyCxProductToBey(bey, compactOrCode) {
+  const type = resolveCxType(compactOrCode) || "standard";
+  const n = normalizeCodeQuery(compactOrCode);
+  const hit = PARTS.cx.products.find((p) => p.compact === n || normalizeCodeQuery(p.code) === n);
+  bey.series = "CX";
+  bey.bladeId = "cx";
+  bey.cxProduct = hit ? hit.compact : n;
+  bey.cxType = hit ? hit.type : type;
+  // 切換類型時，Expand→Standard 清超越戰刃
+  if (bey.cxType !== "expand") bey.overBlade = "";
+  syncCxDisplayFields(bey);
+  return bey;
 }
 
 /** 工作人員用短標籤：BX49 */
@@ -328,7 +553,12 @@ function bladeFullLabel(blade) {
 /** 顯示用上蓋名稱（完整） */
 function partDisplayBlade(bey) {
   if (!bey) return "";
-  if (bey.bladeId === "custom" || bey.series === "CX") {
+  if (bey.series === "CX" || bey.bladeId === "cx") {
+    const combo = cxComboLabel(bey, { withProduct: true });
+    if (combo) return combo;
+    return (bey.bladeCustom || bey.bladeName || "").trim();
+  }
+  if (bey.bladeId === "custom") {
     return (bey.bladeCustom || bey.bladeName || "").trim();
   }
   if (bey.bladeId) {
@@ -344,10 +574,13 @@ function partDisplayBlade(bey) {
   return (bey.bladeName || bey.bladeCustom || "").trim();
 }
 
-/** 短名（用於組合顯示）— 優先系列編號 BX49 */
+/** 短名（用於組合顯示）— BX49 或 CX 組合「蒼龍 勇氣 J」 */
 function partDisplayBladeShort(bey) {
   if (!bey) return "";
-  if (bey.bladeId === "custom" || bey.series === "CX") {
+  if (bey.series === "CX" || bey.bladeId === "cx") {
+    return cxComboLabel(bey) || (bey.bladeCustom || "").trim() || "CX";
+  }
+  if (bey.bladeId === "custom") {
     return (bey.bladeCustom || bey.bladeName || "").trim();
   }
   if (bey.bladeId) {
@@ -383,10 +616,14 @@ function beyLabel(bey, opts = {}) {
 }
 
 function isBeyComplete(bey) {
-  const bl = partDisplayBlade(bey);
   const rt = partDisplay(bey, "ratchet");
   const bt = partDisplay(bey, "bit");
-  return !!(bl && rt && bt);
+  if (!rt || !bt) return false;
+  if (bey.series === "CX" || bey.bladeId === "cx") {
+    return isCxBladeComplete(bey);
+  }
+  const bl = partDisplayBlade(bey);
+  return !!bl;
 }
 
 function isDeckComplete(player) {
@@ -459,8 +696,23 @@ function filterBlades(series, query) {
     list = list.filter((b) => b.series === series);
   }
   if (series === "CX") {
-    // CX 以自填為主，列表可空
-    list = [];
+    // CX 產品列表
+    return PARTS.cx.products
+      .filter((p) => {
+        if (!query) return true;
+        const n = normalizeCodeQuery(query);
+        return p.compact.includes(n) || normalizeCodeQuery(p.code).includes(n) || p.type.includes(String(query).toLowerCase());
+      })
+      .map((p) => ({
+        id: "cx-" + p.compact.toLowerCase(),
+        code: p.code,
+        name: p.type === "expand" ? "Expand（需超越戰刃）" : "標準 CX",
+        en: p.type,
+        series: "CX",
+        tier: "",
+        cxType: p.type,
+        compact: p.compact,
+      }));
   }
   const raw = String(query || "").trim();
   if (!raw) return list;
