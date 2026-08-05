@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>寶螺盃 · 瑞士制管理系統</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-brand">
+        <div class="logo">⚔️</div>
+        <div>
+          <h1>寶螺盃</h1>
+          <p class="subtitle">瑞士制管理系統 · 九龍城基督徒會 × 宣道會基蔭堂</p>
+        </div>
+      </div>
+      <div class="header-status">
+        <div class="status-pill" id="phasePill">準備中</div>
+        <div class="status-pill round" id="roundPill">—</div>
+      </div>
+    </header>
+
+    <!-- Nav -->
+    <nav class="nav" id="mainNav">
+      <button class="nav-btn active" data-tab="players">① 選手</button>
+      <button class="nav-btn" data-tab="pairings">② 對戰表</button>
+      <button class="nav-btn" data-tab="standings">③ 排名</button>
+      <button class="nav-btn" data-tab="ties">④ 同分</button>
+      <button class="nav-btn" data-tab="knockout">⑤ 淘汰賽</button>
+      <button class="nav-btn" data-tab="export">⑥ 匯出</button>
+    </nav>
+
+    <main class="main">
+      <!-- ===== PLAYERS ===== -->
+      <section id="tab-players" class="tab active">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>選手名單 <span class="badge" id="playerCount">0 / 16</span></h2>
+            <div class="btn-row">
+              <button class="btn btn-ghost" id="btnFillDemo">填入示範資料</button>
+              <button class="btn btn-ghost" id="btnClearPlayers">清空</button>
+              <button class="btn btn-primary" id="btnStartTournament" disabled>開始比賽 · 產生第 1 輪</button>
+            </div>
+          </div>
+
+          <div class="hint">
+            固定 16 人。可逐一輸入，或用「快速匯入」一次貼上（每行：姓名,教會）。教會填
+            <code>九龍城</code> / <code>基蔭</code> 或 <code>KCC</code> / <code>KY</code>。
+          </div>
+
+          <div class="grid-2">
+            <div>
+              <h3 class="section-label">快速匯入</h3>
+              <textarea id="importBox" class="textarea" rows="8" placeholder="例：&#10;陳大文,九龍城&#10;李小明,基蔭&#10;王志強,KCC&#10;..."></textarea>
+              <div class="btn-row mt-8">
+                <button class="btn btn-secondary" id="btnImport">匯入名單</button>
+              </div>
+            </div>
+            <div>
+              <h3 class="section-label">逐一新增</h3>
+              <div class="form-row">
+                <input type="text" id="newName" class="input" placeholder="姓名" maxlength="20" />
+                <select id="newChurch" class="input select">
+                  <option value="kcc">九龍城基督徒會</option>
+                  <option value="ky">宣道會基蔭堂</option>
+                </select>
+                <button class="btn btn-secondary" id="btnAddPlayer">加入</button>
+              </div>
+              <div class="church-summary mt-12" id="churchSummary"></div>
+            </div>
+          </div>
+
+          <div class="player-table-wrap mt-16">
+            <table class="table" id="playerTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>姓名</th>
+                  <th>教會</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== PAIRINGS ===== -->
+      <section id="tab-pairings" class="tab">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>本輪對戰表 <span class="badge" id="pairRoundBadge">—</span></h2>
+            <div class="btn-row">
+              <button class="btn btn-ghost" id="btnRegenPairing" title="僅未鎖定時可用">重新配對</button>
+              <button class="btn btn-secondary" id="btnManualPair" title="手動微調配對">手動調整</button>
+              <button class="btn btn-primary" id="btnLockRound" disabled>鎖定本輪 · 進入下一輪</button>
+            </div>
+          </div>
+
+          <div class="hint" id="pairingHint">
+            配對原則：① 同分優先互打 → ② 同分時優先不同教會 → ③ 盡量避開重複對手。
+            每場 Match 先到 <strong>4 分</strong>（Extreme 3 / Over·Burst 2 / Spin 1）。
+          </div>
+
+          <div id="matchGrid" class="match-grid"></div>
+
+          <div class="panel-footer" id="roundProgress"></div>
+        </div>
+
+        <!-- Score entry modal overlay -->
+        <div id="scoreModal" class="modal hidden">
+          <div class="modal-card">
+            <div class="modal-header">
+              <h3 id="scoreModalTitle">輸入比賽結果</h3>
+              <button class="btn-icon" id="btnCloseScore">✕</button>
+            </div>
+            <div class="modal-body" id="scoreModalBody"></div>
+          </div>
+        </div>
+
+        <!-- Manual pair modal -->
+        <div id="manualModal" class="modal hidden">
+          <div class="modal-card modal-wide">
+            <div class="modal-header">
+              <h3>手動調整配對</h3>
+              <button class="btn-icon" id="btnCloseManual">✕</button>
+            </div>
+            <div class="modal-body" id="manualModalBody"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== STANDINGS ===== -->
+      <section id="tab-standings" class="tab">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>即時排名表</h2>
+            <div class="btn-row">
+              <span class="meta" id="standingsMeta"></span>
+            </div>
+          </div>
+          <div class="hint">
+            排序：瑞士積分（勝場）→ 對賽成績（Head-to-Head）→ 比賽總分（Total Battle Points）。
+            前 4 名晉級淘汰賽。
+          </div>
+          <div class="standings-wrap">
+            <table class="table standings" id="standingsTable">
+              <thead>
+                <tr>
+                  <th>排名</th>
+                  <th>選手</th>
+                  <th>教會</th>
+                  <th>勝</th>
+                  <th>負</th>
+                  <th>瑞士分</th>
+                  <th>比賽總分</th>
+                  <th>對戰紀錄</th>
+                  <th>狀態</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== TIES ===== -->
+      <section id="tab-ties" class="tab">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>同分處理</h2>
+          </div>
+          <div class="hint">
+            當瑞士積分相同時，依序檢視：① 是否曾對賽及勝負 → ② 比賽總分 → ③ 仍相同則需加賽。
+          </div>
+          <div id="tieBreakPanel"></div>
+        </div>
+      </section>
+
+      <!-- ===== KNOCKOUT ===== -->
+      <section id="tab-knockout" class="tab">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>淘汰賽（前 4 名）</h2>
+            <div class="btn-row">
+              <button class="btn btn-primary" id="btnStartKnockout" disabled>產生準決賽配對</button>
+            </div>
+          </div>
+          <div class="hint">
+            準決賽：1st vs 4th、2nd vs 3rd（若可行會優先不同教會調整）。準決賽負方打季軍賽。
+          </div>
+          <div id="knockoutBracket" class="knockout"></div>
+        </div>
+      </section>
+
+      <!-- ===== EXPORT ===== -->
+      <section id="tab-export" class="tab">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>匯出 / 備份</h2>
+          </div>
+          <div class="btn-row wrap">
+            <button class="btn btn-secondary" id="btnExportStandings">匯出排名 CSV</button>
+            <button class="btn btn-secondary" id="btnExportMatches">匯出對戰紀錄 CSV</button>
+            <button class="btn btn-secondary" id="btnExportText">匯出文字報告</button>
+            <button class="btn btn-ghost" id="btnExportJson">備份 JSON</button>
+            <button class="btn btn-ghost" id="btnImportJson">還原 JSON</button>
+            <button class="btn btn-danger" id="btnResetAll">重置全部資料</button>
+          </div>
+          <input type="file" id="jsonFileInput" accept=".json,application/json" class="hidden" />
+          <pre id="exportPreview" class="export-preview mt-16"></pre>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>資料自動儲存於本機瀏覽器（localStorage）</span>
+      <span id="saveTime"></span>
+    </footer>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>
