@@ -1491,25 +1491,35 @@ function startKnockout() {
     if (!confirm("前 4 名邊界有未解決同分，建議先加賽。仍以目前排序產生淘汰賽？")) return;
   }
 
-  let a = ranked[0], b = ranked[1], c = ranked[2], d = ranked[3];
-  // Prefer different church in semis: try 1v4 and 2v3, maybe swap 3/4 if same church issues
-  let semi1 = [a, d];
-  let semi2 = [b, c];
-  // If both semis same-church, try swap c/d
-  const same = (x, y) => x.church === y.church;
-  if (same(semi1[0], semi1[1]) && same(semi2[0], semi2[1])) {
-    semi1 = [a, c];
-    semi2 = [b, d];
-  } else if (same(semi1[0], semi1[1]) && !same(a, c)) {
-    semi1 = [a, c];
-    semi2 = [b, d];
-  }
+  // 固定：瑞士制第 1 名 vs 第 4 名；第 2 名 vs 第 3 名（不因教會調位）
+  const first = ranked[0];
+  const second = ranked[1];
+  const third = ranked[2];
+  const fourth = ranked[3];
 
   state.phase = "knockout";
   state.knockout = {
     semis: [
-      { id: uid("ko"), label: "準決賽 A", p1: semi1[0].id, p2: semi1[1].id, winner: null, p1Bp: 0, p2Bp: 0, done: false },
-      { id: uid("ko"), label: "準決賽 B", p1: semi2[0].id, p2: semi2[1].id, winner: null, p1Bp: 0, p2Bp: 0, done: false },
+      {
+        id: uid("ko"),
+        label: "準決賽 · 第1 vs 第4",
+        p1: first.id,
+        p2: fourth.id,
+        winner: null,
+        p1Bp: 0,
+        p2Bp: 0,
+        done: false,
+      },
+      {
+        id: uid("ko"),
+        label: "準決賽 · 第2 vs 第3",
+        p1: second.id,
+        p2: third.id,
+        winner: null,
+        p1Bp: 0,
+        p2Bp: 0,
+        done: false,
+      },
     ],
     third: null,
     final: null,
@@ -1517,7 +1527,7 @@ function startKnockout() {
   saveState();
   render();
   switchTab("knockout");
-  toast("準決賽已產生", "success");
+  toast("準決賽已產生：1vs4、2vs3", "success");
 }
 
 function saveKoResult(matchRef, winnerId, p1Bp, p2Bp) {
