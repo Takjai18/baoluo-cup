@@ -2289,16 +2289,20 @@ function setStandingsViewMode(mode) {
     b.classList.toggle("btn-secondary", on);
     b.classList.toggle("btn-ghost", !on);
   });
-  const onStandings = document.getElementById("tab-standings")?.classList.contains("active");
-  document.body.classList.toggle(
-    "projection-mode",
-    standingsViewMode === "project" && !!onStandings
-  );
-  // pairings projection 優先時唔好被蓋掉
-  if (document.getElementById("tab-pairings")?.classList.contains("active") && pairingsViewMode === "project") {
-    document.body.classList.add("projection-mode");
-  }
+  updateProjectionBodyClass();
   renderStandings();
+}
+
+/** 對戰表／排名投影時壓縮 chrome，方便一屏睇晒 */
+function updateProjectionBodyClass() {
+  const tab =
+    document.querySelector(".nav-btn.active")?.dataset?.tab ||
+    (location.hash || "").replace(/^#/, "") ||
+    "";
+  const pairProj = tab === "pairings" && pairingsViewMode === "project";
+  const standProj = tab === "standings" && standingsViewMode === "project";
+  document.body.classList.toggle("projection-mode", pairProj || standProj);
+  document.body.classList.toggle("standings-fit", standProj);
 }
 
 function renderStandings() {
@@ -2372,7 +2376,7 @@ function renderStandings() {
     .join("");
 }
 
-/** 投影排名：大字列出全部選手名次、勝場、比賽總分 */
+/** 投影排名：16 人一屏、唔使 scroll */
 function renderStandingsProjection(ranked, completedRounds) {
   const board = document.getElementById("standingsBoard");
   if (!board) return;
@@ -2382,13 +2386,14 @@ function renderStandingsProjection(ranked, completedRounds) {
     state.phase === "knockout" ||
     state.phase === "done";
 
+  const n = Math.max(ranked.length, 1);
   const rows = ranked
     .map((p) => {
       const top = p.rank <= 4;
       const status = top
         ? showQualify
           ? '<span class="sp-badge qualify">晉級</span>'
-          : '<span class="sp-badge front">前 4</span>'
+          : '<span class="sp-badge front">前4</span>'
         : "";
       return `
         <div class="sp-row ${top ? "is-top4" : ""}">
@@ -2402,11 +2407,9 @@ function renderStandingsProjection(ranked, completedRounds) {
             <span class="sp-wl-num loss">${p.losses}</span><span class="sp-wl-sep">負</span>
           </div>
           <div class="sp-swiss">
-            <span class="sp-label">瑞士分</span>
             <span class="sp-val">${p.swissPoints}</span>
           </div>
           <div class="sp-bp">
-            <span class="sp-label">比賽總分</span>
             <span class="sp-val bp">${p.battlePoints}</span>
           </div>
           <div class="sp-status">${status}</div>
@@ -2415,17 +2418,18 @@ function renderStandingsProjection(ranked, completedRounds) {
     .join("");
 
   board.innerHTML = `
-    <div class="sp-board">
+    <div class="sp-board" style="--sp-count:${n}">
       <div class="sp-board-head">
-        <div class="sp-board-title">即時排名 · 全部 ${ranked.length} 人</div>
-        <div class="sp-board-meta">已鎖定 ${completedRounds} / ${getSwissRounds()} 輪 · 勝場優先 · 同分比對賽／比賽總分</div>
+        <div class="sp-board-title">即時排名 · ${ranked.length} 人
+          <span class="sp-board-meta">鎖定 ${completedRounds}/${getSwissRounds()} 輪 · 瑞士分＝勝場 · BP＝比賽總分</span>
+        </div>
       </div>
       <div class="sp-col-head">
-        <span>排名</span>
+        <span>#</span>
         <span>選手</span>
         <span>戰績</span>
         <span>瑞士分</span>
-        <span>比賽總分</span>
+        <span>BP</span>
         <span></span>
       </div>
       <div class="sp-list">${rows}</div>
@@ -2939,11 +2943,7 @@ function switchTab(name, opts = {}) {
       }
     } catch (_) {}
   }
-  // 對戰表／排名 投影模式
-  const proj =
-    (name === "pairings" && pairingsViewMode === "project") ||
-    (name === "standings" && standingsViewMode === "project");
-  document.body.classList.toggle("projection-mode", proj);
+  updateProjectionBodyClass();
   if (name === "pairings") renderPairings();
   if (name === "standings") renderStandings();
 }
