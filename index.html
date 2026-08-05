@@ -184,13 +184,18 @@
 
       <!-- ===== STANDINGS ===== -->
       <section id="tab-standings" class="tab">
-        <div class="panel">
-          <div class="panel-header">
-            <h2>即時排名表</h2>
-            <div class="btn-row">
-              <span class="meta" id="standingsMeta"></span>
-            </div>
+        <div class="pair-sticky-bar" id="standingsStickyBar">
+          <div class="pair-sticky-left">
+            <strong>即時排名</strong>
+            <span class="meta" id="standingsMeta"></span>
           </div>
+          <div class="pair-sticky-right">
+            <button type="button" class="btn btn-secondary standings-mode-btn" id="btnStandingsProject" data-standings-view="project">📺 投影排名</button>
+            <button type="button" class="btn btn-ghost standings-mode-btn" id="btnStandingsDetail" data-standings-view="detail">📋 詳細紀錄</button>
+          </div>
+        </div>
+        <div id="standingsBoard" class="standings-board"></div>
+        <div class="panel standings-detail-panel" id="standingsDetailPanel">
           <div class="hint">
             排序：瑞士積分（勝場）→ 對賽成績（Head-to-Head）→ 比賽總分（Total Battle Points）。
             前 4 名晉級淘汰賽。
@@ -304,7 +309,7 @@
 
   <div id="toast" class="toast hidden"></div>
   <!-- cache-bust：確保 GitHub Pages 載入最新 JS -->
-  <script src="parts.js?v=20260805d"></script>
-  <script src="app.js?v=20260805d"></script>
+  <script src="parts.js?v=20260805e"></script>
+  <script src="app.js?v=20260805e"></script>
 </body>
 </html>

@@ -2278,18 +2278,62 @@ function renderSettings() {
   }
 }
 
+/** 排名頁：project = 投影大字；detail = 詳細對戰紀錄 */
+let standingsViewMode = "project";
+
+function setStandingsViewMode(mode) {
+  standingsViewMode = mode === "detail" ? "detail" : "project";
+  document.querySelectorAll(".standings-mode-btn").forEach((b) => {
+    const on = b.dataset.standingsView === standingsViewMode;
+    b.classList.toggle("active", on);
+    b.classList.toggle("btn-secondary", on);
+    b.classList.toggle("btn-ghost", !on);
+  });
+  const onStandings = document.getElementById("tab-standings")?.classList.contains("active");
+  document.body.classList.toggle(
+    "projection-mode",
+    standingsViewMode === "project" && !!onStandings
+  );
+  // pairings projection 優先時唔好被蓋掉
+  if (document.getElementById("tab-pairings")?.classList.contains("active") && pairingsViewMode === "project") {
+    document.body.classList.add("projection-mode");
+  }
+  renderStandings();
+}
+
 function renderStandings() {
+  const board = document.getElementById("standingsBoard");
+  const detailPanel = document.getElementById("standingsDetailPanel");
   const tbody = document.querySelector("#standingsTable tbody");
   const meta = document.getElementById("standingsMeta");
+
   if (!state.players.length) {
-    tbody.innerHTML = "";
-    meta.textContent = "";
+    if (meta) meta.textContent = "";
+    if (board) board.innerHTML = `<div class="empty"><div class="big">📊</div>尚未有選手資料</div>`;
+    if (tbody) tbody.innerHTML = "";
+    if (detailPanel) detailPanel.style.display = standingsViewMode === "detail" ? "" : "none";
+    if (board) board.style.display = standingsViewMode === "project" ? "" : "none";
     return;
   }
+
   const ranked = rankedPlayers();
   const completedRounds = state.rounds.filter((r) => r.locked).length;
-  meta.textContent = `已鎖定 ${completedRounds} 輪 · 共 ${swissMatchesOnly().length} 場完成`;
+  const totalMatches = swissMatchesOnly().length;
+  if (meta) {
+    meta.textContent = `已鎖定 ${completedRounds} / ${getSwissRounds()} 輪 · ${totalMatches} 場完成`;
+  }
 
+  const isProject = standingsViewMode === "project";
+  if (board) board.style.display = isProject ? "" : "none";
+  if (detailPanel) detailPanel.style.display = isProject ? "none" : "";
+
+  if (isProject) {
+    renderStandingsProjection(ranked, completedRounds);
+    return;
+  }
+
+  // 詳細紀錄表
+  if (!tbody) return;
   tbody.innerHTML = ranked
     .map((p) => {
       const log = p.matchLog || [];
@@ -2301,10 +2345,17 @@ function renderStandings() {
                 const opp = playerById(entry.oppId);
                 const wl = entry.won ? "W" : "L";
                 const wlClass = entry.won ? "rec-w" : "rec-l";
-                // 例：陳大文 W 4-2
                 return `<span class="rec-item ${wlClass}" title="第${entry.round}輪 vs ${escapeAttr(opp?.name || "?")}">${escapeHtml(opp?.name || "?")} <b>${wl}</b> <span class="rec-score">${entry.myBp}-${entry.oppBp}</span></span>`;
               })
               .join("");
+      const status =
+        p.rank <= 4 && state.phase !== "setup"
+          ? completedRounds >= getSwissRounds() ||
+            state.phase === "knockout" ||
+            state.phase === "done"
+            ? '<span class="qualify-badge">晉級</span>'
+            : "前段"
+          : "";
       return `
       <tr class="${p.rank <= 4 ? "top4-row" : ""}">
         <td><span class="rank-num ${p.rank <= 4 ? "top4" : ""}">${p.rank}${p.tied ? "=" : ""}</span></td>
@@ -2315,10 +2366,70 @@ function renderStandings() {
         <td><strong>${p.swissPoints}</strong></td>
         <td>${p.battlePoints}</td>
         <td class="record-mini">${rec}</td>
-        <td>${p.rank <= 4 && (state.phase !== "setup") ? (completedRounds >= getSwissRounds() || state.phase === "knockout" || state.phase === "done" ? '<span class="qualify-badge">晉級</span>' : "前段") : ""}</td>
+        <td>${status}</td>
       </tr>`;
     })
     .join("");
+}
+
+/** 投影排名：大字列出全部選手名次、勝場、比賽總分 */
+function renderStandingsProjection(ranked, completedRounds) {
+  const board = document.getElementById("standingsBoard");
+  if (!board) return;
+
+  const showQualify =
+    completedRounds >= getSwissRounds() ||
+    state.phase === "knockout" ||
+    state.phase === "done";
+
+  const rows = ranked
+    .map((p) => {
+      const top = p.rank <= 4;
+      const status = top
+        ? showQualify
+          ? '<span class="sp-badge qualify">晉級</span>'
+          : '<span class="sp-badge front">前 4</span>'
+        : "";
+      return `
+        <div class="sp-row ${top ? "is-top4" : ""}">
+          <div class="sp-rank ${top ? "top4" : ""}">${p.rank}${p.tied ? "=" : ""}</div>
+          <div class="sp-player">
+            <span class="sp-name">${escapeHtml(p.name)}</span>
+            <span class="church-tag ${p.church}">${churchLabel(p.church)}</span>
+          </div>
+          <div class="sp-wl">
+            <span class="sp-wl-num">${p.wins}</span><span class="sp-wl-sep">勝</span>
+            <span class="sp-wl-num loss">${p.losses}</span><span class="sp-wl-sep">負</span>
+          </div>
+          <div class="sp-swiss">
+            <span class="sp-label">瑞士分</span>
+            <span class="sp-val">${p.swissPoints}</span>
+          </div>
+          <div class="sp-bp">
+            <span class="sp-label">比賽總分</span>
+            <span class="sp-val bp">${p.battlePoints}</span>
+          </div>
+          <div class="sp-status">${status}</div>
+        </div>`;
+    })
+    .join("");
+
+  board.innerHTML = `
+    <div class="sp-board">
+      <div class="sp-board-head">
+        <div class="sp-board-title">即時排名 · 全部 ${ranked.length} 人</div>
+        <div class="sp-board-meta">已鎖定 ${completedRounds} / ${getSwissRounds()} 輪 · 勝場優先 · 同分比對賽／比賽總分</div>
+      </div>
+      <div class="sp-col-head">
+        <span>排名</span>
+        <span>選手</span>
+        <span>戰績</span>
+        <span>瑞士分</span>
+        <span>比賽總分</span>
+        <span></span>
+      </div>
+      <div class="sp-list">${rows}</div>
+    </div>`;
 }
 
 function renderTies() {
@@ -2828,12 +2939,13 @@ function switchTab(name, opts = {}) {
       }
     } catch (_) {}
   }
-  // 只有對戰表 + 投影模式先加 body class
-  document.body.classList.toggle(
-    "projection-mode",
-    name === "pairings" && pairingsViewMode === "project"
-  );
+  // 對戰表／排名 投影模式
+  const proj =
+    (name === "pairings" && pairingsViewMode === "project") ||
+    (name === "standings" && standingsViewMode === "project");
+  document.body.classList.toggle("projection-mode", proj);
   if (name === "pairings") renderPairings();
+  if (name === "standings") renderStandings();
 }
 
 // ─── Init ────────────────────────────────────────────────
@@ -2903,6 +3015,14 @@ function init() {
       setPairingsViewMode(btn.dataset.pairView);
     });
   }
+  // 排名頁投影／詳細切換
+  document.getElementById("standingsStickyBar")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-standings-view]");
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setStandingsViewMode(btn.dataset.standingsView);
+  });
   // 同步按鈕樣式（唔強制 re-render 整頁，避免初始化死循環）
   document.querySelectorAll(".pair-mode-btn").forEach((b) => {
     const on = b.dataset.pairView === pairingsViewMode;
@@ -2912,6 +3032,12 @@ function init() {
   });
   document.querySelectorAll(".staff-tools").forEach((el) => {
     el.style.display = pairingsViewMode === "staff" ? "" : "none";
+  });
+  document.querySelectorAll(".standings-mode-btn").forEach((b) => {
+    const on = b.dataset.standingsView === standingsViewMode;
+    b.classList.toggle("active", on);
+    b.classList.toggle("btn-secondary", on);
+    b.classList.toggle("btn-ghost", !on);
   });
 
   document.getElementById("btnSaveSettings")?.addEventListener("click", saveSettingsFromForm);
