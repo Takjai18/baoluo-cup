@@ -79,6 +79,19 @@ const PARTS = {
     "8-70", "8-80",
     "9-60", "9-65", "9-70", "9-80",
     "M-85",
+    "簡易固鎖",
+  ],
+
+  /** 常用固鎖（快速 checkbox，現場優先） */
+  ratchetsFrequent: [
+    "1-50", "1-60", "1-70",
+    "3-60", "3-70",
+    "4-50",
+    "5-60", "5-70",
+    "6-60",
+    "7-60", "7-70",
+    "9-60",
+    "簡易固鎖",
   ],
 
   /** 軸心完整列表（只顯示代碼） */
@@ -86,11 +99,13 @@ const PARTS = {
     "F", "LF", "R", "A", "Q", "C", "L", "LR", "V", "GR", "Tr", "UF", "J", "FF", "RA",
     "T", "HT", "P", "GP", "H", "U", "E", "TP", "M", "K", "Z", "Op", "I",
     "B", "O", "GB", "DB", "G", "FB", "LO", "WB",
-    "N", "HN", "S", "GN", "MN", "UN", "BS", "Nr", "DS", "GU",
+    "N", "HN", "S", "GN", "MN", "UN", "BS", "Nr", "NR", "DS", "GU",
   ],
 
-  /** 常用軸心（排序置頂） */
-  bitsFrequent: ["H", "LR", "R", "FB", "O", "LO", "P", "E", "J", "L", "K", "UF", "A"],
+  /** 常用軸心（快速 checkbox） */
+  bitsFrequent: [
+    "LR", "R", "UF", "FF", "J", "L", "K", "H", "E", "NR", "B", "FB", "LO", "O", "P",
+  ],
 
   /**
    * CX 系列組件
@@ -481,9 +496,16 @@ function normalizeBitCode(code) {
   if (!c) return "";
   c = stripBitName(c);
 
-  // 已是合法代碼
+  // Nr / NR 統一
+  if (c.toLowerCase() === "nr") return "NR";
+
+  // 已是合法代碼（優先 bitsFrequent 常用寫法）
   const exact = PARTS.bits.find((x) => x.toLowerCase() === c.toLowerCase());
-  if (exact) return exact;
+  if (exact) {
+    // 顯示偏好：NR 大寫
+    if (exact.toLowerCase() === "nr") return "NR";
+    return exact;
+  }
 
   // 英文／中文全名 → 代碼
   const key = c.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
@@ -854,7 +876,13 @@ function filterBlades(series, query) {
 }
 
 function sortedBits() {
-  const freq = PARTS.bitsFrequent.filter((c) => PARTS.bits.includes(c));
-  const rest = PARTS.bits.filter((c) => !freq.includes(c));
-  return { freq, rest, all: [...freq, ...rest] };
+  // 常用列表（含 NR）；完整列表去重
+  const freq = PARTS.bitsFrequent.map((c) => (c.toLowerCase() === "nr" ? "NR" : c));
+  const freqLower = new Set(freq.map((c) => c.toLowerCase()));
+  const rest = PARTS.bits
+    .filter((c) => !freqLower.has(c.toLowerCase()) && c !== "Nr")
+    .map((c) => (c.toLowerCase() === "nr" ? "NR" : c));
+  // 確保常用代碼都可選（即使主列表漏咗）
+  const allCodes = new Set([...PARTS.bits.map((c) => (c.toLowerCase() === "nr" ? "NR" : c)), ...freq]);
+  return { freq, rest, all: [...allCodes] };
 }

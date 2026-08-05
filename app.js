@@ -1072,28 +1072,33 @@ function bindCxAssemblerEvents(body) {
 }
 
 function renderRatchetPicker(bey) {
-  const opts = PARTS.ratchets
+  // 確保「簡易固鎖」在完整列表內
+  const allRatchets = PARTS.ratchets.includes("簡易固鎖")
+    ? PARTS.ratchets
+    : [...PARTS.ratchets, "簡易固鎖"];
+  const frequent = (PARTS.ratchetsFrequent || []).filter((r) => allRatchets.includes(r));
+
+  const opts = allRatchets
     .map((r) => `<option value="${r}" ${bey.ratchet === r ? "selected" : ""}>${r}</option>`)
     .join("");
   return `
     <div class="part-block">
       <h4>固鎖 Ratchet <span class="req">必選</span></h4>
-      <select class="input select part-select" id="ratchetSelect">
-        <option value="">— 選擇固鎖 —</option>
-        ${opts}
-      </select>
-      <div class="chip-grid chip-compact mt-8">
-        ${["1-60", "3-60", "4-60", "5-60", "9-60", "3-70", "5-70", "9-70", "4-80", "9-80", "M-85"]
-          .filter((r) => PARTS.ratchets.includes(r))
+      <div class="chip-grid chip-compact" style="margin-bottom:10px">
+        ${frequent
           .map(
             (r) =>
-              `<button type="button" class="chip ${bey.ratchet === r ? "selected" : ""}" data-quick-ratchet="${r}">
+              `<button type="button" class="chip ${bey.ratchet === r ? "selected" : ""}" data-quick-ratchet="${escapeAttr(r)}">
                 <input type="checkbox" ${bey.ratchet === r ? "checked" : ""} tabindex="-1" />
-                <span>${r}</span>
+                <span>${escapeHtml(r)}</span>
               </button>`
           )
           .join("")}
       </div>
+      <select class="input select part-select" id="ratchetSelect">
+        <option value="">— 其他固鎖 —</option>
+        ${opts}
+      </select>
     </div>
   `;
 }
@@ -1111,13 +1116,8 @@ function renderBitPicker(bey) {
 
   return `
     <div class="part-block">
-      <h4>軸心 Bit <span class="req">必選 · 只顯示代碼（例 O，唔顯示 Orb）</span></h4>
-      <select class="input select part-select" id="bitSelect">
-        <option value="">— 選擇代碼 —</option>
-        ${optGroup("常用", freq)}
-        ${optGroup("全部", rest)}
-      </select>
-      <div class="chip-grid chip-compact mt-8">
+      <h4>軸心 Bit <span class="req">必選</span></h4>
+      <div class="chip-grid chip-compact" style="margin-bottom:10px">
         ${freq
           .map(
             (c) =>
@@ -1128,6 +1128,11 @@ function renderBitPicker(bey) {
           )
           .join("")}
       </div>
+      <select class="input select part-select" id="bitSelect">
+        <option value="">— 其他軸心 —</option>
+        ${optGroup("常用", freq)}
+        ${optGroup("全部", rest)}
+      </select>
     </div>
   `;
 }
