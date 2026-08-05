@@ -2235,21 +2235,44 @@ function openScoreModal(matchId) {
 }
 
 function openKoScoreModal(type, index) {
-  let m;
-  if (type === "semi") m = state.knockout.semis[index];
-  else if (type === "third") m = state.knockout.third;
-  else m = state.knockout.final;
-  if (!m) return;
-  scoreModalMatchId = null;
-  koModalRef = { type, index };
-  scoreModalP1Id = m.p1;
-  scoreModalP2Id = m.p2;
+  if (!state.knockout) {
+    toast("尚未產生淘汰賽", "error");
+    return;
+  }
+  let m = null;
+  const idx = index === undefined || index === null || index === "" ? null : Number(index);
+  if (type === "semi") {
+    m = state.knockout.semis?.[idx];
+  } else if (type === "third") {
+    m = state.knockout.third;
+  } else if (type === "final") {
+    m = state.knockout.final;
+  }
+  if (!m) {
+    toast("搵唔到該場比賽", "error");
+    return;
+  }
   const p1 = playerById(m.p1);
   const p2 = playerById(m.p2);
+  if (!p1 || !p2) {
+    toast("選手資料缺失", "error");
+    return;
+  }
+
+  scoreModalMatchId = null;
+  koModalRef = { type, index: idx };
+  scoreModalP1Id = m.p1;
+  scoreModalP2Id = m.p2;
   scoreModalWinner =
     autoWinnerFromScores(m.p1, m.p2, m.p1Bp, m.p2Bp) || m.winner || null;
-  document.getElementById("scoreModalTitle").textContent = m.label;
-  document.getElementById("scoreModalBody").innerHTML = buildScoreForm(p1, p2, m.p1Bp, m.p2Bp);
+
+  document.getElementById("scoreModalTitle").textContent = m.label || "淘汰賽結果";
+  document.getElementById("scoreModalBody").innerHTML = buildScoreForm(
+    p1,
+    p2,
+    m.p1Bp || 0,
+    m.p2Bp || 0
+  );
   document.getElementById("scoreModal").classList.remove("hidden");
   bindScoreForm(() => {
     const p1Bp = document.getElementById("scoreP1").value;

@@ -93,17 +93,6 @@
 
           <div id="playerCards" class="player-cards mt-16"></div>
         </div>
-
-        <!-- Deck registration modal -->
-        <div id="deckModal" class="modal hidden">
-          <div class="modal-card modal-deck">
-            <div class="modal-header">
-              <h3 id="deckModalTitle">登記陀螺配置</h3>
-              <button class="btn-icon" id="btnCloseDeck" type="button">✕</button>
-            </div>
-            <div class="modal-body" id="deckModalBody"></div>
-          </div>
-        </div>
       </section>
 
       <!-- ===== PAIRINGS ===== -->
@@ -126,28 +115,6 @@
           <div id="matchGrid" class="match-grid"></div>
 
           <div class="panel-footer" id="roundProgress"></div>
-        </div>
-
-        <!-- Score entry modal overlay -->
-        <div id="scoreModal" class="modal hidden">
-          <div class="modal-card">
-            <div class="modal-header">
-              <h3 id="scoreModalTitle">輸入比賽結果</h3>
-              <button class="btn-icon" id="btnCloseScore">✕</button>
-            </div>
-            <div class="modal-body" id="scoreModalBody"></div>
-          </div>
-        </div>
-
-        <!-- Manual pair modal -->
-        <div id="manualModal" class="modal hidden">
-          <div class="modal-card modal-wide">
-            <div class="modal-header">
-              <h3>手動調整配對</h3>
-              <button class="btn-icon" id="btnCloseManual">✕</button>
-            </div>
-            <div class="modal-body" id="manualModalBody"></div>
-          </div>
         </div>
       </section>
 
@@ -233,6 +200,37 @@
         </div>
       </section>
     </main>
+
+    <!-- 全域 Modal（必須在 tab 外，否則淘汰賽等分頁無法顯示） -->
+    <div id="deckModal" class="modal hidden">
+      <div class="modal-card modal-deck">
+        <div class="modal-header">
+          <h3 id="deckModalTitle">登記陀螺配置</h3>
+          <button class="btn-icon" id="btnCloseDeck" type="button">✕</button>
+        </div>
+        <div class="modal-body" id="deckModalBody"></div>
+      </div>
+    </div>
+
+    <div id="scoreModal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="scoreModalTitle">輸入比賽結果</h3>
+          <button class="btn-icon" id="btnCloseScore" type="button">✕</button>
+        </div>
+        <div class="modal-body" id="scoreModalBody"></div>
+      </div>
+    </div>
+
+    <div id="manualModal" class="modal hidden">
+      <div class="modal-card modal-wide">
+        <div class="modal-header">
+          <h3>手動調整配對</h3>
+          <button class="btn-icon" id="btnCloseManual" type="button">✕</button>
+        </div>
+        <div class="modal-body" id="manualModalBody"></div>
+      </div>
+    </div>
 
     <footer class="footer">
       <span>資料自動儲存於本機瀏覽器（localStorage）</span>
