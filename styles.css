@@ -617,24 +617,67 @@ select.input option, .select option {
 }
 .score-side {
   text-align: center;
-  background: #0f172a;
+  background: rgba(15, 23, 42, 0.95);
   border-radius: 12px;
   padding: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  position: relative;
+  transition: .15s ease;
 }
-.score-side .name { font-weight: 800; margin-bottom: 8px; font-size: 1.05rem; }
+.score-side.is-winner {
+  border-color: rgba(52, 211, 153, 0.7);
+  background: rgba(20, 83, 45, 0.45);
+  box-shadow: 0 0 16px rgba(52, 211, 153, 0.25);
+}
+.score-side.is-loser {
+  opacity: 0.72;
+}
+.score-side .name { font-weight: 800; margin-bottom: 8px; font-size: 1.05rem; color: #fff; }
 .score-side input[type="number"] {
   width: 100%;
   text-align: center;
   font-size: 1.8rem;
   font-weight: 900;
   padding: 10px;
-  background: var(--panel-2);
-  border: 2px solid var(--border);
+  background: rgba(8, 11, 17, 0.9);
+  border: 2px solid rgba(255, 255, 255, 0.2);
   border-radius: 10px;
-  color: var(--text);
+  color: #fff;
   font-family: inherit;
 }
 .score-side input:focus { border-color: var(--primary); outline: none; }
+.auto-win-tag {
+  margin-top: 8px;
+  display: inline-block;
+  background: rgba(52, 211, 153, 0.25);
+  color: #6ee7b7;
+  font-weight: 900;
+  font-size: 0.85rem;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(52, 211, 153, 0.5);
+}
+.winner-banner {
+  text-align: center;
+  font-weight: 800;
+  font-size: 1.05rem;
+  padding: 12px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  background: rgba(30, 41, 59, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+}
+.winner-banner.ok {
+  background: rgba(20, 83, 45, 0.45);
+  border-color: rgba(52, 211, 153, 0.5);
+  color: #6ee7b7;
+}
+.winner-banner.warn {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.45);
+  color: #fbbf24;
+}
 .score-side .quick {
   display: flex;
   flex-wrap: wrap;
@@ -1192,17 +1235,20 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   min-height: 40px;
   padding: 6px 12px;
   border-radius: 10px;
-  border: 1.5px solid var(--border);
-  background: #0f172a;
-  color: var(--text);
+  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  background: rgba(15, 23, 42, 0.95);
+  color: #f1f5f9;
   font-size: 0.85rem;
   font-weight: 700;
   cursor: pointer;
   font-family: inherit;
   user-select: none;
-  transition: .12s;
+  transition: .15s ease;
 }
-.chip:hover { border-color: #64748b; }
+.chip:hover {
+  border-color: rgba(56, 189, 248, 0.5);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+}
 .chip input {
   width: 16px;
   height: 16px;
@@ -1210,9 +1256,10 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   pointer-events: none;
 }
 .chip.selected {
-  border-color: var(--primary);
-  background: #1e3a5f;
-  box-shadow: 0 0 0 1px var(--primary);
+  border-color: rgba(56, 189, 248, 0.7);
+  background: rgba(0, 102, 255, 0.3);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.5), 0 0 12px rgba(0, 102, 255, 0.25);
+  color: #fff;
 }
 .chip .tier {
   font-size: 0.65rem;
@@ -1230,14 +1277,15 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
 .custom-part-input.show { display: block; }
 
 .deck-preview {
-  background: #0f172a;
-  border: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(56, 189, 248, 0.3);
   border-radius: 12px;
   padding: 12px;
   margin-bottom: 12px;
   font-size: 0.9rem;
+  color: #e2e8f0;
 }
-.deck-preview strong { color: #93c5fd; }
+.deck-preview strong { color: #7dd3fc; }
 .deck-restrict-warn,
 .warning-text,
 .alert,

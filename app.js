@@ -1379,7 +1379,9 @@ function saveMatchResult(matchId, winnerId, p1Bp, p2Bp) {
     return false;
   }
 
-  // Soft validation: winner should have >= 4, loser < 4 ideally
+  // 優先用分數自動判定（≥4 分勝出）
+  const auto = autoWinnerFromScores(m.p1, m.p2, p1Bp, p2Bp);
+  if (auto) winnerId = auto;
   const winBp = winnerId === m.p1 ? p1Bp : p2Bp;
   const loseBp = winnerId === m.p1 ? p2Bp : p1Bp;
   if (winBp < MATCH_TARGET) {
@@ -1526,6 +1528,8 @@ function saveKoResult(matchRef, winnerId, p1Bp, p2Bp) {
   else m = state.knockout.final;
   if (!m) return false;
 
+  const auto = autoWinnerFromScores(m.p1, m.p2, p1Bp, p2Bp);
+  if (auto) winnerId = auto;
   m.winner = winnerId;
   m.p1Bp = Math.max(0, parseInt(p1Bp, 10) || 0);
   m.p2Bp = Math.max(0, parseInt(p2Bp, 10) || 0);
@@ -2163,7 +2167,30 @@ function renderKnockout() {
 // ─── Score Modal ─────────────────────────────────────────
 let scoreModalMatchId = null;
 let scoreModalWinner = null;
+let scoreModalP1Id = null;
+let scoreModalP2Id = null;
 let koModalRef = null;
+
+/**
+ * 根據分數自動判定勝方：
+ * - 一方 ≥ 4 分、另一方 < 4 → 該方勝
+ * - 雙方都 ≥ 4 → 分數較高者勝；同分則無法自動判定
+ * - 雙方都 < 4 → 未完結，無勝方
+ */
+function autoWinnerFromScores(p1Id, p2Id, p1Bp, p2Bp) {
+  const a = Math.max(0, parseInt(p1Bp, 10) || 0);
+  const b = Math.max(0, parseInt(p2Bp, 10) || 0);
+  const aWin = a >= MATCH_TARGET;
+  const bWin = b >= MATCH_TARGET;
+  if (aWin && !bWin) return p1Id;
+  if (bWin && !aWin) return p2Id;
+  if (aWin && bWin) {
+    if (a > b) return p1Id;
+    if (b > a) return p2Id;
+    return null;
+  }
+  return null;
+}
 
 function openScoreModal(matchId) {
   const round = currentRoundObj();
@@ -2171,18 +2198,24 @@ function openScoreModal(matchId) {
   if (!m) return;
   scoreModalMatchId = matchId;
   koModalRef = null;
-  scoreModalWinner = m.winner || null;
+  scoreModalP1Id = m.p1;
+  scoreModalP2Id = m.p2;
   const p1 = playerById(m.p1);
   const p2 = playerById(m.p2);
+  // 開啟時若已有分數，先自動判定
+  scoreModalWinner =
+    autoWinnerFromScores(m.p1, m.p2, m.p1Bp, m.p2Bp) || m.winner || null;
 
   document.getElementById("scoreModalTitle").textContent = `桌 ${m.table} · 輸入結果`;
-  document.getElementById("scoreModalBody").innerHTML = buildScoreForm(p1, p2, m.p1Bp, m.p2Bp, m.winner);
+  document.getElementById("scoreModalBody").innerHTML = buildScoreForm(p1, p2, m.p1Bp, m.p2Bp);
   document.getElementById("scoreModal").classList.remove("hidden");
   bindScoreForm(() => {
     const p1Bp = document.getElementById("scoreP1").value;
     const p2Bp = document.getElementById("scoreP2").value;
+    const auto = autoWinnerFromScores(scoreModalP1Id, scoreModalP2Id, p1Bp, p2Bp);
+    scoreModalWinner = auto || scoreModalWinner;
     if (!scoreModalWinner) {
-      toast("請先點選勝方", "error");
+      toast(`請輸入分數：先到 ${MATCH_TARGET} 分自動判定勝方`, "error");
       return;
     }
     if (saveMatchResult(scoreModalMatchId, scoreModalWinner, p1Bp, p2Bp)) {
@@ -2199,17 +2232,22 @@ function openKoScoreModal(type, index) {
   if (!m) return;
   scoreModalMatchId = null;
   koModalRef = { type, index };
-  scoreModalWinner = m.winner || null;
+  scoreModalP1Id = m.p1;
+  scoreModalP2Id = m.p2;
   const p1 = playerById(m.p1);
   const p2 = playerById(m.p2);
+  scoreModalWinner =
+    autoWinnerFromScores(m.p1, m.p2, m.p1Bp, m.p2Bp) || m.winner || null;
   document.getElementById("scoreModalTitle").textContent = m.label;
-  document.getElementById("scoreModalBody").innerHTML = buildScoreForm(p1, p2, m.p1Bp, m.p2Bp, m.winner);
+  document.getElementById("scoreModalBody").innerHTML = buildScoreForm(p1, p2, m.p1Bp, m.p2Bp);
   document.getElementById("scoreModal").classList.remove("hidden");
   bindScoreForm(() => {
     const p1Bp = document.getElementById("scoreP1").value;
     const p2Bp = document.getElementById("scoreP2").value;
+    const auto = autoWinnerFromScores(scoreModalP1Id, scoreModalP2Id, p1Bp, p2Bp);
+    scoreModalWinner = auto || scoreModalWinner;
     if (!scoreModalWinner) {
-      toast("請先點選勝方", "error");
+      toast(`請輸入分數：先到 ${MATCH_TARGET} 分自動判定勝方`, "error");
       return;
     }
     if (saveKoResult(koModalRef, scoreModalWinner, p1Bp, p2Bp)) {
@@ -2218,15 +2256,11 @@ function openKoScoreModal(type, index) {
   });
 }
 
-function buildScoreForm(p1, p2, p1Bp, p2Bp, winner) {
+function buildScoreForm(p1, p2, p1Bp, p2Bp) {
   return `
-    <div class="score-note">官方計分：Extreme 3 · Over/Burst 2 · Spin 1 · 先到 4 分勝出</div>
-    <div class="winner-pick">
-      <button type="button" class="win-btn ${winner === p1.id ? "selected" : ""}" data-id="${p1.id}">勝方：${escapeHtml(p1.name)}</button>
-      <button type="button" class="win-btn ${winner === p2.id ? "selected" : ""}" data-id="${p2.id}">勝方：${escapeHtml(p2.name)}</button>
-    </div>
+    <div class="score-note">輸入雙方比賽分（BP）。<strong>≥ ${MATCH_TARGET} 分</strong> 自動判定為勝方（Extreme 3 · Over/Burst 2 · Spin 1）。</div>
     <div class="score-vs">
-      <div class="score-side">
+      <div class="score-side" id="scoreSide1" data-id="${p1.id}">
         <div class="name">${escapeHtml(p1.name)}</div>
         <input type="number" id="scoreP1" min="0" max="20" value="${p1Bp || 0}" inputmode="numeric" />
         <div class="quick">
@@ -2237,9 +2271,10 @@ function buildScoreForm(p1, p2, p1Bp, p2Bp, winner) {
           <button type="button" data-target="scoreP1" data-val="0">0</button>
           <button type="button" data-target="scoreP1" data-delta="1">+1</button>
         </div>
+        <div class="auto-win-tag" id="winTag1" hidden>勝方</div>
       </div>
       <div class="score-mid">BP</div>
-      <div class="score-side">
+      <div class="score-side" id="scoreSide2" data-id="${p2.id}">
         <div class="name">${escapeHtml(p2.name)}</div>
         <input type="number" id="scoreP2" min="0" max="20" value="${p2Bp || 0}" inputmode="numeric" />
         <div class="quick">
@@ -2250,8 +2285,10 @@ function buildScoreForm(p1, p2, p1Bp, p2Bp, winner) {
           <button type="button" data-target="scoreP2" data-val="0">0</button>
           <button type="button" data-target="scoreP2" data-delta="1">+1</button>
         </div>
+        <div class="auto-win-tag" id="winTag2" hidden>勝方</div>
       </div>
     </div>
+    <div class="winner-banner" id="winnerBanner">—</div>
     <div class="score-note" id="scoreHint"></div>
     <button class="btn btn-primary" id="btnSaveScore" style="width:100%">儲存結果</button>
   `;
@@ -2259,14 +2296,6 @@ function buildScoreForm(p1, p2, p1Bp, p2Bp, winner) {
 
 function bindScoreForm(onSave) {
   const body = document.getElementById("scoreModalBody");
-  body.querySelectorAll(".win-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      scoreModalWinner = btn.dataset.id;
-      body.querySelectorAll(".win-btn").forEach((b) => b.classList.remove("selected"));
-      btn.classList.add("selected");
-      updateScoreHint();
-    });
-  });
   body.querySelectorAll(".quick button").forEach((btn) => {
     btn.addEventListener("click", () => {
       const inp = document.getElementById(btn.dataset.target);
@@ -2286,34 +2315,61 @@ function bindScoreForm(onSave) {
 
 function updateScoreHint() {
   const hint = document.getElementById("scoreHint");
+  const banner = document.getElementById("winnerBanner");
+  const tag1 = document.getElementById("winTag1");
+  const tag2 = document.getElementById("winTag2");
+  const side1 = document.getElementById("scoreSide1");
+  const side2 = document.getElementById("scoreSide2");
   if (!hint) return;
-  const a = parseInt(document.getElementById("scoreP1").value, 10) || 0;
-  const b = parseInt(document.getElementById("scoreP2").value, 10) || 0;
-  if (!scoreModalWinner) {
-    hint.textContent = "請點選勝方，並輸入雙方累積比賽分（Battle Points）。";
-    hint.className = "score-note";
-    return;
+
+  const a = Math.max(0, parseInt(document.getElementById("scoreP1").value, 10) || 0);
+  const b = Math.max(0, parseInt(document.getElementById("scoreP2").value, 10) || 0);
+  const auto = autoWinnerFromScores(scoreModalP1Id, scoreModalP2Id, a, b);
+  scoreModalWinner = auto;
+
+  // UI 高亮
+  side1?.classList.toggle("is-winner", auto === scoreModalP1Id);
+  side2?.classList.toggle("is-winner", auto === scoreModalP2Id);
+  side1?.classList.toggle("is-loser", auto && auto !== scoreModalP1Id);
+  side2?.classList.toggle("is-loser", auto && auto !== scoreModalP2Id);
+  if (tag1) {
+    tag1.hidden = auto !== scoreModalP1Id;
   }
-  // Determine which side is winner
-  let winBp, loseBp;
-  // We need match context for p1/p2 — from modal form order: scoreP1 is left (p1)
-  const leftBtn = document.querySelector(".win-btn");
-  const leftId = leftBtn?.dataset.id;
-  if (scoreModalWinner === leftId) {
-    winBp = a;
-    loseBp = b;
-  } else {
-    winBp = b;
-    loseBp = a;
+  if (tag2) {
+    tag2.hidden = auto !== scoreModalP2Id;
   }
-  if (winBp < MATCH_TARGET) {
-    hint.textContent = `注意：勝方 ${winBp} 分尚未達 ${MATCH_TARGET} 分（仍可強制儲存）。`;
-    hint.className = "score-note warn";
-  } else if (loseBp >= MATCH_TARGET) {
-    hint.textContent = `注意：雙方都 ≥ ${MATCH_TARGET} 分，請確認勝方選擇無誤。`;
+
+  const p1 = playerById(scoreModalP1Id);
+  const p2 = playerById(scoreModalP2Id);
+
+  if (auto) {
+    const wName = auto === scoreModalP1Id ? p1?.name : p2?.name;
+    const winBp = auto === scoreModalP1Id ? a : b;
+    const loseBp = auto === scoreModalP1Id ? b : a;
+    if (banner) {
+      banner.textContent = `自動判定勝方：${wName}（${winBp} : ${loseBp}）`;
+      banner.className = "winner-banner ok";
+    }
+    if (a >= MATCH_TARGET && b >= MATCH_TARGET && a !== b) {
+      hint.textContent = `雙方都 ≥ ${MATCH_TARGET} 分，已按較高分判定勝方。`;
+      hint.className = "score-note warn";
+    } else {
+      hint.textContent = `分數已達 ${MATCH_TARGET} 分，勝方已自動選定。可直接儲存。`;
+      hint.className = "score-note";
+    }
+  } else if (a >= MATCH_TARGET && b >= MATCH_TARGET && a === b) {
+    if (banner) {
+      banner.textContent = `雙方同為 ${a} 分（≥${MATCH_TARGET}），無法自動判定 — 請調分`;
+      banner.className = "winner-banner warn";
+    }
+    hint.textContent = `雙方分數相同且都 ≥ ${MATCH_TARGET}，請調整其中一方分數。`;
     hint.className = "score-note warn";
   } else {
-    hint.textContent = `勝方 ${winBp} : ${loseBp} 負方 — 看起來合理。`;
+    if (banner) {
+      banner.textContent = `尚未判定勝方（需一方 ≥ ${MATCH_TARGET} 分）`;
+      banner.className = "winner-banner";
+    }
+    hint.textContent = `目前 ${a} : ${b} — 先到 ${MATCH_TARGET} 分者自動勝出。`;
     hint.className = "score-note";
   }
 }
@@ -2321,6 +2377,9 @@ function updateScoreHint() {
 function closeScoreModal() {
   document.getElementById("scoreModal").classList.add("hidden");
   scoreModalMatchId = null;
+  scoreModalWinner = null;
+  scoreModalP1Id = null;
+  scoreModalP2Id = null;
   koModalRef = null;
 }
 
