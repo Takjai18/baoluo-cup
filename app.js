@@ -2000,8 +2000,6 @@ let pairingsViewMode = "project";
 
 function setPairingsViewMode(mode) {
   pairingsViewMode = mode === "staff" ? "staff" : "project";
-  const onPairings = document.getElementById("tab-pairings")?.classList.contains("active");
-  document.body.classList.toggle("projection-mode", pairingsViewMode === "project" && !!onPairings);
 
   document.querySelectorAll(".pair-mode-btn").forEach((b) => {
     const on = b.dataset.pairView === pairingsViewMode;
@@ -2018,6 +2016,7 @@ function setPairingsViewMode(mode) {
     panel.classList.toggle("is-project", pairingsViewMode === "project");
     panel.classList.toggle("is-staff", pairingsViewMode === "staff");
   }
+  updateProjectionBodyClass();
   // 只重繪對戰內容，避免整頁 reset 導致按鈕狀態錯亂
   renderPairings();
 }
