@@ -773,6 +773,75 @@ html, body {
 tr.top4-row { background: #1c1917aa; }
 tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
 
+/* Add player form */
+.add-player-panel {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 4px;
+}
+.add-player-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: stretch;
+}
+.add-player-form .input {
+  flex: 1 1 160px;
+  min-width: 140px;
+}
+.church-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: stretch;
+}
+.church-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: #0f172a;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.9rem;
+  user-select: none;
+  transition: .12s;
+}
+.church-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+}
+.church-check.kcc.on,
+.church-check.kcc:has(input:checked) {
+  border-color: var(--kcc);
+  background: #0c4a6e66;
+  color: var(--kcc);
+}
+.church-check.ky.on,
+.church-check.ky:has(input:checked) {
+  border-color: var(--ky);
+  background: #83184366;
+  color: var(--ky);
+}
+.church-checks.compact .church-check {
+  min-height: 40px;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+}
+.church-checks.compact .church-check span {
+  white-space: nowrap;
+}
+.pc-church {
+  flex: 0 0 auto;
+}
+
 /* ── Registration steps ── */
 .reg-steps {
   display: grid;

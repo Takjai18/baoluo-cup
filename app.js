@@ -457,6 +457,43 @@ function createRoundFromPairs(pairs, roundNum) {
   };
 }
 
+// ─── Church checkbox helpers（二選一）────────────────────
+function getSelectedChurch(rootSelector) {
+  const root = typeof rootSelector === "string" ? document.querySelector(rootSelector) : rootSelector;
+  if (!root) return null;
+  const checked = root.querySelector('input[type="checkbox"]:checked');
+  return checked ? checked.value : null;
+}
+
+function bindExclusiveChurchChecks(rootSelector) {
+  const root = document.querySelector(rootSelector);
+  if (!root || root.dataset.bound === "1") return;
+  root.dataset.bound = "1";
+  root.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) {
+        root.querySelectorAll('input[type="checkbox"]').forEach((other) => {
+          if (other !== cb) other.checked = false;
+        });
+        root.querySelectorAll(".church-check").forEach((lab) => lab.classList.remove("on"));
+        cb.closest(".church-check")?.classList.add("on");
+      } else {
+        // 不允許全不選：至少保留一個
+        const any = root.querySelector('input[type="checkbox"]:checked');
+        if (!any) {
+          cb.checked = true;
+          cb.closest(".church-check")?.classList.add("on");
+        }
+      }
+    });
+  });
+  // 初始 on 樣式
+  root.querySelectorAll(".church-check").forEach((lab) => {
+    const inp = lab.querySelector("input");
+    lab.classList.toggle("on", !!(inp && inp.checked));
+  });
+}
+
 // ─── Actions ─────────────────────────────────────────────
 function makePlayer(name, church, beys) {
   return normalizePlayer({
@@ -521,32 +558,6 @@ function updatePlayerChurch(id, church) {
   p.church = church;
   saveState();
   render();
-}
-
-function importPlayers(text) {
-  if (state.phase !== "setup") {
-    toast("比賽已開始，無法匯入", "error");
-    return;
-  }
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const added = [];
-  for (const line of lines) {
-    if (state.players.length + added.length >= TOTAL_PLAYERS) break;
-    const parts = line.split(/[,，\t|]/).map((s) => s.trim());
-    if (!parts[0]) continue;
-    const church = parseChurch(parts[1] || "");
-    if (!church) {
-      toast(`無法辨識教會：${line}`, "error");
-      continue;
-    }
-    const name = parts[0];
-    if (state.players.some((p) => p.name === name) || added.some((p) => p.name === name)) continue;
-    added.push(makePlayer(name, church));
-  }
-  state.players.push(...added);
-  saveState();
-  render();
-  toast(`已預先登記 ${added.length} 人（陀螺待當日登記）`, "success");
 }
 
 function fillDemo() {
@@ -1391,11 +1402,17 @@ function renderPlayers() {
             <div class="pc-name">
               <input type="text" class="pc-name-input" data-id="${p.id}" value="${escapeAttr(p.name)}" maxlength="20" />
             </div>
-            <div class="pc-church">
-              <select class="input select church-select" data-id="${p.id}" ${state.phase !== "setup" ? "disabled" : ""}>
-                <option value="kcc" ${p.church === "kcc" ? "selected" : ""}>九龍城</option>
-                <option value="ky" ${p.church === "ky" ? "selected" : ""}>基蔭</option>
-              </select>
+            <div class="pc-church church-checks compact" data-id="${p.id}">
+              <label class="church-check kcc ${p.church === "kcc" ? "on" : ""}">
+                <input type="checkbox" class="pc-church-cb" data-id="${p.id}" value="kcc"
+                  ${p.church === "kcc" ? "checked" : ""} ${state.phase !== "setup" ? "disabled" : ""} />
+                <span>九龍城</span>
+              </label>
+              <label class="church-check ky ${p.church === "ky" ? "on" : ""}">
+                <input type="checkbox" class="pc-church-cb" data-id="${p.id}" value="ky"
+                  ${p.church === "ky" ? "checked" : ""} ${state.phase !== "setup" ? "disabled" : ""} />
+                <span>基蔭</span>
+              </label>
             </div>
             <span class="pc-status ${statusClass}">${statusText}</span>
             <div class="pc-actions">
@@ -1419,8 +1436,15 @@ function renderPlayers() {
   list.querySelectorAll(".pc-name-input").forEach((inp) => {
     inp.addEventListener("change", () => updatePlayerName(inp.dataset.id, inp.value));
   });
-  list.querySelectorAll(".church-select").forEach((sel) => {
-    sel.addEventListener("change", () => updatePlayerChurch(sel.dataset.id, sel.value));
+  list.querySelectorAll(".pc-church-cb").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      if (!cb.checked) {
+        // 必須二選一：取消勾選時還原
+        cb.checked = true;
+        return;
+      }
+      updatePlayerChurch(cb.dataset.id, cb.value);
+    });
   });
   list.querySelectorAll(".btn-del").forEach((btn) => {
     btn.addEventListener("click", () => removePlayer(btn.dataset.id));
@@ -1433,7 +1457,6 @@ function renderPlayers() {
   startBtn.disabled = !(state.phase === "setup" && state.players.length === TOTAL_PLAYERS);
   document.getElementById("btnFillDemo").disabled = state.phase !== "setup";
   document.getElementById("btnClearPlayers").disabled = state.phase !== "setup";
-  document.getElementById("btnImport").disabled = state.phase !== "setup";
 }
 
 function escapeAttr(s) {
@@ -1986,9 +2009,16 @@ function init() {
     btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
 
+  // 新增選手：教會二選一 checkbox
+  bindExclusiveChurchChecks("#newChurchChecks");
+
   document.getElementById("btnAddPlayer").addEventListener("click", () => {
     const name = document.getElementById("newName").value;
-    const church = document.getElementById("newChurch").value;
+    const church = getSelectedChurch("#newChurchChecks");
+    if (!church) {
+      toast("請選擇所屬教會", "error");
+      return;
+    }
     if (addPlayer(name, church)) {
       document.getElementById("newName").value = "";
       document.getElementById("newName").focus();
@@ -1998,9 +2028,6 @@ function init() {
     if (e.key === "Enter") document.getElementById("btnAddPlayer").click();
   });
 
-  document.getElementById("btnImport").addEventListener("click", () => {
-    importPlayers(document.getElementById("importBox").value);
-  });
   document.getElementById("btnFillDemo").addEventListener("click", fillDemo);
   document.getElementById("btnClearPlayers").addEventListener("click", () => {
     if (state.phase !== "setup") return;
