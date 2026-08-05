@@ -2099,24 +2099,9 @@ function renderMatchCardStaff(m, round, statsMap) {
   const pre2 = m.done ? s2.swissPoints - (m.winner === m.p2 ? 1 : 0) : s2.swissPoints;
   const zLabel = m.zoneLabel || zoneLabel(m.zone ?? 0);
   const zCode = m.zoneCode || zoneCode(m.zone ?? 0);
-  const o1ok = isBeyOrderComplete(m.p1BeyOrder);
-  const o2ok = isBeyOrderComplete(m.p2BeyOrder);
-  const orderReady = o1ok && o2ok;
-
-  const orderBlock = (player, order, side) => {
-    const lines = formatBeyOrderLines(player, order);
-    const ok = isBeyOrderComplete(order);
-    return `
-      <div class="bey-order-box ${ok ? "ready" : "pending"}">
-        <div class="bey-order-title">${ok ? "出場次序 ✓" : "出場次序（未齊）"}</div>
-        ${lines
-          .map(
-            (L) =>
-              `<div class="bey-order-line"><span class="bey-slot">${L.slot}</span><span class="bey-lab">${escapeHtml(L.label)}</span></div>`
-          )
-          .join("")}
-      </div>`;
-  };
+  // 次序只作內部登記，畫面唔顯示具體陀螺（避免被人偷睇）
+  const orderReady =
+    isBeyOrderComplete(m.p1BeyOrder) && isBeyOrderComplete(m.p2BeyOrder);
 
   return `
     <div class="match-card ${m.done ? "done" : ""} ${same ? "same-church" : "diff-church"}" data-zone="${zCode}">
@@ -2124,14 +2109,12 @@ function renderMatchCardStaff(m, round, statsMap) {
         <span class="match-num">場次 ${m.table}</span>
         <span class="zone-badge zone-${zCode}">報到：${escapeHtml(zLabel)}</span>
         <span class="vs-tag ${same ? "same" : "diff"}">${same ? "同教會" : "不同教會"}</span>
-        <span class="vs-tag ${orderReady ? "diff" : "same"}">${orderReady ? "次序已定" : "次序未定"}</span>
       </div>
       <div class="match-players">
         <div class="player-side ${m.done && m.winner === m.p1 ? "winner" : ""} ${m.done && m.winner === m.p2 ? "loser" : ""}">
           <div class="p-name">${escapeHtml(p1?.name || "?")}</div>
           <div class="p-meta"><span class="church-tag ${p1?.church}">${churchLabel(p1?.church)}</span></div>
           <div class="p-meta">本輪前 ${pre1} 勝</div>
-          ${orderBlock(p1, m.p1BeyOrder, "p1")}
           ${m.done ? `<div class="p-bp">${m.p1Bp}</div>` : ""}
         </div>
         <div class="vs-center">VS</div>
@@ -2139,7 +2122,6 @@ function renderMatchCardStaff(m, round, statsMap) {
           <div class="p-name">${escapeHtml(p2?.name || "?")}</div>
           <div class="p-meta"><span class="church-tag ${p2?.church}">${churchLabel(p2?.church)}</span></div>
           <div class="p-meta">本輪前 ${pre2} 勝</div>
-          ${orderBlock(p2, m.p2BeyOrder, "p2")}
           ${m.done ? `<div class="p-bp">${m.p2Bp}</div>` : ""}
         </div>
       </div>
@@ -2147,9 +2129,9 @@ function renderMatchCardStaff(m, round, statsMap) {
         ${
           round.locked
             ? `<button class="btn btn-ghost btn-sm" disabled>${m.done ? "已鎖定" : "未完成"}</button>
-               <button class="btn btn-secondary btn-sm btn-bey-order" data-id="${m.id}">看出場次序</button>`
+               <button class="btn btn-ghost btn-sm btn-bey-order" data-id="${m.id}">次序（已鎖）</button>`
             : `
-               <button class="btn btn-secondary btn-sm btn-bey-order" data-id="${m.id}">${orderReady ? "修改出場次序" : "登記出場次序"}</button>
+               <button class="btn btn-secondary btn-sm btn-bey-order" data-id="${m.id}">${orderReady ? "改次序" : "登記次序"}</button>
                ${
                  m.done
                    ? `<button class="btn btn-secondary btn-sm btn-edit-score" data-id="${m.id}">修改結果</button>
@@ -2199,17 +2181,6 @@ function renderProjectionBoard(round) {
           const score = m.done
             ? `<span class="zg-score">${m.p1Bp}–${m.p2Bp}</span>`
             : `<span class="zg-live">對戰中</span>`;
-          ensureMatchBeyOrders(m);
-          const ord1 = isBeyOrderComplete(m.p1BeyOrder)
-            ? formatBeyOrderLines(p1, m.p1BeyOrder)
-                .map((L) => L.label)
-                .join("→")
-            : "";
-          const ord2 = isBeyOrderComplete(m.p2BeyOrder)
-            ? formatBeyOrderLines(p2, m.p2BeyOrder)
-                .map((L) => L.label)
-                .join("→")
-            : "";
           return `
             <div class="zg-match ${m.done ? "is-done" : ""}">
               <div class="zg-pair">
@@ -2223,14 +2194,6 @@ function renderProjectionBoard(round) {
                 <span class="church-tag ${p2?.church || ""}">${churchLabel(p2?.church)}</span>
                 ${score}
               </div>
-              ${
-                ord1 || ord2
-                  ? `<div class="zg-order">
-                      ${ord1 ? `<div class="zg-order-line"><b>1.</b> ${escapeHtml(ord1)}</div>` : ""}
-                      ${ord2 ? `<div class="zg-order-line"><b>2.</b> ${escapeHtml(ord2)}</div>` : ""}
-                    </div>`
-                  : ""
-              }
             </div>`;
         })
         .join('<div class="zg-divider" aria-hidden="true"></div>');
@@ -2392,8 +2355,8 @@ function openBeyOrderModal(matchId) {
     `出場次序 · 場次 ${m.table} · ${p1.name} vs ${p2.name}`;
   document.getElementById("beyOrderModalBody").innerHTML = `
     <div class="hint" style="margin-top:0">
-      雙方先定<strong>第 1／2／3 場</strong>出場陀螺（用已登記嘅 3 隻）。
-      一般規則：三隻各用一次，順序賽前向裁判申報。
+      雙方定<strong>第 1／2／3 場</strong>出場陀螺（用已登記嘅 3 隻）。
+      次序<strong>只存於系統、唔會顯示喺對戰表／投影</strong>，避免被人偷睇。
     </div>
     <div class="bey-order-modal-grid">
       ${renderBeyOrderEditor("p1", p1, m.p1BeyOrder, locked)}
