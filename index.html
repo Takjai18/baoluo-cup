@@ -160,29 +160,25 @@
 
       <!-- ===== PAIRINGS ===== -->
       <section id="tab-pairings" class="tab">
+        <div class="pair-sticky-bar" id="pairStickyBar">
+          <div class="pair-sticky-left">
+            <strong id="pairRoundBadge">本輪對戰表</strong>
+            <span class="meta" id="roundProgress"></span>
+          </div>
+          <div class="pair-sticky-right">
+            <button type="button" class="btn btn-secondary pair-mode-btn" id="btnViewProject" data-pair-view="project">📺 投影（全員）</button>
+            <button type="button" class="btn btn-ghost pair-mode-btn" id="btnViewStaff" data-pair-view="staff">⌨️ 計分操作</button>
+            <button type="button" class="btn btn-ghost btn-sm staff-tools" id="btnRegenPairing">重新配對</button>
+            <button type="button" class="btn btn-ghost btn-sm staff-tools" id="btnManualPair">手動調整</button>
+            <button type="button" class="btn btn-primary btn-sm" id="btnLockRound" disabled>鎖定本輪</button>
+          </div>
+        </div>
         <div class="panel pairings-panel">
-          <div class="panel-header pairings-toolbar">
-            <h2>本輪對戰表 <span class="badge" id="pairRoundBadge">—</span></h2>
-            <div class="btn-row wrap">
-              <div class="view-toggle" role="group" aria-label="顯示模式">
-                <button type="button" class="btn btn-secondary btn-sm view-mode-btn active" data-pair-view="project" id="btnViewProject">📺 投影看板</button>
-                <button type="button" class="btn btn-ghost btn-sm view-mode-btn" data-pair-view="staff" id="btnViewStaff">⌨️ 計分操作</button>
-              </div>
-              <button class="btn btn-ghost btn-sm" id="btnRegenPairing" title="僅未鎖定時可用">重新配對</button>
-              <button class="btn btn-ghost btn-sm" id="btnManualPair" title="手動微調配對">手動調整</button>
-              <button class="btn btn-primary btn-sm" id="btnLockRound" disabled>鎖定本輪 · 進入下一輪</button>
-            </div>
-          </div>
-
           <div class="hint staff-only" id="pairingHint">
-            配對原則：① 同分優先互打 → ② 同分時優先不同教會 → ③ 盡量避開重複對手。
-            投影看板適合大螢幕：每位選手可同一畫面看到<strong>對手</strong>同<strong>報到區</strong>。
+            計分模式：可輸入結果。投影模式會同一畫面列出<strong>全部 16 人</strong>的對手同報到區。
           </div>
-
-          <div class="deck-summary-bar" id="zoneSummaryBar"></div>
+          <div class="deck-summary-bar staff-only" id="zoneSummaryBar"></div>
           <div id="matchGrid" class="match-grid-wrap"></div>
-
-          <div class="panel-footer" id="roundProgress"></div>
         </div>
       </section>
 

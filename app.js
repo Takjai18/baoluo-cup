@@ -2000,17 +2000,25 @@ let pairingsViewMode = "project";
 
 function setPairingsViewMode(mode) {
   pairingsViewMode = mode === "staff" ? "staff" : "project";
-  document.body.classList.toggle("projection-mode", pairingsViewMode === "project");
-  document.querySelectorAll(".view-mode-btn").forEach((b) => {
-    b.classList.toggle("active", b.dataset.pairView === pairingsViewMode);
-    b.classList.toggle("btn-secondary", b.dataset.pairView === pairingsViewMode);
-    b.classList.toggle("btn-ghost", b.dataset.pairView !== pairingsViewMode);
+  const onPairings = document.getElementById("tab-pairings")?.classList.contains("active");
+  document.body.classList.toggle("projection-mode", pairingsViewMode === "project" && !!onPairings);
+
+  document.querySelectorAll(".pair-mode-btn").forEach((b) => {
+    const on = b.dataset.pairView === pairingsViewMode;
+    b.classList.toggle("active", on);
+    b.classList.toggle("btn-secondary", on);
+    b.classList.toggle("btn-primary", false);
+    b.classList.toggle("btn-ghost", !on);
+  });
+  document.querySelectorAll(".staff-tools").forEach((el) => {
+    el.style.display = pairingsViewMode === "staff" ? "" : "none";
   });
   const panel = document.querySelector(".pairings-panel");
   if (panel) {
     panel.classList.toggle("is-project", pairingsViewMode === "project");
     panel.classList.toggle("is-staff", pairingsViewMode === "staff");
   }
+  // 只重繪對戰內容，避免整頁 reset 導致按鈕狀態錯亂
   renderPairings();
 }
 
@@ -2060,121 +2068,74 @@ function renderMatchCardStaff(m, round, statsMap) {
     </div>`;
 }
 
-/** 投影看板：一大列顯示 報到區 + 雙方姓名（全場一目了然） */
-function renderProjectionBoard(round, stations) {
-  const matches = [...round.matches].sort((a, b) => {
-    const za = a.zone ?? 0;
-    const zb = b.zone ?? 0;
-    if (za !== zb) return za - zb;
-    return (a.table || 0) - (b.table || 0);
+/**
+ * 投影看板：同一畫面列出全部 16 人
+ * 每格：我的名字 · 對手 · 報到區（4×4 網格，盡量一屏睇晒）
+ */
+function renderProjectionBoard(round) {
+  const cards = [];
+  round.matches.forEach((m) => {
+    const p1 = playerById(m.p1);
+    const p2 = playerById(m.p2);
+    const zCode = m.zoneCode || zoneCode(m.zone ?? 0);
+    const zLabel = m.zoneLabel || zoneLabel(m.zone ?? 0);
+    cards.push({
+      name: p1?.name || "?",
+      church: p1?.church,
+      opp: p2?.name || "?",
+      zoneCode: zCode,
+      zoneLabel: zLabel,
+      done: !!m.done,
+      myBp: m.p1Bp || 0,
+      oppBp: m.p2Bp || 0,
+      won: m.winner === m.p1,
+    });
+    cards.push({
+      name: p2?.name || "?",
+      church: p2?.church,
+      opp: p1?.name || "?",
+      zoneCode: zCode,
+      zoneLabel: zLabel,
+      done: !!m.done,
+      myBp: m.p2Bp || 0,
+      oppBp: m.p1Bp || 0,
+      won: m.winner === m.p2,
+    });
   });
+  // 按姓名排序，方便搵自己
+  cards.sort((a, b) => a.name.localeCompare(b.name, "zh-Hant"));
 
-  const rows = matches
-    .map((m) => {
-      const p1 = playerById(m.p1);
-      const p2 = playerById(m.p2);
-      const zCode = m.zoneCode || zoneCode(m.zone ?? 0);
-      const zLabel = m.zoneLabel || zoneLabel(m.zone ?? 0);
-      const status = m.done
-        ? `<span class="proj-score">${m.p1Bp} – ${m.p2Bp}</span>`
-        : `<span class="proj-wait">進行中</span>`;
-      const w1 = m.done && m.winner === m.p1 ? "is-win" : m.done ? "is-lose" : "";
-      const w2 = m.done && m.winner === m.p2 ? "is-win" : m.done ? "is-lose" : "";
-
+  const cells = cards
+    .map((c) => {
+      const result = c.done
+        ? `<div class="p16-result ${c.won ? "win" : "lose"}">${c.won ? "勝" : "負"} ${c.myBp}-${c.oppBp}</div>`
+        : `<div class="p16-result pending">對戰中</div>`;
       return `
-        <div class="proj-row zone-${zCode} ${m.done ? "is-done" : ""}">
-          <div class="proj-zone zone-${zCode}">
-            <span class="proj-zone-letter">${escapeHtml(zCode)}</span>
-            <span class="proj-zone-text">區</span>
+        <div class="p16-card zone-${c.zoneCode}">
+          <div class="p16-me">
+            <span class="p16-name">${escapeHtml(c.name)}</span>
+            <span class="church-tag ${c.church || ""}">${churchLabel(c.church)}</span>
           </div>
-          <div class="proj-players">
-            <div class="proj-name ${w1}">
-              <span class="proj-pname">${escapeHtml(p1?.name || "?")}</span>
-              <span class="proj-church church-tag ${p1?.church || ""}">${churchLabel(p1?.church)}</span>
-            </div>
-            <div class="proj-vs">VS</div>
-            <div class="proj-name ${w2}">
-              <span class="proj-pname">${escapeHtml(p2?.name || "?")}</span>
-              <span class="proj-church church-tag ${p2?.church || ""}">${churchLabel(p2?.church)}</span>
-            </div>
+          <div class="p16-vs-line">
+            <span class="p16-vs-label">對手</span>
+            <span class="p16-opp">${escapeHtml(c.opp)}</span>
           </div>
-          <div class="proj-meta">
-            <span class="proj-zone-full">報到 ${escapeHtml(zLabel)}</span>
-            ${status}
+          <div class="p16-zone-line zone-${c.zoneCode}">
+            <span class="p16-zone-label">報到</span>
+            <span class="p16-zone">${escapeHtml(c.zoneLabel)}</span>
           </div>
+          ${result}
         </div>`;
     })
     .join("");
 
-  // 選手速查：按姓名排序 → 對手 + 報到區
-  const lookup = [];
-  matches.forEach((m) => {
-    const p1 = playerById(m.p1);
-    const p2 = playerById(m.p2);
-    const zLabel = m.zoneLabel || zoneLabel(m.zone ?? 0);
-    const zCode = m.zoneCode || zoneCode(m.zone ?? 0);
-    lookup.push({
-      name: p1?.name || "?",
-      opp: p2?.name || "?",
-      zone: zLabel,
-      zoneCode: zCode,
-      church: p1?.church,
-      done: m.done,
-      myBp: m.p1Bp,
-      oppBp: m.p2Bp,
-      won: m.winner === m.p1,
-    });
-    lookup.push({
-      name: p2?.name || "?",
-      opp: p1?.name || "?",
-      zone: zLabel,
-      zoneCode: zCode,
-      church: p2?.church,
-      done: m.done,
-      myBp: m.p2Bp,
-      oppBp: m.p1Bp,
-      won: m.winner === m.p2,
-    });
-  });
-  lookup.sort((a, b) => a.name.localeCompare(b.name, "zh-Hant"));
-
-  const lookupRows = lookup
-    .map(
-      (r) => `
-      <div class="lookup-row zone-${r.zoneCode}">
-        <div class="lookup-me">
-          <span class="lookup-name">${escapeHtml(r.name)}</span>
-          <span class="church-tag ${r.church || ""}">${churchLabel(r.church)}</span>
-        </div>
-        <div class="lookup-arrow">→</div>
-        <div class="lookup-opp">
-          <span class="lookup-opp-label">對手</span>
-          <span class="lookup-opp-name">${escapeHtml(r.opp)}</span>
-        </div>
-        <div class="lookup-zone zone-${r.zoneCode}">
-          <span class="lookup-zone-label">報到</span>
-          <span class="lookup-zone-name">${escapeHtml(r.zone)}</span>
-        </div>
-        ${
-          r.done
-            ? `<div class="lookup-result ${r.won ? "win" : "lose"}">${r.won ? "勝" : "負"} ${r.myBp}-${r.oppBp}</div>`
-            : `<div class="lookup-result pending">未完</div>`
-        }
-      </div>`
-    )
-    .join("");
-
   return `
-    <div class="proj-board">
-      <div class="proj-board-title">
-        <span>第 ${round.round} 輪對戰</span>
-        <span class="proj-board-sub">請睇自己嘅<strong>對手</strong>同<strong>報到區</strong></span>
+    <div class="proj-fit">
+      <div class="proj-fit-head">
+        <div class="proj-fit-title">第 ${round.round} 輪 · 全部 ${cards.length} 位選手</div>
+        <div class="proj-fit-hint">搵<strong>自己嘅名</strong> → 睇<strong>對手</strong> → 去<strong>報到區</strong></div>
       </div>
-      <div class="proj-matches">${rows}</div>
-      <div class="proj-lookup-wrap">
-        <div class="proj-lookup-title">選手速查（按姓名）</div>
-        <div class="proj-lookup-grid">${lookupRows}</div>
-      </div>
+      <div class="p16-grid">${cells}</div>
     </div>`;
 }
 
@@ -2248,9 +2209,9 @@ function renderPairings() {
       .join("");
   }
 
-  // ── 投影看板模式 ──
+  // ── 投影看板模式：16 人一屏 ──
   if (pairingsViewMode === "project") {
-    grid.innerHTML = renderProjectionBoard(round, stations);
+    grid.innerHTML = renderProjectionBoard(round);
     return;
   }
 
@@ -2885,8 +2846,27 @@ function init() {
       render();
     }
   });
-  document.getElementById("btnViewProject")?.addEventListener("click", () => setPairingsViewMode("project"));
-  document.getElementById("btnViewStaff")?.addEventListener("click", () => setPairingsViewMode("staff"));
+  // 對戰表模式切換（固定工具列，不隨 matchGrid 重繪）
+  const sticky = document.getElementById("pairStickyBar");
+  if (sticky) {
+    sticky.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-pair-view]");
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setPairingsViewMode(btn.dataset.pairView);
+    });
+  }
+  // 同步按鈕樣式（唔強制 re-render 整頁，避免初始化死循環）
+  document.querySelectorAll(".pair-mode-btn").forEach((b) => {
+    const on = b.dataset.pairView === pairingsViewMode;
+    b.classList.toggle("active", on);
+    b.classList.toggle("btn-secondary", on);
+    b.classList.toggle("btn-ghost", !on);
+  });
+  document.querySelectorAll(".staff-tools").forEach((el) => {
+    el.style.display = pairingsViewMode === "staff" ? "" : "none";
+  });
 
   document.getElementById("btnSaveSettings")?.addEventListener("click", saveSettingsFromForm);
   ["setReferees", "setStadiums", "setSwissRounds"].forEach((id) => {
