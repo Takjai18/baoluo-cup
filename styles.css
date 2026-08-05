@@ -781,43 +781,67 @@ body.projection-mode .pair-sticky-bar {
   }
 }
 
-/* ── 排名投影：16 人一屏、唔使 scroll ── */
-.standings-board {
-  /* 預留給 header + nav + sticky bar */
-  height: calc(100vh - 148px);
-  max-height: calc(100vh - 148px);
+/* ── 排名投影：雙欄 8+8，一屏睇晒、唔裁切 ── */
+body.standings-fit {
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-body.standings-fit .standings-board {
-  height: calc(100vh - 118px);
-  max-height: calc(100vh - 118px);
+  height: 100%;
 }
 body.standings-fit #app {
-  height: 100vh;
-  max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   overflow: hidden;
-  padding-top: 6px;
-  padding-bottom: 6px;
+  padding: 4px 10px 6px;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
 }
-body.standings-fit #tab-standings {
-  height: 100%;
+body.standings-fit .header {
+  flex-shrink: 0;
+  padding: 2px 0 2px !important;
+  margin-bottom: 2px !important;
+  border-bottom: none;
+}
+body.standings-fit .header-status {
+  display: none; /* 騰出垂直空間 */
+}
+body.standings-fit .nav {
+  flex-shrink: 0;
+  padding: 2px 0 4px !important;
+}
+body.standings-fit .main {
+  flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 body.standings-fit #tab-standings.active {
-  display: flex;
+  flex: 1;
+  min-height: 0;
+  display: flex !important;
+  flex-direction: column;
+  overflow: hidden;
 }
 body.standings-fit .pair-sticky-bar {
   flex-shrink: 0;
-  margin-bottom: 6px;
+  margin-bottom: 4px !important;
+  padding: 6px 8px !important;
+}
+body.standings-fit .pair-sticky-left .meta {
+  font-size: 0.8rem;
 }
 
-.sp-board {
+.standings-board {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.sp-board,
+.sp-board-fit {
   flex: 1;
   min-height: 0;
   height: 100%;
@@ -829,64 +853,82 @@ body.standings-fit .pair-sticky-bar {
 .sp-board-head {
   flex-shrink: 0;
   text-align: center;
-  padding: 0 4px 4px;
+  padding: 0 4px 3px;
   border-bottom: 1px solid rgba(251, 191, 36, 0.35);
 }
 .sp-board-title {
-  font-size: clamp(0.95rem, 1.8vh, 1.35rem);
+  font-size: clamp(0.9rem, 1.6vh, 1.25rem);
   font-weight: 900;
   color: #fff;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: center;
-  gap: 8px 14px;
+  gap: 6px 12px;
 }
 .sp-board-meta {
-  font-size: clamp(0.7rem, 1.2vh, 0.9rem);
+  font-size: clamp(0.65rem, 1.1vh, 0.85rem);
   font-weight: 700;
   color: #94a3b8;
+}
+
+/* 雙欄：左 1–8、右 9–16 */
+.sp-two-col {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  overflow: hidden;
+}
+.sp-col {
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .sp-col-head {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: 48px minmax(0, 1.6fr) 0.9fr 0.7fr 0.7fr 64px;
-  gap: 6px;
-  padding: 2px 12px;
-  font-size: clamp(0.65rem, 1.1vh, 0.78rem);
+  grid-template-columns: 40px minmax(0, 1.5fr) 0.85fr 0.55fr 0.55fr 52px;
+  gap: 4px;
+  padding: 1px 8px;
+  font-size: clamp(0.6rem, 1vh, 0.72rem);
   font-weight: 800;
   color: #64748b;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
 }
 .sp-list {
   flex: 1;
   min-height: 0;
   display: grid;
-  /* 16 行均分剩餘高度 → 一屏睇晒 */
-  grid-template-rows: repeat(var(--sp-count, 16), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--sp-count, 8), minmax(0, 1fr));
   gap: 3px;
   overflow: hidden;
+  padding-bottom: 2px;
+  box-sizing: border-box;
 }
 .sp-row {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1.6fr) 0.9fr 0.7fr 0.7fr 64px;
-  gap: 6px;
+  grid-template-columns: 40px minmax(0, 1.5fr) 0.85fr 0.55fr 0.55fr 52px;
+  gap: 4px;
   align-items: center;
-  background: rgba(22, 28, 45, 0.92);
+  background: rgba(22, 28, 45, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 0 10px;
+  border-radius: 6px;
+  padding: 0 8px;
   min-height: 0;
   height: 100%;
   box-sizing: border-box;
 }
 .sp-row.is-top4 {
-  background: linear-gradient(90deg, rgba(251, 191, 36, 0.14), rgba(22, 28, 45, 0.95));
-  border-color: rgba(251, 191, 36, 0.4);
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.16), rgba(22, 28, 45, 0.95));
+  border-color: rgba(251, 191, 36, 0.45);
 }
 .sp-rank {
-  font-size: clamp(0.95rem, 2.4vh, 1.55rem);
+  font-size: clamp(0.95rem, 2.8vh, 1.5rem);
   font-weight: 900;
   color: #94a3b8;
   text-align: center;
@@ -901,12 +943,12 @@ body.standings-fit .pair-sticky-bar {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
   overflow: hidden;
 }
 .sp-name {
-  font-size: clamp(0.9rem, 2.3vh, 1.45rem);
+  font-size: clamp(0.85rem, 2.6vh, 1.35rem);
   font-weight: 900;
   color: #fff;
   line-height: 1.1;
@@ -916,27 +958,27 @@ body.standings-fit .pair-sticky-bar {
 }
 .sp-player .church-tag {
   flex-shrink: 0;
-  font-size: clamp(0.6rem, 1.2vh, 0.75rem) !important;
-  padding: 1px 6px !important;
+  font-size: clamp(0.55rem, 1.3vh, 0.7rem) !important;
+  padding: 1px 5px !important;
 }
 .sp-wl {
   display: flex;
   align-items: baseline;
-  gap: 2px;
+  gap: 1px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .sp-wl-num {
-  font-size: clamp(0.9rem, 2.2vh, 1.35rem);
+  font-size: clamp(0.85rem, 2.4vh, 1.25rem);
   font-weight: 900;
   color: #6ee7b7;
 }
 .sp-wl-num.loss {
   color: #fca5a5;
-  margin-left: 4px;
+  margin-left: 3px;
 }
 .sp-wl-sep {
-  font-size: clamp(0.65rem, 1.2vh, 0.8rem);
+  font-size: clamp(0.55rem, 1.2vh, 0.72rem);
   font-weight: 700;
   color: #64748b;
 }
@@ -947,7 +989,7 @@ body.standings-fit .pair-sticky-bar {
   justify-content: center;
 }
 .sp-val {
-  font-size: clamp(1rem, 2.5vh, 1.55rem);
+  font-size: clamp(0.95rem, 2.8vh, 1.4rem);
   font-weight: 900;
   color: #fff;
   font-variant-numeric: tabular-nums;
@@ -962,9 +1004,9 @@ body.standings-fit .pair-sticky-bar {
 }
 .sp-badge {
   display: inline-block;
-  font-size: clamp(0.6rem, 1.2vh, 0.75rem);
+  font-size: clamp(0.55rem, 1.2vh, 0.7rem);
   font-weight: 900;
-  padding: 2px 6px;
+  padding: 1px 5px;
   border-radius: 999px;
   white-space: nowrap;
 }
@@ -979,15 +1021,13 @@ body.standings-fit .pair-sticky-bar {
   border: 1px solid rgba(251, 191, 36, 0.3);
 }
 
-@media (max-width: 700px) {
-  .sp-col-head {
-    display: none;
+@media (max-width: 900px) {
+  .sp-two-col {
+    grid-template-columns: 1fr;
   }
-  .sp-row {
-    grid-template-columns: 36px 1fr auto auto;
+  .sp-list {
+    grid-template-rows: repeat(var(--sp-count, 8), minmax(28px, 1fr));
   }
-  .sp-wl { display: none; }
-  .sp-status { display: none; }
 }
 
 /* Battle 逐場計分 */

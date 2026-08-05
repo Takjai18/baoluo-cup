@@ -2732,7 +2732,7 @@ function renderStandings() {
     .join("");
 }
 
-/** 投影排名：16 人一屏、唔使 scroll */
+/** 投影排名：雙欄 8+8，一屏睇晒 16 人（唔使 scroll） */
 function renderStandingsProjection(ranked, completedRounds) {
   const board = document.getElementById("standingsBoard");
   if (!board) return;
@@ -2742,53 +2742,57 @@ function renderStandingsProjection(ranked, completedRounds) {
     state.phase === "knockout" ||
     state.phase === "done";
 
-  const n = Math.max(ranked.length, 1);
-  const rows = ranked
-    .map((p) => {
-      const top = p.rank <= 4;
-      const status = top
-        ? showQualify
-          ? '<span class="sp-badge qualify">晉級</span>'
-          : '<span class="sp-badge front">前4</span>'
-        : "";
-      return `
-        <div class="sp-row ${top ? "is-top4" : ""}">
-          <div class="sp-rank ${top ? "top4" : ""}">${p.rank}${p.tied ? "=" : ""}</div>
-          <div class="sp-player">
-            <span class="sp-name">${escapeHtml(p.name)}</span>
-            <span class="church-tag ${p.church}">${churchLabel(p.church)}</span>
-          </div>
-          <div class="sp-wl">
-            <span class="sp-wl-num">${p.wins}</span><span class="sp-wl-sep">勝</span>
-            <span class="sp-wl-num loss">${p.losses}</span><span class="sp-wl-sep">負</span>
-          </div>
-          <div class="sp-swiss">
-            <span class="sp-val">${p.swissPoints}</span>
-          </div>
-          <div class="sp-bp">
-            <span class="sp-val bp">${p.battlePoints}</span>
-          </div>
-          <div class="sp-status">${status}</div>
-        </div>`;
-    })
-    .join("");
+  const makeRow = (p) => {
+    const top = p.rank <= 4;
+    const status = top
+      ? showQualify
+        ? '<span class="sp-badge qualify">晉級</span>'
+        : '<span class="sp-badge front">前4</span>'
+      : "";
+    return `
+      <div class="sp-row ${top ? "is-top4" : ""}">
+        <div class="sp-rank ${top ? "top4" : ""}">${p.rank}${p.tied ? "=" : ""}</div>
+        <div class="sp-player">
+          <span class="sp-name">${escapeHtml(p.name)}</span>
+          <span class="church-tag ${p.church}">${churchLabel(p.church)}</span>
+        </div>
+        <div class="sp-wl">
+          <span class="sp-wl-num">${p.wins}</span><span class="sp-wl-sep">勝</span>
+          <span class="sp-wl-num loss">${p.losses}</span><span class="sp-wl-sep">負</span>
+        </div>
+        <div class="sp-swiss"><span class="sp-val">${p.swissPoints}</span></div>
+        <div class="sp-bp"><span class="sp-val bp">${p.battlePoints}</span></div>
+        <div class="sp-status">${status}</div>
+      </div>`;
+  };
+
+  // 雙欄：左 1–8、右 9–16，每欄 8 行，行高更足、唔裁切
+  const mid = Math.ceil(ranked.length / 2);
+  const left = ranked.slice(0, mid);
+  const right = ranked.slice(mid);
+  const rowCount = Math.max(left.length, right.length, 1);
 
   board.innerHTML = `
-    <div class="sp-board" style="--sp-count:${n}">
+    <div class="sp-board sp-board-fit" style="--sp-count:${rowCount}">
       <div class="sp-board-head">
         <div class="sp-board-title">即時排名 · ${ranked.length} 人
-          <span class="sp-board-meta">鎖定 ${completedRounds}/${getSwissRounds()} 輪 · 瑞士分＝勝場 · BP＝比賽總分</span>
+          <span class="sp-board-meta">${completedRounds}/${getSwissRounds()} 輪 · 瑞士分＝勝場 · BP＝比賽總分</span>
         </div>
       </div>
-      <div class="sp-col-head">
-        <span>#</span>
-        <span>選手</span>
-        <span>戰績</span>
-        <span>瑞士分</span>
-        <span>BP</span>
-        <span></span>
+      <div class="sp-two-col">
+        <div class="sp-col">
+          <div class="sp-col-head">
+            <span>#</span><span>選手</span><span>戰績</span><span>瑞士</span><span>BP</span><span></span>
+          </div>
+          <div class="sp-list">${left.map(makeRow).join("")}</div>
+        </div>
+        <div class="sp-col">
+          <div class="sp-col-head">
+            <span>#</span><span>選手</span><span>戰績</span><span>瑞士</span><span>BP</span><span></span>
+          </div>
+          <div class="sp-list">${right.map(makeRow).join("")}</div>
+        </div>
       </div>
-      <div class="sp-list">${rows}</div>
     </div>`;
 }
 
