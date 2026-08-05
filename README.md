@@ -2,10 +2,27 @@
 
 現場用單一頁面 Web App，專為 **2026-08-22 寶螺盃**（九龍城基督徒會 × 宣道會基蔭堂）設計。
 
+## 線上網址
+
+| 用途 | 連結 |
+|------|------|
+| **正式使用（GitHub Pages）** | **https://takjai18.github.io/baoluo-cup/** |
+| 原始碼倉庫 | https://github.com/Takjai18/baoluo-cup |
+
+推送至 `main` 後，Pages 通常約 1–2 分鐘更新完成。
+
+---
+
 ## 快速開始
 
+### 線上（推薦現場用）
+
+直接開啟：https://takjai18.github.io/baoluo-cup/
+
+### 本機
+
 1. 用瀏覽器開啟 `index.html`（Chrome / Safari / Edge 皆可）
-2. 或在終端機執行：
+2. 或：
 
 ```bash
 cd ~/Desktop/baoluo-cup
@@ -14,9 +31,45 @@ python3 -m http.server 8765
 
 然後開啟 http://localhost:8765
 
-**建議現場用法：** 用平板或手提電腦開著此頁，計分義工直接輸入結果。資料存在瀏覽器 `localStorage`，同一部裝置重整也不會丟。
+**建議現場用法：** 用**同一部**平板或手提電腦開著此頁計分。資料存在瀏覽器 `localStorage`（本機），重整不會丟；換機不會自動同步。
 
-## 比賽設定（已寫死於系統）
+---
+
+## 之後如何更新（保持 GitHub 最新）
+
+本機專案路徑：`~/Desktop/baoluo-cup`  
+遠端：`origin` → `https://github.com/Takjai18/baoluo-cup.git`  
+分支：`main`（GitHub Pages 從此 branch 發佈）
+
+在專案資料夾執行：
+
+```bash
+cd ~/Desktop/baoluo-cup
+
+# 1. 看改了什麼
+git status
+
+# 2. 加入變更
+git add -A
+
+# 3. 提交
+git commit -m "說明今次改了什麼"
+
+# 4. 推上 GitHub（Pages 會自動更新）
+git push origin main
+```
+
+一行版（有改動時）：
+
+```bash
+cd ~/Desktop/baoluo-cup && git add -A && git commit -m "更新" && git push origin main
+```
+
+若 Grok / 其他工具幫你改咗檔案，請在同一資料夾再跑上面的 `git add` → `commit` → `push`，GitHub 同線上版就會一齊更新。
+
+---
+
+## 比賽設定
 
 | 項目 | 內容 |
 |------|------|
