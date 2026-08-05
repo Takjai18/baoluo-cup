@@ -457,37 +457,16 @@ function createRoundFromPairs(pairs, roundNum) {
   };
 }
 
-// ─── Church checkbox helpers（二選一）────────────────────
+// ─── Church radio helpers（二選一，原生互斥）────────────
 function getSelectedChurch(rootSelector) {
   const root = typeof rootSelector === "string" ? document.querySelector(rootSelector) : rootSelector;
   if (!root) return null;
-  const checked = root.querySelector('input[type="checkbox"]:checked');
+  const checked = root.querySelector('input[type="radio"]:checked, input[type="checkbox"]:checked');
   return checked ? checked.value : null;
 }
 
-function bindExclusiveChurchChecks(rootSelector) {
-  const root = document.querySelector(rootSelector);
-  if (!root || root.dataset.bound === "1") return;
-  root.dataset.bound = "1";
-  root.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
-    cb.addEventListener("change", () => {
-      if (cb.checked) {
-        root.querySelectorAll('input[type="checkbox"]').forEach((other) => {
-          if (other !== cb) other.checked = false;
-        });
-        root.querySelectorAll(".church-check").forEach((lab) => lab.classList.remove("on"));
-        cb.closest(".church-check")?.classList.add("on");
-      } else {
-        // 不允許全不選：至少保留一個
-        const any = root.querySelector('input[type="checkbox"]:checked');
-        if (!any) {
-          cb.checked = true;
-          cb.closest(".church-check")?.classList.add("on");
-        }
-      }
-    });
-  });
-  // 初始 on 樣式
+function syncChurchCheckStyles(root) {
+  if (!root) return;
   root.querySelectorAll(".church-check").forEach((lab) => {
     const inp = lab.querySelector("input");
     lab.classList.toggle("on", !!(inp && inp.checked));
@@ -1402,14 +1381,14 @@ function renderPlayers() {
             <div class="pc-name">
               <input type="text" class="pc-name-input" data-id="${p.id}" value="${escapeAttr(p.name)}" maxlength="20" />
             </div>
-            <div class="pc-church church-checks compact" data-id="${p.id}">
+            <div class="pc-church church-checks compact" data-id="${p.id}" role="radiogroup">
               <label class="church-check kcc ${p.church === "kcc" ? "on" : ""}">
-                <input type="checkbox" class="pc-church-cb" data-id="${p.id}" value="kcc"
+                <input type="radio" class="pc-church-radio" name="church_${p.id}" data-id="${p.id}" value="kcc"
                   ${p.church === "kcc" ? "checked" : ""} ${state.phase !== "setup" ? "disabled" : ""} />
                 <span>九龍城</span>
               </label>
               <label class="church-check ky ${p.church === "ky" ? "on" : ""}">
-                <input type="checkbox" class="pc-church-cb" data-id="${p.id}" value="ky"
+                <input type="radio" class="pc-church-radio" name="church_${p.id}" data-id="${p.id}" value="ky"
                   ${p.church === "ky" ? "checked" : ""} ${state.phase !== "setup" ? "disabled" : ""} />
                 <span>基蔭</span>
               </label>
@@ -1436,14 +1415,12 @@ function renderPlayers() {
   list.querySelectorAll(".pc-name-input").forEach((inp) => {
     inp.addEventListener("change", () => updatePlayerName(inp.dataset.id, inp.value));
   });
-  list.querySelectorAll(".pc-church-cb").forEach((cb) => {
-    cb.addEventListener("change", () => {
-      if (!cb.checked) {
-        // 必須二選一：取消勾選時還原
-        cb.checked = true;
-        return;
-      }
-      updatePlayerChurch(cb.dataset.id, cb.value);
+  list.querySelectorAll(".pc-church-radio").forEach((radio) => {
+    radio.addEventListener("change", () => {
+      if (!radio.checked) return;
+      const group = radio.closest(".church-checks");
+      syncChurchCheckStyles(group);
+      updatePlayerChurch(radio.dataset.id, radio.value);
     });
   });
   list.querySelectorAll(".btn-del").forEach((btn) => {
@@ -2009,8 +1986,21 @@ function init() {
     btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
 
-  // 新增選手：教會二選一 checkbox
-  bindExclusiveChurchChecks("#newChurchChecks");
+  // 新增選手：教會二選一（radio，原生互斥）
+  const newChurchRoot = document.getElementById("newChurchChecks");
+  if (newChurchRoot) {
+    syncChurchCheckStyles(newChurchRoot);
+    newChurchRoot.querySelectorAll('input[type="radio"]').forEach((radio) => {
+      radio.addEventListener("change", () => syncChurchCheckStyles(newChurchRoot));
+    });
+    // 點整塊 label 時同步樣式（雙重保險）
+    newChurchRoot.querySelectorAll(".church-check").forEach((lab) => {
+      lab.addEventListener("click", () => {
+        // 讓瀏覽器先處理 radio，再於下一幀同步樣式
+        requestAnimationFrame(() => syncChurchCheckStyles(newChurchRoot));
+      });
+    });
+  }
 
   document.getElementById("btnAddPlayer").addEventListener("click", () => {
     const name = document.getElementById("newName").value;
