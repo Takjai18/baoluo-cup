@@ -148,17 +148,28 @@ function swissMatchesOnly() {
 function getPlayerStats(playerId) {
   let wins = 0, losses = 0, battlePoints = 0;
   const opponents = [];
+  /** 每局詳情：{ round, oppId, won, myBp, oppBp } */
+  const matchLog = [];
   for (const m of swissMatchesOnly()) {
     if (m.p1 !== playerId && m.p2 !== playerId) continue;
     const isP1 = m.p1 === playerId;
     const myBp = isP1 ? m.p1Bp : m.p2Bp;
+    const oppBp = isP1 ? m.p2Bp : m.p1Bp;
     const oppId = isP1 ? m.p2 : m.p1;
+    const won = m.winner === playerId;
     battlePoints += myBp || 0;
     opponents.push(oppId);
-    if (m.winner === playerId) wins++;
+    matchLog.push({
+      round: m.round,
+      oppId,
+      won,
+      myBp: myBp || 0,
+      oppBp: oppBp || 0,
+    });
+    if (won) wins++;
     else losses++;
   }
-  return { wins, losses, battlePoints, opponents, swissPoints: wins };
+  return { wins, losses, battlePoints, opponents, matchLog, swissPoints: wins };
 }
 
 function headToHead(aId, bId) {
@@ -1983,14 +1994,19 @@ function renderStandings() {
 
   tbody.innerHTML = ranked
     .map((p) => {
-      const rec = p.opponents
-        .map((oid) => {
-          const opp = playerById(oid);
-          const w = headToHead(p.id, oid);
-          return `${opp?.name || "?"}(${w === p.id ? "W" : "L"})`;
-        })
-        .join(" ");
-      const top = p.rank <= 4 && (state.phase === "knockout" || state.phase === "done" || completedRounds === SWISS_ROUNDS);
+      const log = p.matchLog || [];
+      const rec =
+        log.length === 0
+          ? "—"
+          : log
+              .map((entry) => {
+                const opp = playerById(entry.oppId);
+                const wl = entry.won ? "W" : "L";
+                const wlClass = entry.won ? "rec-w" : "rec-l";
+                // 例：陳大文 W 4-2
+                return `<span class="rec-item ${wlClass}" title="第${entry.round}輪 vs ${escapeAttr(opp?.name || "?")}">${escapeHtml(opp?.name || "?")} <b>${wl}</b> <span class="rec-score">${entry.myBp}-${entry.oppBp}</span></span>`;
+              })
+              .join("");
       return `
       <tr class="${p.rank <= 4 ? "top4-row" : ""}">
         <td><span class="rank-num ${p.rank <= 4 ? "top4" : ""}">${p.rank}${p.tied ? "=" : ""}</span></td>
@@ -2000,7 +2016,7 @@ function renderStandings() {
         <td>${p.losses}</td>
         <td><strong>${p.swissPoints}</strong></td>
         <td>${p.battlePoints}</td>
-        <td class="record-mini">${rec || "—"}</td>
+        <td class="record-mini">${rec}</td>
         <td>${p.rank <= 4 && (state.phase !== "setup") ? (completedRounds >= SWISS_ROUNDS || state.phase === "knockout" || state.phase === "done" ? '<span class="qualify-badge">晉級</span>' : "前段") : ""}</td>
       </tr>`;
     })

@@ -893,7 +893,43 @@ select.input option, .select option {
   color: #cbd5e1 !important;
 }
 .record-mini {
-  color: #94a3b8 !important;
+  color: #cbd5e1 !important;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 320px;
+  font-family: inherit !important;
+  font-size: 0.82rem !important;
+  line-height: 1.4;
+}
+.record-mini .rec-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 3px 8px;
+  white-space: nowrap;
+  color: #e2e8f0;
+}
+.record-mini .rec-item.rec-w {
+  border-color: rgba(52, 211, 153, 0.35);
+}
+.record-mini .rec-item.rec-l {
+  border-color: rgba(248, 113, 113, 0.3);
+}
+.record-mini .rec-item b {
+  font-size: 0.75rem;
+  text-shadow: none;
+}
+.record-mini .rec-w b { color: #6ee7b7; }
+.record-mini .rec-l b { color: #fca5a5; }
+.record-mini .rec-score {
+  font-weight: 800;
+  color: #7dd3fc;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
 
 /* Highlight rows for top 4 */
