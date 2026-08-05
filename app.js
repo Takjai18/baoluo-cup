@@ -675,11 +675,21 @@ function renderBladePicker(bey) {
     })
     .join("");
 
-  const isCxOrCustom = bey.bladeId === "custom" || bey.series === "CX" || bladeSeriesFilter === "CX";
   const list = filterBlades(bladeSeriesFilter, bladeSearchQuery);
+  const exactHit =
+    bladeSearchQuery.trim() && list.length
+      ? findBladeByQuery(bladeSearchQuery) || (list.length === 1 ? list[0] : null)
+      : null;
+  const canQuickConfirm =
+    exactHit && list.some((b) => b.id === exactHit.id);
+
+  const selectedBlade = bey.bladeId ? findBladeById(bey.bladeId) : null;
+  const selectedCompact = selectedBlade ? bladeStaffLabel(selectedBlade) : "";
+
   const options = list
     .map((b) => {
       const sel = bey.bladeId === b.id;
+      const compact = bladeCompactCode(b);
       const tier =
         b.tier === "T0"
           ? '<span class="tier t0">T0</span>'
@@ -687,9 +697,9 @@ function renderBladePicker(bey) {
             ? '<span class="tier t1">T1</span>'
             : "";
       return `<button type="button" class="blade-option ${sel ? "selected" : ""}" data-blade-id="${b.id}">
-        <span class="bo-code">${escapeHtml(b.code)}</span>
+        <span class="bo-code">${escapeHtml(compact)}</span>
         <span class="bo-name">${escapeHtml(b.name)}</span>
-        <span class="bo-en">${escapeHtml(b.en)}</span>
+        <span class="bo-en">${escapeHtml(b.series)}</span>
         ${tier}
       </button>`;
     })
@@ -697,16 +707,28 @@ function renderBladePicker(bey) {
 
   return `
     <div class="part-block">
-      <h4>上蓋 Blade <span class="req">必選</span></h4>
+      <h4>上蓋 Blade <span class="req">必選</span>
+        ${selectedCompact ? `<span class="selected-compact">已選 <strong>${escapeHtml(selectedCompact)}</strong></span>` : ""}
+      </h4>
       <div class="series-row">${seriesBtns}</div>
       ${
         bladeSeriesFilter === "CX"
-          ? `<div class="hint" style="margin:8px 0">CX 系列（主刃＋輔助戰刃＋鎖定紋章）請自由輸入完整名稱。</div>
+          ? `<div class="hint" style="margin:8px 0">CX 系列請自由輸入名稱。</div>
              <input class="input" id="bladeCustomInput" placeholder="例：主刃名稱 + 紋章（自填）" value="${escapeAttr(bey.bladeCustom || bey.bladeName || "")}" />`
           : `
-      <input class="input blade-search" id="bladeSearchInput" placeholder="搜尋：編號 / 中文 / 英文（例 UX15、鮫鯊、Shark）" value="${escapeAttr(bladeSearchQuery)}" />
+      <div class="blade-code-entry">
+        <input class="input blade-search" id="bladeSearchInput" inputmode="text" autocomplete="off"
+          placeholder="輸入系列+編號（例 BX49、UX15）後 Enter 確認"
+          value="${escapeAttr(bladeSearchQuery)}" />
+        ${
+          canQuickConfirm
+            ? `<button type="button" class="btn btn-primary" id="btnConfirmBlade">確認 ${escapeHtml(bladeCompactCode(exactHit))}</button>`
+            : ""
+        }
+      </div>
+      <div class="hint" style="margin:8px 0 6px">直接打 <strong>BX49</strong> / <strong>UX15</strong> 即可，唔使揀完整名。Enter 或按「確認」入選。</div>
       <div class="blade-option-list" id="bladeOptionList">
-        ${options || '<div class="empty-mini">無符合結果，可改搜尋或選 CX 自填</div>'}
+        ${options || '<div class="empty-mini">無符合結果 — 試 BX49、UX15，或選 CX 自填</div>'}
       </div>
       <div class="btn-row mt-8">
         <button type="button" class="btn btn-ghost btn-sm" id="btnBladeCustom">改為自由輸入…</button>
@@ -719,6 +741,18 @@ function renderBladePicker(bey) {
       }
     </div>
   `;
+}
+
+function selectBladeByStaffCode(query) {
+  const list = filterBlades(bladeSeriesFilter, query);
+  let blade = findBladeByQuery(query);
+  if (!blade && list.length === 1) blade = list[0];
+  if (!blade) return false;
+  applyBladeToBey(deckDraft[deckEditBeyIndex], blade);
+  bladeSearchQuery = "";
+  renderDeckModal();
+  toast(`已選上蓋 ${bladeCompactCode(blade)}`, "success");
+  return true;
 }
 
 function renderRatchetPicker(bey) {
@@ -807,7 +841,6 @@ function bindDeckModalEvents(body) {
   if (search) {
     search.addEventListener("input", () => {
       bladeSearchQuery = search.value;
-      // re-render list only would lose focus — full re-render ok with restore
       const pos = search.selectionStart;
       renderDeckModal();
       const again = document.getElementById("bladeSearchInput");
@@ -818,7 +851,22 @@ function bindDeckModalEvents(body) {
         } catch (_) {}
       }
     });
+    search.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const q = search.value.trim();
+        if (!q) return;
+        if (!selectBladeByStaffCode(q)) {
+          toast("搵唔到呢個編號，請用 BX49 / UX15 格式", "error");
+        }
+      }
+    });
   }
+
+  document.getElementById("btnConfirmBlade")?.addEventListener("click", () => {
+    const q = bladeSearchQuery.trim();
+    if (!selectBladeByStaffCode(q)) toast("搵唔到呢個編號", "error");
+  });
 
   body.querySelectorAll(".blade-option").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -827,6 +875,7 @@ function bindDeckModalEvents(body) {
       applyBladeToBey(deckDraft[deckEditBeyIndex], blade);
       bladeSearchQuery = "";
       renderDeckModal();
+      toast(`已選上蓋 ${bladeCompactCode(blade)}`, "success");
     });
   });
 

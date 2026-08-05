@@ -208,24 +208,91 @@ function findBladeById(id) {
   return PARTS.blades.find((b) => b.id === id) || null;
 }
 
+/**
+ * 精簡編號：BX-49 → BX49、UX-15 → UX15（工作人員主要輸入格式）
+ */
+function bladeCompactCode(bladeOrCode) {
+  if (!bladeOrCode) return "";
+  const code = typeof bladeOrCode === "string" ? bladeOrCode : bladeOrCode.code;
+  if (!code || code === "T0" || code === "T1") return code || "";
+  // BX-49 / UX-01 → BX49 / UX01（保留前導零較易對表；另提供無前導零鍵）
+  return String(code).replace(/-/g, "").toUpperCase();
+}
+
+/** BX49 / bx-49 / BX 49 / ux15 → 正規化為可比對字串 */
+function normalizeCodeQuery(q) {
+  return String(q || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .replace(/-/g, "");
+}
+
+/** 從輸入抽出系列+數字：BX49、UX15、49（僅數字則靠 series filter） */
+function parseCompactBladeQuery(q) {
+  const n = normalizeCodeQuery(q);
+  if (!n) return null;
+  const m = n.match(/^(BX|UX|CX)(\d{1,3})$/i);
+  if (m) {
+    return { series: m[1].toUpperCase(), num: String(parseInt(m[2], 10)), raw: n };
+  }
+  if (/^\d{1,3}$/.test(n)) {
+    return { series: null, num: String(parseInt(n, 10)), raw: n };
+  }
+  return null;
+}
+
+function bladeMatchesCompact(blade, compactQuery) {
+  if (!blade || !compactQuery) return false;
+  const compact = bladeCompactCode(blade); // e.g. BX49
+  const n = normalizeCodeQuery(compactQuery);
+  if (!n) return false;
+  if (compact === n) return true;
+  // BX049 vs BX49
+  const parsed = parseCompactBladeQuery(n);
+  if (!parsed) return compact.includes(n) || n.includes(compact);
+  if (parsed.series && blade.series !== parsed.series && blade.code.indexOf(parsed.series) !== 0) {
+    // series mismatch
+    if (blade.series !== parsed.series) return false;
+  }
+  const bladeNum = String(blade.code).replace(/^[A-Z]+-?/i, "").replace(/^0+/, "") || "0";
+  const qNum = String(parsed.num).replace(/^0+/, "") || "0";
+  if (parsed.series) {
+    return blade.series === parsed.series && bladeNum === qNum;
+  }
+  return bladeNum === qNum;
+}
+
 function findBladeByQuery(q) {
-  const t = String(q || "").trim().toLowerCase();
+  const t = String(q || "").trim();
   if (!t) return null;
+  const compact = normalizeCodeQuery(t);
+
+  // 1) 精確精簡碼：BX49、UX15
+  const exactCompact = PARTS.blades.find((b) => bladeCompactCode(b) === compact);
+  if (exactCompact) return exactCompact;
+
+  // 2) 系列+數字（容忍前導零）
+  const byCompact = PARTS.blades.find((b) => bladeMatchesCompact(b, t));
+  if (byCompact) return byCompact;
+
+  const lower = t.toLowerCase();
   return (
     PARTS.blades.find(
       (b) =>
-        b.id === t ||
-        b.code.toLowerCase() === t ||
-        b.name.toLowerCase() === t ||
-        b.en.toLowerCase() === t ||
-        `${b.code} ${b.name}`.toLowerCase() === t ||
-        bladeFullLabel(b).toLowerCase() === t
+        b.id === lower ||
+        b.code.toLowerCase() === lower ||
+        b.name.toLowerCase() === lower ||
+        b.en.toLowerCase() === lower ||
+        `${b.code} ${b.name}`.toLowerCase() === lower ||
+        bladeFullLabel(b).toLowerCase() === lower
     ) ||
     PARTS.blades.find(
       (b) =>
-        b.name.includes(q) ||
-        b.en.toLowerCase().includes(t) ||
-        b.code.toLowerCase().includes(t)
+        b.name.includes(t) ||
+        b.en.toLowerCase().includes(lower) ||
+        b.code.toLowerCase().includes(lower) ||
+        bladeCompactCode(b).toLowerCase().includes(compact.toLowerCase())
     ) ||
     null
   );
@@ -240,12 +307,22 @@ function applyBladeToBey(bey, blade) {
   bey.bladeCustom = "";
 }
 
+/** 工作人員用短標籤：BX49 */
+function bladeStaffLabel(blade) {
+  if (!blade) return "";
+  if (blade.series === "OTHER" || blade.code === "T0" || blade.code === "T1") {
+    return blade.name;
+  }
+  return bladeCompactCode(blade);
+}
+
 function bladeFullLabel(blade) {
   if (!blade) return "";
   if (blade.series === "OTHER" || blade.code === "T0" || blade.code === "T1") {
     return `${blade.name} (${blade.en})`;
   }
-  return `${blade.code} ${blade.name} (${blade.en})`;
+  // 顯示精簡碼為主：BX49 蒼龍突擊
+  return `${bladeCompactCode(blade)} ${blade.name}`;
 }
 
 /** 顯示用上蓋名稱（完整） */
@@ -267,17 +344,20 @@ function partDisplayBlade(bey) {
   return (bey.bladeName || bey.bladeCustom || "").trim();
 }
 
-/** 短名（用於組合顯示） */
+/** 短名（用於組合顯示）— 優先系列編號 BX49 */
 function partDisplayBladeShort(bey) {
   if (!bey) return "";
   if (bey.bladeId === "custom" || bey.series === "CX") {
     return (bey.bladeCustom || bey.bladeName || "").trim();
   }
-  if (bey.bladeName) return bey.bladeName;
   if (bey.bladeId) {
     const b = findBladeById(bey.bladeId);
-    if (b) return b.name;
+    if (b) return bladeStaffLabel(b);
   }
+  if (bey.bladeCode && bey.bladeCode !== "T0" && bey.bladeCode !== "T1") {
+    return bladeCompactCode(bey.bladeCode);
+  }
+  if (bey.bladeName) return bey.bladeName;
   return partDisplayBlade(bey);
 }
 
@@ -288,19 +368,18 @@ function partDisplay(bey, field) {
   return "";
 }
 
-/** 完整組合：鮫鯊狂鱗 3-60 J 或 UX-15 鮫鯊狂鱗 3-60 J */
+/** 完整組合：BX49 3-60 J 或 BX49 蒼龍突擊 3-60 J */
 function beyLabel(bey, opts = {}) {
-  const withCode = opts.withCode !== false;
-  const bl = withCode ? partDisplayBlade(bey) : partDisplayBladeShort(bey);
   const rt = partDisplay(bey, "ratchet");
   const bt = partDisplay(bey, "bit");
-  if (!bl && !rt && !bt) return "（未登記）";
-  // 短顯示：中文名 + 固鎖 + 軸心
+  if (!partDisplayBlade(bey) && !rt && !bt) return "（未登記）";
+  // 短顯示：BX49 3-60 J（現場主用）
   if (opts.short) {
     const shortBl = partDisplayBladeShort(bey) || "?";
     return [shortBl, rt || "?", bt || "?"].join(" ");
   }
-  return [bl || "?", rt || "?", bt || "?"].join(" ");
+  // 完整：BX49 蒼龍突擊 3-60 J
+  return [partDisplayBlade(bey) || "?", rt || "?", bt || "?"].join(" ");
 }
 
 function isBeyComplete(bey) {
@@ -380,20 +459,39 @@ function filterBlades(series, query) {
     list = list.filter((b) => b.series === series);
   }
   if (series === "CX") {
-    // CX 以自填為主，列表可空；仍顯示 OTHER 供參考
+    // CX 以自填為主，列表可空
     list = [];
   }
-  const q = String(query || "").trim().toLowerCase();
-  if (q) {
-    list = list.filter(
-      (b) =>
-        b.code.toLowerCase().includes(q) ||
-        b.name.toLowerCase().includes(q) ||
-        b.en.toLowerCase().includes(q) ||
-        `${b.code} ${b.name}`.toLowerCase().includes(q)
-    );
-  }
-  return list;
+  const raw = String(query || "").trim();
+  if (!raw) return list;
+
+  const compact = normalizeCodeQuery(raw);
+  const lower = raw.toLowerCase();
+  const parsed = parseCompactBladeQuery(raw);
+
+  // 有系列+數字時，優先精確／數字匹配（BX49、UX15）
+  const scored = list
+    .map((b) => {
+      let score = 0;
+      const bCompact = bladeCompactCode(b);
+      if (bCompact === compact) score = 100;
+      else if (bladeMatchesCompact(b, raw)) score = 90;
+      else if (bCompact.startsWith(compact) || compact.startsWith(bCompact)) score = 70;
+      else if (b.code.toLowerCase().includes(lower) || bCompact.includes(compact)) score = 50;
+      else if (b.name.toLowerCase().includes(lower) || b.en.toLowerCase().includes(lower)) score = 30;
+      else if (`${b.code} ${b.name}`.toLowerCase().includes(lower)) score = 20;
+      else score = 0;
+      // 僅輸入數字時，若已選系列 filter 則加強
+      if (parsed && !parsed.series && series && series !== "ALL") {
+        const bladeNum = String(b.code).replace(/^[A-Z]+-?/i, "").replace(/^0+/, "") || "0";
+        if (bladeNum === parsed.num) score = Math.max(score, 85);
+      }
+      return { b, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score || a.b.code.localeCompare(b.b.code));
+
+  return scored.map((x) => x.b);
 }
 
 function sortedBits() {
