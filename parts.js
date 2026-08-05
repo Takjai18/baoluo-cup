@@ -365,37 +365,141 @@ function isCxBladeComplete(bey) {
   return true;
 }
 
+/**
+ * 軸心英文全名 → 官方代碼（介面只顯示代碼，例如 Orb → O）
+ */
+const BIT_NAME_TO_CODE = {
+  // English full names
+  flat: "F",
+  "low flat": "LF",
+  lowflat: "LF",
+  rush: "R",
+  accel: "A",
+  quake: "Q",
+  cyclone: "C",
+  level: "L",
+  "level reverse": "LR",
+  levelreverse: "LR",
+  reverse: "LR",
+  vortex: "V",
+  "gear rush": "GR",
+  gearrush: "GR",
+  taper: "T",
+  "high taper": "HT",
+  hightaper: "HT",
+  point: "P",
+  "gear point": "GP",
+  gearpoint: "GP",
+  "high ball": "H",
+  highball: "H",
+  ball: "B",
+  unite: "U",
+  elevate: "E",
+  "trans point": "TP",
+  transpoint: "TP",
+  merge: "M",
+  kick: "K",
+  zap: "Z",
+  "over point": "Op",
+  overpoint: "Op",
+  infinite: "I",
+  orb: "O",
+  "gear ball": "GB",
+  gearball: "GB",
+  "disk ball": "DB",
+  diskball: "DB",
+  "gear flat": "G",
+  gearflat: "G",
+  "free ball": "FB",
+  freeball: "FB",
+  "low orb": "LO",
+  loworb: "LO",
+  "wall ball": "WB",
+  wallball: "WB",
+  needle: "N",
+  "high needle": "HN",
+  highneedle: "HN",
+  spike: "S",
+  "gear needle": "GN",
+  gearneedle: "GN",
+  "metal needle": "MN",
+  metalneedle: "MN",
+  "under needle": "UN",
+  underneedle: "UN",
+  "ball spike": "BS",
+  ballspike: "BS",
+  "dot spike": "DS",
+  "gear unite": "GU",
+  gearunite: "GU",
+  "ultra flat": "UF",
+  ultraflat: "UF",
+  "rubber accel": "RA",
+  rubberaccel: "RA",
+  hexa: "H",
+  // Chinese legacy
+  "平 (ball)": "B",
+  "針 (needle)": "N",
+  "尖 (point)": "P",
+  "斜 (taper)": "T",
+  "尖針 (spike)": "S",
+  "平底 (flat)": "F",
+  "低平 (low flat)": "LF",
+  "高平 (high ball)": "H",
+  "加速 (accel)": "A",
+  "橡膠加速 (r.accel)": "RA",
+  "齒輪平 (gear ball)": "GB",
+  "齒輪尖 (gear point)": "GP",
+  "齒輪平地 (gear flat)": "G",
+  "齒輪針 (gear needle)": "GN",
+  "自由平 (free ball)": "FB",
+  平: "B",
+  針: "N",
+  尖: "P",
+  斜: "T",
+  球: "O",
+  orb: "O",
+};
+
 function stripBitName(s) {
-  // "平 (Ball)" → try extract code; else keep
-  const m = String(s).match(/\(([A-Za-z]+)\)/);
-  if (m) return m[1];
-  // map old Chinese names roughly
-  const map = {
-    "平 (Ball)": "B",
-    "針 (Needle)": "N",
-    "尖 (Point)": "P",
-    "斜 (Taper)": "T",
-    "尖針 (Spike)": "S",
-    "平底 (Flat)": "F",
-    "低平 (Low Flat)": "LF",
-    "高平 (High Ball)": "H",
-    "加速 (Accel)": "A",
-    "橡膠加速 (R.Accel)": "RA",
-    "齒輪平 (Gear Ball)": "GB",
-    "齒輪尖 (Gear Point)": "GP",
-    "齒輪平地 (Gear Flat)": "G",
-    "齒輪針 (Gear Needle)": "GN",
-    "自由平 (Free Ball)": "FB",
-  };
-  return map[s] || s;
+  const raw = String(s || "").trim();
+  if (!raw) return "";
+  // "平 (Ball)" / "Orb (O)" → 括號內若係代碼優先
+  const paren = raw.match(/\(([A-Za-z0-9]+)\)\s*$/);
+  if (paren) {
+    const inner = paren[1];
+    const asCode = PARTS.bits.find((x) => x.toLowerCase() === inner.toLowerCase());
+    if (asCode) return asCode;
+  }
+  // 括號前的英文名
+  const beforeParen = raw.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  return beforeParen || raw;
 }
 
+/** 正規化為官方軸心代碼（只存／只顯示 O，唔顯示 Orb） */
 function normalizeBitCode(code) {
-  const c = String(code || "").trim();
+  let c = String(code || "").trim();
   if (!c) return "";
-  // case-insensitive match against list
-  const hit = PARTS.bits.find((x) => x.toLowerCase() === c.toLowerCase());
-  return hit || c;
+  c = stripBitName(c);
+
+  // 已是合法代碼
+  const exact = PARTS.bits.find((x) => x.toLowerCase() === c.toLowerCase());
+  if (exact) return exact;
+
+  // 英文／中文全名 → 代碼
+  const key = c.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  const mapped = BIT_NAME_TO_CODE[key] || BIT_NAME_TO_CODE[key.replace(/\s/g, "")];
+  if (mapped) {
+    const hit = PARTS.bits.find((x) => x.toLowerCase() === mapped.toLowerCase());
+    return hit || mapped;
+  }
+
+  // 若誤存 "Orb" 等，再試只取首個大寫字母組
+  const letters = c.replace(/[^A-Za-z]/g, "");
+  if (letters) {
+    const hit2 = PARTS.bits.find((x) => x.toLowerCase() === letters.toLowerCase());
+    if (hit2) return hit2;
+  }
+  return c.toUpperCase();
 }
 
 function findBladeById(id) {
@@ -597,7 +701,8 @@ function partDisplayBladeShort(bey) {
 function partDisplay(bey, field) {
   if (field === "blade") return partDisplayBlade(bey);
   if (field === "ratchet") return (bey?.ratchet || "").trim();
-  if (field === "bit") return (bey?.bit || "").trim();
+  // 軸心：永遠只顯示代碼（O），絕不顯示全名（Orb）
+  if (field === "bit") return normalizeBitCode(bey?.bit || "");
   return "";
 }
 

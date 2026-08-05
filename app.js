@@ -1100,16 +1100,20 @@ function renderRatchetPicker(bey) {
 
 function renderBitPicker(bey) {
   const { freq, rest } = sortedBits();
+  const current = normalizeBitCode(bey.bit || "");
+  // 確保草稿只存代碼
+  if (bey.bit && bey.bit !== current) bey.bit = current;
+
   const optGroup = (label, codes) =>
     `<optgroup label="${label}">${codes
-      .map((c) => `<option value="${c}" ${bey.bit === c ? "selected" : ""}>${c}</option>`)
+      .map((c) => `<option value="${c}" ${current === c ? "selected" : ""}>${c}</option>`)
       .join("")}</optgroup>`;
 
   return `
     <div class="part-block">
-      <h4>軸心 Bit <span class="req">必選（代碼）</span></h4>
+      <h4>軸心 Bit <span class="req">必選 · 只顯示代碼（例 O，唔顯示 Orb）</span></h4>
       <select class="input select part-select" id="bitSelect">
-        <option value="">— 選擇軸心代碼 —</option>
+        <option value="">— 選擇代碼 —</option>
         ${optGroup("常用", freq)}
         ${optGroup("全部", rest)}
       </select>
@@ -1117,8 +1121,8 @@ function renderBitPicker(bey) {
         ${freq
           .map(
             (c) =>
-              `<button type="button" class="chip ${bey.bit === c ? "selected" : ""}" data-quick-bit="${c}">
-                <input type="checkbox" ${bey.bit === c ? "checked" : ""} tabindex="-1" />
+              `<button type="button" class="chip ${current === c ? "selected" : ""}" data-quick-bit="${c}">
+                <input type="checkbox" ${current === c ? "checked" : ""} tabindex="-1" />
                 <span>${c}</span>
               </button>`
           )
@@ -1247,7 +1251,7 @@ function bindDeckModalEvents(body) {
     renderDeckModal();
   });
   document.getElementById("bitSelect")?.addEventListener("change", (e) => {
-    deckDraft[deckEditBeyIndex].bit = e.target.value;
+    deckDraft[deckEditBeyIndex].bit = normalizeBitCode(e.target.value);
     renderDeckModal();
   });
 
@@ -1261,7 +1265,7 @@ function bindDeckModalEvents(body) {
   });
   body.querySelectorAll("[data-quick-bit]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const v = btn.dataset.quickBit;
+      const v = normalizeBitCode(btn.dataset.quickBit);
       const bey = deckDraft[deckEditBeyIndex];
       bey.bit = bey.bit === v ? "" : v;
       renderDeckModal();
