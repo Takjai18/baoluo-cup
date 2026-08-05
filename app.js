@@ -2848,15 +2848,8 @@ function init() {
     const hash = (location.hash || "").replace(/^#/, "").trim();
     if (VALID_TABS.includes(hash)) switchTab(hash, { fromHash: true });
   });
-  // 還原分頁：#pairings 優先（refresh 對戰表會留喺對戰表）
-  switchTab(getInitialTab(), { fromHash: true });
-  // 補上 hash（若 localStorage 有、但網址未有）
-  try {
-    const t = getInitialTab();
-    if (!location.hash || location.hash === "#") {
-      history.replaceState(null, "", "#" + t);
-    }
-  } catch (_) {}
+  // 還原分頁：URL #pairings 優先，其次 localStorage（refresh 會留喺同一分頁）
+  switchTab(getInitialTab());
 
 
   // 新增選手：教會二選一（radio，原生互斥）
