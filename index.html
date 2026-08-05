@@ -27,7 +27,7 @@
 
     <!-- Nav -->
     <nav class="nav" id="mainNav">
-      <button class="nav-btn active" data-tab="settings">⓪ 大會設定</button>
+      <button class="nav-btn" data-tab="settings">⓪ 大會設定</button>
       <button class="nav-btn" data-tab="players">① 選手</button>
       <button class="nav-btn" data-tab="pairings">② 對戰表</button>
       <button class="nav-btn" data-tab="standings">③ 排名</button>
@@ -38,7 +38,7 @@
 
     <main class="main">
       <!-- ===== SETTINGS ===== -->
-      <section id="tab-settings" class="tab active">
+      <section id="tab-settings" class="tab">
         <div class="panel">
           <div class="panel-header">
             <h2>大會設定</h2>
@@ -303,7 +303,8 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="parts.js"></script>
-  <script src="app.js"></script>
+  <!-- cache-bust：確保 GitHub Pages 載入最新 JS -->
+  <script src="parts.js?v=20260805c"></script>
+  <script src="app.js?v=20260805c"></script>
 </body>
 </html>

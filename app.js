@@ -2800,7 +2800,16 @@ function getSavedTab() {
   return "settings";
 }
 
-function switchTab(name) {
+/** 優先用 URL hash（refresh 會保留），其次 localStorage */
+function getInitialTab() {
+  try {
+    const hash = (location.hash || "").replace(/^#/, "").trim();
+    if (VALID_TABS.includes(hash)) return hash;
+  } catch (_) {}
+  return getSavedTab();
+}
+
+function switchTab(name, opts = {}) {
   if (!VALID_TABS.includes(name)) name = "settings";
   document.querySelectorAll(".nav-btn").forEach((b) => {
     b.classList.toggle("active", b.dataset.tab === name);
@@ -2811,6 +2820,15 @@ function switchTab(name) {
   try {
     localStorage.setItem(TAB_STORAGE_KEY, name);
   } catch (_) {}
+  // URL hash：refresh 時瀏覽器會保留 #pairings
+  if (!opts.fromHash) {
+    try {
+      const next = "#" + name;
+      if (location.hash !== next) {
+        history.replaceState(null, "", next);
+      }
+    } catch (_) {}
+  }
   // 只有對戰表 + 投影模式先加 body class
   document.body.classList.toggle(
     "projection-mode",
@@ -2825,8 +2843,20 @@ function init() {
   document.querySelectorAll(".nav-btn").forEach((btn) => {
     btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
-  // 還原上次分頁（例如喺對戰表 refresh 會返對戰表）
-  switchTab(getSavedTab());
+  // 瀏覽器前後按鈕 / 手動改 hash
+  window.addEventListener("hashchange", () => {
+    const hash = (location.hash || "").replace(/^#/, "").trim();
+    if (VALID_TABS.includes(hash)) switchTab(hash, { fromHash: true });
+  });
+  // 還原分頁：#pairings 優先（refresh 對戰表會留喺對戰表）
+  switchTab(getInitialTab(), { fromHash: true });
+  // 補上 hash（若 localStorage 有、但網址未有）
+  try {
+    const t = getInitialTab();
+    if (!location.hash || location.hash === "#") {
+      history.replaceState(null, "", "#" + t);
+    }
+  } catch (_) {}
 
 
   // 新增選手：教會二選一（radio，原生互斥）
