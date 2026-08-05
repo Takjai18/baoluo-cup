@@ -5,8 +5,8 @@
 
 const STORAGE_KEY = "baoluo-cup-v2";
 const STORAGE_KEY_LEGACY = "baoluo-cup-v1";
-const TOTAL_PLAYERS = 16;
 const MATCH_TARGET = 4;
+const PLAYER_PRESETS = [8, 16, 32, 64];
 /** 報到區代號（按可用站點數取前 N 個） */
 const ZONE_CODES = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
@@ -79,6 +79,8 @@ function defaultSettings() {
     referees: 4, // 裁判人數
     stadiums: 4, // 對戰盤數量（建議 2–4）
     swissRounds: 4, // 瑞士制輪次
+    playerCount: 16, // 參賽人數（必須雙數）
+    playerPreset: "16", // '8' | '16' | '32' | '64' | 'other'
   };
 }
 
@@ -88,13 +90,34 @@ function normalizeSettings(s) {
   let referees = parseInt(src.referees, 10);
   let stadiums = parseInt(src.stadiums, 10);
   let swissRounds = parseInt(src.swissRounds, 10);
+  let playerCount = parseInt(src.playerCount, 10);
+  let playerPreset = String(src.playerPreset || "");
+
   if (!Number.isFinite(referees) || referees < 1) referees = d.referees;
   if (!Number.isFinite(stadiums) || stadiums < 1) stadiums = d.stadiums;
   if (!Number.isFinite(swissRounds) || swissRounds < 1) swissRounds = d.swissRounds;
-  referees = Math.min(8, Math.max(1, referees));
-  stadiums = Math.min(8, Math.max(1, stadiums));
-  swissRounds = Math.min(8, Math.max(1, swissRounds));
-  return { referees, stadiums, swissRounds };
+  if (!Number.isFinite(playerCount) || playerCount < 2) playerCount = d.playerCount;
+
+  referees = Math.min(16, Math.max(1, referees));
+  stadiums = Math.min(16, Math.max(1, stadiums));
+  swissRounds = Math.min(12, Math.max(1, swissRounds));
+  // 必須雙數（瑞士制配對）
+  playerCount = Math.min(128, Math.max(2, playerCount));
+  if (playerCount % 2 !== 0) playerCount += 1;
+
+  if (PLAYER_PRESETS.includes(playerCount) && (!playerPreset || playerPreset === "other")) {
+    playerPreset = String(playerCount);
+  }
+  if (!playerPreset) {
+    playerPreset = PLAYER_PRESETS.includes(playerCount) ? String(playerCount) : "other";
+  }
+  if (playerPreset !== "other" && PLAYER_PRESETS.includes(Number(playerPreset))) {
+    playerCount = Number(playerPreset);
+  } else {
+    playerPreset = "other";
+  }
+
+  return { referees, stadiums, swissRounds, playerCount, playerPreset };
 }
 
 /** 實際可用報到站 = min(裁判, 對戰盤) */
@@ -105,6 +128,15 @@ function getActiveStations() {
 
 function getSwissRounds() {
   return normalizeSettings(state.settings).swissRounds;
+}
+
+/** 參賽人數（雙數） */
+function getTotalPlayers() {
+  return normalizeSettings(state.settings).playerCount;
+}
+
+function getMatchesPerRound() {
+  return getTotalPlayers() / 2;
 }
 
 function zoneCode(zoneIndex) {
@@ -687,7 +719,39 @@ function saveSettingsFromForm() {
   const referees = parseInt(document.getElementById("setReferees")?.value, 10);
   const stadiums = parseInt(document.getElementById("setStadiums")?.value, 10);
   const swissRounds = parseInt(document.getElementById("setSwissRounds")?.value, 10);
-  state.settings = normalizeSettings({ referees, stadiums, swissRounds });
+  const playerPreset = document.getElementById("setPlayerPreset")?.value || "16";
+  let playerCount;
+  if (playerPreset === "other") {
+    playerCount = parseInt(document.getElementById("setPlayerCountCustom")?.value, 10);
+  } else {
+    playerCount = parseInt(playerPreset, 10);
+  }
+
+  const next = normalizeSettings({
+    referees,
+    stadiums,
+    swissRounds,
+    playerCount,
+    playerPreset,
+  });
+
+  if (state.phase !== "setup" && next.playerCount !== getTotalPlayers()) {
+    toast("比賽已開始，無法更改參賽人數", "error");
+    renderSettings();
+    return;
+  }
+  if (state.phase === "setup" && state.players.length > next.playerCount) {
+    if (
+      !confirm(
+        `目前已有 ${state.players.length} 人，新上限為 ${next.playerCount} 人。\n多出嘅選手不會自動刪除，請自行刪減。仍儲存設定？`
+      )
+    ) {
+      renderSettings();
+      return;
+    }
+  }
+
+  state.settings = next;
 
   // 未鎖定輪次重新分配報到區
   state.rounds.forEach((r) => {
@@ -696,9 +760,15 @@ function saveSettingsFromForm() {
   saveState();
   render();
   toast(
-    `已儲存：裁判 ${state.settings.referees} · 對戰盤 ${state.settings.stadiums} · 可用站 ${getActiveStations()} · 瑞士 ${getSwissRounds()} 輪`,
+    `已儲存：${state.settings.playerCount} 人 · 裁判 ${state.settings.referees} · 對戰盤 ${state.settings.stadiums} · 站 ${getActiveStations()} · 瑞士 ${getSwissRounds()} 輪`,
     "success"
   );
+}
+
+function syncPlayerCountCustomVisibility() {
+  const preset = document.getElementById("setPlayerPreset")?.value;
+  const wrap = document.getElementById("playerCountCustomWrap");
+  if (wrap) wrap.style.display = preset === "other" ? "" : "none";
 }
 
 // ─── Church radio helpers（二選一，原生互斥）────────────
@@ -734,8 +804,8 @@ function addPlayer(name, church) {
     toast("請輸入姓名", "error");
     return false;
   }
-  if (state.players.length >= TOTAL_PLAYERS) {
-    toast("已滿 16 人", "error");
+  if (state.players.length >= getTotalPlayers()) {
+    toast(`已滿 ${getTotalPlayers()} 人`, "error");
     return false;
   }
   if (state.phase !== "setup") {
@@ -785,21 +855,32 @@ function updatePlayerChurch(id, church) {
 
 function fillDemo() {
   if (state.phase !== "setup") return;
-  state.players = DEMO_PLAYERS.map(([name, church], i) => {
+  const n = getTotalPlayers();
+  const list = [];
+  for (let i = 0; i < n; i++) {
+    const base = DEMO_PLAYERS[i % DEMO_PLAYERS.length];
+    const name = i < DEMO_PLAYERS.length ? base[0] : `${base[0]}${Math.floor(i / DEMO_PLAYERS.length) + 1}`;
+    const church = i % 2 === 0 ? "kcc" : "ky";
     const template = DEMO_DECKS[i % DEMO_DECKS.length];
     const beys = template.map(demoBeyFromTemplate);
     const p = makePlayer(name, church, beys);
     p.deckChecked = true;
-    return p;
-  });
+    list.push(p);
+  }
+  state.players = list;
   saveState();
   render();
-  toast("已填入 16 人 + 示範陀螺配置", "success");
+  toast(`已填入 ${n} 人 + 示範陀螺配置`, "success");
 }
 
 function startTournament() {
-  if (state.players.length !== TOTAL_PLAYERS) {
-    toast(`需要剛好 ${TOTAL_PLAYERS} 人（目前 ${state.players.length}）`, "error");
+  const need = getTotalPlayers();
+  if (state.players.length !== need) {
+    toast(`需要剛好 ${need} 人（目前 ${state.players.length}）`, "error");
+    return;
+  }
+  if (need % 2 !== 0) {
+    toast("參賽人數必須為雙數", "error");
     return;
   }
   const incomplete = state.players.filter((p) => !isDeckComplete(p));
@@ -1753,8 +1834,9 @@ function applyManualPairings(pairIds) {
     if (!confirm("本輪已有結果，手動調整會清除。確定？")) return;
   }
   const all = pairIds.flat();
-  if (new Set(all).size !== TOTAL_PLAYERS || all.length !== TOTAL_PLAYERS) {
-    toast("請確保每位選手恰好出現一次", "error");
+  const need = getTotalPlayers();
+  if (new Set(all).size !== need || all.length !== need) {
+    toast(`請確保 ${need} 位選手恰好各出現一次`, "error");
     return;
   }
   round.matches = assignMatchZones(
@@ -2070,7 +2152,7 @@ function renderHeaderTime() {
 function renderPlayers() {
   state.players.forEach(normalizePlayer);
 
-  document.getElementById("playerCount").textContent = `${state.players.length} / ${TOTAL_PLAYERS}`;
+  document.getElementById("playerCount").textContent = `${state.players.length} / ${getTotalPlayers()}`;
   const kcc = state.players.filter((p) => p.church === "kcc").length;
   const ky = state.players.filter((p) => p.church === "ky").length;
   const deckDone = state.players.filter((p) => isDeckComplete(p)).length;
@@ -2086,7 +2168,7 @@ function renderPlayers() {
   `;
 
   document.getElementById("deckSummaryBar").innerHTML = `
-    <span class="ds-item">已預登姓名 <strong>${state.players.length}</strong> / ${TOTAL_PLAYERS}</span>
+    <span class="ds-item">已預登姓名 <strong>${state.players.length}</strong> / ${getTotalPlayers()}</span>
     <span class="ds-item ok">陀螺齊 3 隻 <strong>${deckDone}</strong></span>
     <span class="ds-item warn">部分登記 <strong>${deckPartial}</strong></span>
     <span class="ds-item">未登陀螺 <strong>${deckNone}</strong></span>
@@ -2094,7 +2176,7 @@ function renderPlayers() {
 
   const list = document.getElementById("playerCards");
   if (!state.players.length) {
-    list.innerHTML = `<div class="empty"><div class="big">📝</div>尚未登記選手。<br>可先預先匯入／輸入 16 人姓名，活動當日再按「登記陀螺」。</div>`;
+    list.innerHTML = `<div class="empty"><div class="big">📝</div>尚未登記選手。<br>可先預先輸入 ${getTotalPlayers()} 人姓名，活動當日再按「登記陀螺」。</div>`;
   } else {
     list.innerHTML = state.players
       .map((p, i) => {
@@ -2173,7 +2255,7 @@ function renderPlayers() {
   });
 
   const startBtn = document.getElementById("btnStartTournament");
-  startBtn.disabled = !(state.phase === "setup" && state.players.length === TOTAL_PLAYERS);
+  startBtn.disabled = !(state.phase === "setup" && state.players.length === getTotalPlayers());
   document.getElementById("btnFillDemo").disabled = state.phase !== "setup";
   document.getElementById("btnClearPlayers").disabled = state.phase !== "setup";
 }
@@ -2371,7 +2453,7 @@ function renderPairings() {
 
   if (!round) {
     badge.textContent = "—";
-    grid.innerHTML = `<div class="empty"><div class="big">📋</div>尚未開始比賽。請先在「選手」頁完成 16 人名單並開始。</div>`;
+    grid.innerHTML = `<div class="empty"><div class="big">📋</div>尚未開始比賽。請先在「選手」頁完成 ${getTotalPlayers()} 人名單並開始。</div>`;
     lockBtn.disabled = true;
     regenBtn.disabled = true;
     manualBtn.disabled = true;
@@ -2615,21 +2697,32 @@ function renderSettings() {
   const refEl = document.getElementById("setReferees");
   const stEl = document.getElementById("setStadiums");
   const swEl = document.getElementById("setSwissRounds");
+  const presetEl = document.getElementById("setPlayerPreset");
+  const customEl = document.getElementById("setPlayerCountCustom");
   if (refEl) refEl.value = s.referees;
   if (stEl) stEl.value = s.stadiums;
   if (swEl) swEl.value = s.swissRounds;
+  if (presetEl) presetEl.value = s.playerPreset || "16";
+  if (customEl) customEl.value = s.playerCount;
+  syncPlayerCountCustomVisibility();
+
+  const lockedPlayers = state.phase !== "setup";
+  if (presetEl) presetEl.disabled = lockedPlayers;
+  if (customEl) customEl.disabled = lockedPlayers;
 
   const stations = getActiveStations();
+  const matches = getMatchesPerRound();
   const preview = document.getElementById("settingsPreview");
   if (preview) {
     const zones = Array.from({ length: stations }, (_, i) => zoneLabel(i)).join("、");
     preview.innerHTML = `
       <div class="hint" style="margin:0">
-        <strong>實際可用報到站：${stations}</strong>
-        ＝ min(裁判 ${s.referees}，對戰盤 ${s.stadiums})<br>
-        本輪對戰會分派到：<strong>${zones}</strong><br>
-        瑞士制共 <strong>${s.swissRounds}</strong> 輪 · 每輪 8 場（16 人）
-        ${state.phase !== "setup" && state.phase !== "swiss" ? "<br><span class='meta'>比賽進行中仍可改裁判／對戰盤；未鎖定輪次會重分區。</span>" : ""}
+        <strong>參賽人數：${s.playerCount}</strong>（每輪 ${matches} 場）
+        ${s.playerPreset === "other" ? " · 自訂" : ""}<br>
+        <strong>可用報到站：${stations}</strong>
+        ＝ min(裁判 ${s.referees}，對戰盤 ${s.stadiums}) · 分派：<strong>${zones}</strong><br>
+        瑞士制 <strong>${s.swissRounds}</strong> 輪
+        ${lockedPlayers ? "<br><span class='meta'>比賽已開始，參賽人數已鎖定；仍可改裁判／對戰盤／輪次（未鎖定輪會重分區）。</span>" : ""}
       </div>`;
   }
 }
@@ -3481,7 +3574,8 @@ function openManualModal() {
     .join("");
 
   let rows = "";
-  for (let i = 0; i < TOTAL_PLAYERS / 2; i++) {
+  const pairCount = getMatchesPerRound();
+  for (let i = 0; i < pairCount; i++) {
     const m = round.matches[i];
     rows += `
       <div class="manual-pair-row">
@@ -3668,27 +3762,36 @@ function init() {
   });
 
   document.getElementById("btnSaveSettings")?.addEventListener("click", saveSettingsFromForm);
-  ["setReferees", "setStadiums", "setSwissRounds"].forEach((id) => {
-    document.getElementById(id)?.addEventListener("change", () => {
-      // 即時預覽（未儲存）
-      const referees = parseInt(document.getElementById("setReferees")?.value, 10);
-      const stadiums = parseInt(document.getElementById("setStadiums")?.value, 10);
-      const swissRounds = parseInt(document.getElementById("setSwissRounds")?.value, 10);
-      const tmp = normalizeSettings({ referees, stadiums, swissRounds });
-      const stations = Math.max(1, Math.min(tmp.referees, tmp.stadiums));
-      const preview = document.getElementById("settingsPreview");
-      if (preview) {
-        const zones = Array.from({ length: stations }, (_, i) => zoneLabel(i)).join("、");
-        preview.innerHTML = `
+  const previewSettings = () => {
+    const referees = parseInt(document.getElementById("setReferees")?.value, 10);
+    const stadiums = parseInt(document.getElementById("setStadiums")?.value, 10);
+    const swissRounds = parseInt(document.getElementById("setSwissRounds")?.value, 10);
+    const playerPreset = document.getElementById("setPlayerPreset")?.value || "16";
+    const playerCount =
+      playerPreset === "other"
+        ? parseInt(document.getElementById("setPlayerCountCustom")?.value, 10)
+        : parseInt(playerPreset, 10);
+    const tmp = normalizeSettings({ referees, stadiums, swissRounds, playerCount, playerPreset });
+    const stations = Math.max(1, Math.min(tmp.referees, tmp.stadiums));
+    const preview = document.getElementById("settingsPreview");
+    if (preview) {
+      const zones = Array.from({ length: stations }, (_, i) => zoneLabel(i)).join("、");
+      preview.innerHTML = `
           <div class="hint" style="margin:0">
-            <strong>預覽 · 可用報到站：${stations}</strong>
-            ＝ min(裁判 ${tmp.referees}，對戰盤 ${tmp.stadiums})<br>
-            會分派到：<strong>${zones}</strong> · 瑞士 <strong>${tmp.swissRounds}</strong> 輪
+            <strong>預覽 · ${tmp.playerCount} 人</strong>（每輪 ${tmp.playerCount / 2} 場）
+            · 站 ${stations} · 瑞士 ${tmp.swissRounds} 輪<br>
+            分派：<strong>${zones}</strong>
             <br><span class="meta">按「儲存設定」後生效</span>
           </div>`;
-      }
-    });
-  });
+    }
+    syncPlayerCountCustomVisibility();
+  };
+  ["setReferees", "setStadiums", "setSwissRounds", "setPlayerPreset", "setPlayerCountCustom"].forEach(
+    (id) => {
+      document.getElementById(id)?.addEventListener("change", previewSettings);
+      document.getElementById(id)?.addEventListener("input", previewSettings);
+    }
+  );
 
   document.getElementById("btnStartTournament").addEventListener("click", startTournament);
   document.getElementById("btnCloseDeck").addEventListener("click", closeDeckModal);
