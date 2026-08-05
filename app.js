@@ -67,7 +67,7 @@ function assignMatchZones(matches) {
 }
 
 const CHURCH = {
-  kcc: { id: "kcc", short: "九龍城", full: "九龍城基督徒會" },
+  kcc: { id: "kcc", short: "城基", full: "九龍城基督徒會" },
   ky: { id: "ky", short: "基蔭", full: "宣道會基蔭堂" },
 };
 
@@ -186,9 +186,9 @@ function playerById(id) {
 
 function parseChurch(s) {
   const t = String(s || "").trim().toLowerCase();
-  if (["kcc", "九龍城", "九龍城基督徒會", "kowloon", "kc"].includes(t)) return "kcc";
+  if (["kcc", "城基", "九龍城", "九龍城基督徒會", "kowloon", "kc"].includes(t)) return "kcc";
   if (["ky", "基蔭", "宣道會基蔭堂", "kei yam", "keiyam", "基蔭堂"].includes(t)) return "ky";
-  if (t.includes("九龍") || t.includes("kcc")) return "kcc";
+  if (t.includes("城基") || t.includes("九龍") || t.includes("kcc")) return "kcc";
   if (t.includes("基蔭") || t.includes("ky") || t.includes("宣道")) return "ky";
   return null;
 }
@@ -1884,7 +1884,7 @@ function renderPlayers() {
   const deckNone = state.players.length - deckDone - deckPartial;
 
   document.getElementById("churchSummary").innerHTML = `
-    <span><span class="church-tag kcc">九龍城</span> <strong>${kcc}</strong> 人</span>
+    <span><span class="church-tag kcc">城基</span> <strong>${kcc}</strong> 人</span>
     <span><span class="church-tag ky">基蔭</span> <strong>${ky}</strong> 人</span>
   `;
 
@@ -1930,7 +1930,7 @@ function renderPlayers() {
               <label class="church-check kcc ${p.church === "kcc" ? "on" : ""}">
                 <input type="radio" class="pc-church-radio" name="church_${p.id}" data-id="${p.id}" value="kcc"
                   ${p.church === "kcc" ? "checked" : ""} ${state.phase !== "setup" ? "disabled" : ""} />
-                <span>九龍城</span>
+                <span>城基</span>
               </label>
               <label class="church-check ky ${p.church === "ky" ? "on" : ""}">
                 <input type="radio" class="pc-church-radio" name="church_${p.id}" data-id="${p.id}" value="ky"
