@@ -681,22 +681,26 @@ select.input option, .select option {
 .score-side .quick {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 5px;
   justify-content: center;
   margin-top: 8px;
 }
 .score-side .quick button {
-  min-height: 36px;
-  padding: 4px 10px;
+  min-height: 40px;
+  min-width: 36px;
+  padding: 4px 8px;
   border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
-  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(30, 41, 59, 0.95);
+  color: #fff;
+  font-weight: 800;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 0.95rem;
 }
-.score-side .quick button:hover { border-color: var(--primary); }
+.score-side .quick button:hover {
+  border-color: rgba(56, 189, 248, 0.6);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
+}
 .score-mid {
   padding-top: 28px;
   font-weight: 900;

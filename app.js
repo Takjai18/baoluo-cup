@@ -2262,28 +2262,28 @@ function buildScoreForm(p1, p2, p1Bp, p2Bp) {
     <div class="score-vs">
       <div class="score-side" id="scoreSide1" data-id="${p1.id}">
         <div class="name">${escapeHtml(p1.name)}</div>
-        <input type="number" id="scoreP1" min="0" max="20" value="${p1Bp || 0}" inputmode="numeric" />
+        <input type="number" id="scoreP1" min="0" max="6" value="${p1Bp || 0}" inputmode="numeric" />
         <div class="quick">
-          <button type="button" data-target="scoreP1" data-val="4">4</button>
-          <button type="button" data-target="scoreP1" data-val="3">3</button>
-          <button type="button" data-target="scoreP1" data-val="2">2</button>
-          <button type="button" data-target="scoreP1" data-val="1">1</button>
-          <button type="button" data-target="scoreP1" data-val="0">0</button>
-          <button type="button" data-target="scoreP1" data-delta="1">+1</button>
+          ${[0, 1, 2, 3, 4, 5, 6]
+            .map(
+              (n) =>
+                `<button type="button" data-target="scoreP1" data-val="${n}">${n}</button>`
+            )
+            .join("")}
         </div>
         <div class="auto-win-tag" id="winTag1" hidden>勝方</div>
       </div>
       <div class="score-mid">BP</div>
       <div class="score-side" id="scoreSide2" data-id="${p2.id}">
         <div class="name">${escapeHtml(p2.name)}</div>
-        <input type="number" id="scoreP2" min="0" max="20" value="${p2Bp || 0}" inputmode="numeric" />
+        <input type="number" id="scoreP2" min="0" max="6" value="${p2Bp || 0}" inputmode="numeric" />
         <div class="quick">
-          <button type="button" data-target="scoreP2" data-val="4">4</button>
-          <button type="button" data-target="scoreP2" data-val="3">3</button>
-          <button type="button" data-target="scoreP2" data-val="2">2</button>
-          <button type="button" data-target="scoreP2" data-val="1">1</button>
-          <button type="button" data-target="scoreP2" data-val="0">0</button>
-          <button type="button" data-target="scoreP2" data-delta="1">+1</button>
+          ${[0, 1, 2, 3, 4, 5, 6]
+            .map(
+              (n) =>
+                `<button type="button" data-target="scoreP2" data-val="${n}">${n}</button>`
+            )
+            .join("")}
         </div>
         <div class="auto-win-tag" id="winTag2" hidden>勝方</div>
       </div>
