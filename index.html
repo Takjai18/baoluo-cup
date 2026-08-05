@@ -31,9 +31,10 @@
       <button class="nav-btn" data-tab="players">① 選手</button>
       <button class="nav-btn" data-tab="pairings">② 對戰表</button>
       <button class="nav-btn" data-tab="standings">③ 排名</button>
-      <button class="nav-btn" data-tab="ties">④ 同分</button>
-      <button class="nav-btn" data-tab="knockout">⑤ 淘汰賽</button>
-      <button class="nav-btn" data-tab="export">⑥ 匯出</button>
+      <button class="nav-btn" data-tab="history">④ 詳細戰績</button>
+      <button class="nav-btn" data-tab="ties">⑤ 同分</button>
+      <button class="nav-btn" data-tab="knockout">⑥ 淘汰賽</button>
+      <button class="nav-btn" data-tab="export">⑦ 匯出</button>
     </nav>
 
     <main class="main">
@@ -221,6 +222,21 @@
         </div>
       </section>
 
+      <!-- ===== HISTORY ===== -->
+      <section id="tab-history" class="tab">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>詳細戰績</h2>
+            <span class="meta">每場 Match 的 Battle 明細 · 陀螺 vs 陀螺 · Finish · 得分</span>
+          </div>
+          <div class="hint">
+            記錄每場 Battle：例如第 1 場 Over +2、第 2 場被擊敗 0 分、第 3 場 Spin +1…
+            出場陀螺順序只作裁判登記用，此處顯示該場實際使用嘅陀螺對戰。
+          </div>
+          <div id="historyPanel"></div>
+        </div>
+      </section>
+
       <!-- ===== TIES ===== -->
       <section id="tab-ties" class="tab">
         <div class="panel">
@@ -319,7 +335,7 @@
 
   <div id="toast" class="toast hidden"></div>
   <!-- cache-bust：確保 GitHub Pages 載入最新 JS -->
-  <script src="parts.js?v=20260805h"></script>
-  <script src="app.js?v=20260805h"></script>
+  <script src="parts.js?v=20260805i"></script>
+  <script src="app.js?v=20260805i"></script>
 </body>
 </html>

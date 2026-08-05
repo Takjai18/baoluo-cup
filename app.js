@@ -10,6 +10,70 @@ const MATCH_TARGET = 4;
 /** 報到區代號（按可用站點數取前 N 個） */
 const ZONE_CODES = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
+/** Beyblade X 官方 Finish → 得分 */
+const FINISH_TYPES = {
+  extreme: { id: "extreme", label: "Extreme Finish", short: "Extreme", pts: 3 },
+  over: { id: "over", label: "Over Finish", short: "Over", pts: 2 },
+  burst: { id: "burst", label: "Burst Finish", short: "Burst", pts: 2 },
+  spin: { id: "spin", label: "Spin Finish", short: "Spin", pts: 1 },
+};
+
+function finishPts(type) {
+  return FINISH_TYPES[type]?.pts ?? 0;
+}
+
+function finishLabel(type) {
+  return FINISH_TYPES[type]?.short || type || "?";
+}
+
+function emptyBattles() {
+  return [];
+}
+
+function normalizeBattles(list) {
+  if (!Array.isArray(list)) return emptyBattles();
+  return list.map((b) => ({
+    id: b.id || uid("b"),
+    p1BeyIndex: b.p1BeyIndex === null || b.p1BeyIndex === undefined ? null : Number(b.p1BeyIndex),
+    p2BeyIndex: b.p2BeyIndex === null || b.p2BeyIndex === undefined ? null : Number(b.p2BeyIndex),
+    winnerId: b.winnerId || null,
+    finishType: b.finishType || "spin",
+    points: Number.isFinite(Number(b.points)) ? Number(b.points) : finishPts(b.finishType),
+  }));
+}
+
+/** 由 battles 重算 Match BP 同勝方 */
+function totalsFromBattles(p1Id, p2Id, battles) {
+  let p1Bp = 0;
+  let p2Bp = 0;
+  for (const b of battles || []) {
+    if (!b.winnerId) continue;
+    const pts = b.points || finishPts(b.finishType);
+    if (b.winnerId === p1Id) p1Bp += pts;
+    else if (b.winnerId === p2Id) p2Bp += pts;
+  }
+  const winnerId = autoWinnerFromScores(p1Id, p2Id, p1Bp, p2Bp);
+  return { p1Bp, p2Bp, winnerId, done: !!winnerId };
+}
+
+function applyBattleTotals(m) {
+  ensureMatchBeyOrders(m);
+  if (!m.battles) m.battles = emptyBattles();
+  else m.battles = normalizeBattles(m.battles);
+  const t = totalsFromBattles(m.p1, m.p2, m.battles);
+  m.p1Bp = t.p1Bp;
+  m.p2Bp = t.p2Bp;
+  if (t.done) {
+    m.winner = t.winnerId;
+    m.done = true;
+  } else if (m.battles.length > 0) {
+    // 有 battle 但未到 4：未完場
+    m.winner = null;
+    m.done = false;
+  }
+  return m;
+}
+
 function defaultSettings() {
   return {
     referees: 4, // 裁判人數
@@ -585,6 +649,7 @@ function createRoundFromPairs(pairs, roundNum) {
     done: false,
     p1BeyOrder: emptyBeyOrder(),
     p2BeyOrder: emptyBeyOrder(),
+    battles: emptyBattles(),
   }));
   return {
     round: roundNum,
@@ -606,6 +671,16 @@ function ensureMatchBeyOrders(m) {
   else m.p1BeyOrder = normalizeBeyOrder(m.p1BeyOrder);
   if (!m.p2BeyOrder) m.p2BeyOrder = emptyBeyOrder();
   else m.p2BeyOrder = normalizeBeyOrder(m.p2BeyOrder);
+  if (!Array.isArray(m.battles)) m.battles = emptyBattles();
+  else m.battles = normalizeBattles(m.battles);
+}
+
+/** 第 n 場 battle（0-based）預設用出場次序第 n 隻 */
+function defaultBeyIndexForBattle(order, battleIndex) {
+  const o = normalizeBeyOrder(order);
+  if (o[battleIndex] !== null && o[battleIndex] !== undefined) return o[battleIndex];
+  if (battleIndex <= 2) return battleIndex;
+  return null;
 }
 
 function saveSettingsFromForm() {
@@ -1540,23 +1615,38 @@ function saveMatchResult(matchId, winnerId, p1Bp, p2Bp) {
   const m = round.matches.find((x) => x.id === matchId);
   if (!m) return false;
 
+  // 若有 battle 明細，以 battles 為準
+  if (Array.isArray(m.battles) && m.battles.length > 0) {
+    applyBattleTotals(m);
+    if (!m.done && winnerId) {
+      // 允許強制完場
+      m.winner = winnerId;
+      m.p1Bp = Math.max(0, parseInt(p1Bp, 10) || m.p1Bp);
+      m.p2Bp = Math.max(0, parseInt(p2Bp, 10) || m.p2Bp);
+      m.done = true;
+    }
+    if (!m.done) {
+      toast(`尚未有一方達到 ${MATCH_TARGET} 分，請繼續記錄 Battle`, "error");
+      return false;
+    }
+    saveState();
+    render();
+    toast("結果已儲存", "success");
+    return true;
+  }
+
   p1Bp = Math.max(0, parseInt(p1Bp, 10) || 0);
   p2Bp = Math.max(0, parseInt(p2Bp, 10) || 0);
-
+  const auto = autoWinnerFromScores(m.p1, m.p2, p1Bp, p2Bp);
+  if (auto) winnerId = auto;
   if (winnerId !== m.p1 && winnerId !== m.p2) {
     toast("請選擇勝方", "error");
     return false;
   }
-
-  // 優先用分數自動判定（≥4 分勝出）
-  const auto = autoWinnerFromScores(m.p1, m.p2, p1Bp, p2Bp);
-  if (auto) winnerId = auto;
   const winBp = winnerId === m.p1 ? p1Bp : p2Bp;
-  const loseBp = winnerId === m.p1 ? p2Bp : p1Bp;
   if (winBp < MATCH_TARGET) {
     if (!confirm(`勝方比賽分（${winBp}）未達 ${MATCH_TARGET}，仍要儲存？`)) return false;
   }
-
   m.winner = winnerId;
   m.p1Bp = p1Bp;
   m.p2Bp = p2Bp;
@@ -1576,8 +1666,46 @@ function clearMatchResult(matchId) {
   m.p1Bp = 0;
   m.p2Bp = 0;
   m.done = false;
+  m.battles = emptyBattles();
   saveState();
   render();
+}
+
+/** 儲存瑞士制 Match 的 battle 列表並完場（如已達 4 分） */
+function commitMatchBattles(matchId, battles, forceComplete) {
+  const round = currentRoundObj();
+  if (!round || round.locked) {
+    toast("本輪已鎖定", "error");
+    return false;
+  }
+  const m = round.matches.find((x) => x.id === matchId);
+  if (!m) return false;
+  m.battles = normalizeBattles(battles);
+  applyBattleTotals(m);
+  if (!m.done && forceComplete) {
+    const t = totalsFromBattles(m.p1, m.p2, m.battles);
+    if (t.p1Bp === 0 && t.p2Bp === 0) {
+      toast("請至少記錄一場 Battle", "error");
+      return false;
+    }
+    if (!confirm(`尚未有一方 ≥ ${MATCH_TARGET} 分（${t.p1Bp}:${t.p2Bp}）。強制結束並以較高分／已選方式定勝方？`)) {
+      return false;
+    }
+    m.p1Bp = t.p1Bp;
+    m.p2Bp = t.p2Bp;
+    m.winner = t.winnerId || (t.p1Bp >= t.p2Bp ? m.p1 : m.p2);
+    m.done = true;
+  }
+  if (!m.done) {
+    saveState();
+    render();
+    toast(`已儲存 Battle 紀錄（目前 ${m.p1Bp} : ${m.p2Bp}，未完場）`, "success");
+    return true;
+  }
+  saveState();
+  render();
+  toast("Match 完場，結果已儲存", "success");
+  return true;
 }
 
 function lockRoundAndAdvance() {
@@ -1641,6 +1769,7 @@ function applyManualPairings(pairIds) {
       done: false,
       p1BeyOrder: emptyBeyOrder(),
       p2BeyOrder: emptyBeyOrder(),
+      battles: emptyBattles(),
     }))
   );
   saveState();
@@ -1718,17 +1847,17 @@ function saveKoResult(matchRef, winnerId, p1Bp, p2Bp) {
   m.p2Bp = Math.max(0, parseInt(p2Bp, 10) || 0);
   m.done = true;
 
-  // Advance
-  if (matchRef.type === "semi" && state.knockout.semis.every((s) => s.done)) {
+  // Advance（準決賽全完先產生決賽／季軍賽，且唔重複覆蓋）
+  if (matchRef.type === "semi" && state.knockout.semis.every((s) => s.done) && !state.knockout.final) {
     const w1 = state.knockout.semis[0].winner;
     const w2 = state.knockout.semis[1].winner;
     const l1 = state.knockout.semis[0].p1 === w1 ? state.knockout.semis[0].p2 : state.knockout.semis[0].p1;
     const l2 = state.knockout.semis[1].p1 === w2 ? state.knockout.semis[1].p2 : state.knockout.semis[1].p1;
     state.knockout.final = {
-      id: uid("ko"), label: "決賽", p1: w1, p2: w2, winner: null, p1Bp: 0, p2Bp: 0, done: false,
+      id: uid("ko"), label: "決賽", p1: w1, p2: w2, winner: null, p1Bp: 0, p2Bp: 0, done: false, battles: [],
     };
     state.knockout.third = {
-      id: uid("ko"), label: "季軍賽", p1: l1, p2: l2, winner: null, p1Bp: 0, p2Bp: 0, done: false,
+      id: uid("ko"), label: "季軍賽", p1: l1, p2: l2, winner: null, p1Bp: 0, p2Bp: 0, done: false, battles: [],
     };
   }
   if (state.knockout.final?.done && state.knockout.third?.done) {
@@ -1925,6 +2054,7 @@ function render() {
   renderPlayers();
   renderPairings();
   renderStandings();
+  renderHistory();
   renderTies();
   renderKnockout();
   renderHeaderTime();
@@ -2662,6 +2792,103 @@ function renderStandingsProjection(ranked, completedRounds) {
     </div>`;
 }
 
+/** 詳細戰績：每位選手每場 Match 的 Battle 明細 */
+function renderHistory() {
+  const panel = document.getElementById("historyPanel");
+  if (!panel) return;
+  if (!state.players.length) {
+    panel.innerHTML = `<div class="empty"><div class="big">📖</div>尚未有選手</div>`;
+    return;
+  }
+
+  const matches = [];
+  for (const r of state.rounds) {
+    for (const m of r.matches) {
+      if (!m.done && !(m.battles && m.battles.length)) continue;
+      matches.push({ ...m, round: r.round });
+    }
+  }
+
+  if (!matches.length) {
+    panel.innerHTML = `<div class="empty"><div class="big">📖</div>完成比賽並記錄 Battle 後，詳細戰績會顯示於此。</div>`;
+    return;
+  }
+
+  const byPlayer = state.players.map((p) => {
+    normalizePlayer(p);
+    const mine = matches
+      .filter((m) => m.p1 === p.id || m.p2 === p.id)
+      .sort((a, b) => a.round - b.round || (a.table || 0) - (b.table || 0));
+    return { player: p, matches: mine };
+  });
+
+  panel.innerHTML = byPlayer
+    .map(({ player: p, matches: mine }) => {
+      if (!mine.length) {
+        return `
+          <div class="hist-player">
+            <div class="hist-player-head">
+              <strong>${escapeHtml(p.name)}</strong>
+              <span class="church-tag ${p.church}">${churchLabel(p.church)}</span>
+              <span class="meta">未有完場紀錄</span>
+            </div>
+          </div>`;
+      }
+      const blocks = mine
+        .map((m) => {
+          const oppId = m.p1 === p.id ? m.p2 : m.p1;
+          const opp = playerById(oppId);
+          const myBp = m.p1 === p.id ? m.p1Bp : m.p2Bp;
+          const oppBp = m.p1 === p.id ? m.p2Bp : m.p1Bp;
+          const won = m.winner === p.id;
+          ensureMatchBeyOrders(m);
+          const battles = normalizeBattles(m.battles || []);
+          let battleHtml;
+          if (battles.length) {
+            battleHtml = battles
+              .map((b, i) => {
+                const myBeyI = m.p1 === p.id ? b.p1BeyIndex : b.p2BeyIndex;
+                const oppBeyI = m.p1 === p.id ? b.p2BeyIndex : b.p1BeyIndex;
+                const myBey = beyShortAt(p, myBeyI);
+                const oppBey = beyShortAt(opp, oppBeyI);
+                const iWon = b.winnerId === p.id;
+                const pts = b.points || finishPts(b.finishType);
+                return `
+                  <div class="hist-battle ${iWon ? "win" : "lose"}">
+                    <span class="hist-b-num">B${i + 1}</span>
+                    <span class="hist-b-bey">${escapeHtml(myBey)} <span class="muted">vs</span> ${escapeHtml(oppBey)}</span>
+                    <span class="hist-b-res">${iWon ? `勝 +${pts}` : "負 0"} · ${escapeHtml(finishLabel(b.finishType))}</span>
+                  </div>`;
+              })
+              .join("");
+          } else {
+            battleHtml = `<div class="meta">舊資料：只有總分 ${myBp}–${oppBp}（無逐場 Battle）</div>`;
+          }
+          return `
+            <div class="hist-match">
+              <div class="hist-match-head">
+                <span>第 ${m.round} 輪 · 場次 ${m.table}</span>
+                <span>vs <strong>${escapeHtml(opp?.name || "?")}</strong></span>
+                <span class="${won ? "hist-win" : "hist-lose"}">${won ? "勝" : "負"} ${myBp}–${oppBp}</span>
+              </div>
+              <div class="hist-battles">${battleHtml}</div>
+            </div>`;
+        })
+        .join("");
+
+      return `
+        <div class="hist-player">
+          <div class="hist-player-head">
+            <strong>${escapeHtml(p.name)}</strong>
+            <span class="church-tag ${p.church}">${churchLabel(p.church)}</span>
+            <span class="meta">${mine.length} 場 Match</span>
+          </div>
+          ${blocks}
+        </div>`;
+    })
+    .join("");
+}
+
 function renderTies() {
   const panel = document.getElementById("tieBreakPanel");
   if (!state.players.length || !swissMatchesOnly().length) {
@@ -2857,36 +3084,47 @@ function autoWinnerFromScores(p1Id, p2Id, p1Bp, p2Bp) {
   return null;
 }
 
+/** 計分 modal 草稿 battles（瑞士制逐場記錄） */
+let scoreBattleDraft = [];
+
 function openScoreModal(matchId) {
   const round = currentRoundObj();
   const m = round?.matches.find((x) => x.id === matchId);
   if (!m) return;
+  ensureMatchBeyOrders(m);
   scoreModalMatchId = matchId;
   koModalRef = null;
   scoreModalP1Id = m.p1;
   scoreModalP2Id = m.p2;
   const p1 = playerById(m.p1);
   const p2 = playerById(m.p2);
-  // 開啟時若已有分數，先自動判定
-  scoreModalWinner =
-    autoWinnerFromScores(m.p1, m.p2, m.p1Bp, m.p2Bp) || m.winner || null;
+  // 有舊總分但無 battles → 保留總分快速模式；有 battles 用明細
+  scoreBattleDraft = normalizeBattles(m.battles || []);
+  if (!scoreBattleDraft.length && (m.p1Bp > 0 || m.p2Bp > 0) && m.done) {
+    // 相容舊資料：無明細時用總分表單
+    scoreModalWinner = m.winner || autoWinnerFromScores(m.p1, m.p2, m.p1Bp, m.p2Bp);
+    document.getElementById("scoreModalTitle").textContent = `場次 ${m.table} · 輸入結果`;
+    document.getElementById("scoreModalBody").innerHTML = buildScoreFormSimple(p1, p2, m.p1Bp, m.p2Bp);
+    document.getElementById("scoreModal").classList.remove("hidden");
+    bindScoreFormSimple(() => {
+      const p1Bp = document.getElementById("scoreP1").value;
+      const p2Bp = document.getElementById("scoreP2").value;
+      const auto = autoWinnerFromScores(scoreModalP1Id, scoreModalP2Id, p1Bp, p2Bp);
+      scoreModalWinner = auto || scoreModalWinner;
+      if (!scoreModalWinner) {
+        toast(`請輸入分數：先到 ${MATCH_TARGET} 分`, "error");
+        return;
+      }
+      m.battles = [];
+      if (saveMatchResult(scoreModalMatchId, scoreModalWinner, p1Bp, p2Bp)) closeScoreModal();
+    });
+    return;
+  }
 
-  document.getElementById("scoreModalTitle").textContent = `桌 ${m.table} · 輸入結果`;
-  document.getElementById("scoreModalBody").innerHTML = buildScoreForm(p1, p2, m.p1Bp, m.p2Bp);
+  document.getElementById("scoreModalTitle").textContent = `場次 ${m.table} · Battle 紀錄`;
+  document.querySelector("#scoreModal .modal-card")?.classList.add("modal-wide");
+  renderBattleScoreModal(p1, p2, m);
   document.getElementById("scoreModal").classList.remove("hidden");
-  bindScoreForm(() => {
-    const p1Bp = document.getElementById("scoreP1").value;
-    const p2Bp = document.getElementById("scoreP2").value;
-    const auto = autoWinnerFromScores(scoreModalP1Id, scoreModalP2Id, p1Bp, p2Bp);
-    scoreModalWinner = auto || scoreModalWinner;
-    if (!scoreModalWinner) {
-      toast(`請輸入分數：先到 ${MATCH_TARGET} 分自動判定勝方`, "error");
-      return;
-    }
-    if (saveMatchResult(scoreModalMatchId, scoreModalWinner, p1Bp, p2Bp)) {
-      closeScoreModal();
-    }
-  });
 }
 
 function openKoScoreModal(type, index) {
@@ -2896,13 +3134,9 @@ function openKoScoreModal(type, index) {
   }
   let m = null;
   const idx = index === undefined || index === null || index === "" ? null : Number(index);
-  if (type === "semi") {
-    m = state.knockout.semis?.[idx];
-  } else if (type === "third") {
-    m = state.knockout.third;
-  } else if (type === "final") {
-    m = state.knockout.final;
-  }
+  if (type === "semi") m = state.knockout.semis?.[idx];
+  else if (type === "third") m = state.knockout.third;
+  else if (type === "final") m = state.knockout.final;
   if (!m) {
     toast("搵唔到該場比賽", "error");
     return;
@@ -2918,46 +3152,242 @@ function openKoScoreModal(type, index) {
   koModalRef = { type, index: idx };
   scoreModalP1Id = m.p1;
   scoreModalP2Id = m.p2;
-  scoreModalWinner =
-    autoWinnerFromScores(m.p1, m.p2, m.p1Bp, m.p2Bp) || m.winner || null;
-
+  // 淘汰賽：用 battle 明細（若已有）或簡單總分
+  if (!m.battles) m.battles = [];
+  scoreBattleDraft = normalizeBattles(m.battles);
+  if (scoreBattleDraft.length || !m.done) {
+    // 統一用 battle UI（可逐步加）
+    document.getElementById("scoreModalTitle").textContent = (m.label || "淘汰賽") + " · Battle 紀錄";
+    document.querySelector("#scoreModal .modal-card")?.classList.add("modal-wide");
+    renderBattleScoreModal(p1, p2, m, { knockout: true });
+    document.getElementById("scoreModal").classList.remove("hidden");
+    return;
+  }
+  scoreModalWinner = m.winner || autoWinnerFromScores(m.p1, m.p2, m.p1Bp, m.p2Bp);
   document.getElementById("scoreModalTitle").textContent = m.label || "淘汰賽結果";
-  document.getElementById("scoreModalBody").innerHTML = buildScoreForm(
-    p1,
-    p2,
-    m.p1Bp || 0,
-    m.p2Bp || 0
-  );
+  document.querySelector("#scoreModal .modal-card")?.classList.remove("modal-wide");
+  document.getElementById("scoreModalBody").innerHTML = buildScoreFormSimple(p1, p2, m.p1Bp || 0, m.p2Bp || 0);
   document.getElementById("scoreModal").classList.remove("hidden");
-  bindScoreForm(() => {
+  bindScoreFormSimple(() => {
     const p1Bp = document.getElementById("scoreP1").value;
     const p2Bp = document.getElementById("scoreP2").value;
     const auto = autoWinnerFromScores(scoreModalP1Id, scoreModalP2Id, p1Bp, p2Bp);
     scoreModalWinner = auto || scoreModalWinner;
     if (!scoreModalWinner) {
-      toast(`請輸入分數：先到 ${MATCH_TARGET} 分自動判定勝方`, "error");
+      toast(`請輸入分數：先到 ${MATCH_TARGET} 分`, "error");
       return;
     }
-    if (saveKoResult(koModalRef, scoreModalWinner, p1Bp, p2Bp)) {
-      closeScoreModal();
+    if (saveKoResult(koModalRef, scoreModalWinner, p1Bp, p2Bp)) closeScoreModal();
+  });
+}
+
+function renderBattleScoreModal(p1, p2, m, opts = {}) {
+  const body = document.getElementById("scoreModalBody");
+  normalizePlayer(p1);
+  normalizePlayer(p2);
+  ensureMatchBeyOrders(m);
+  const t = totalsFromBattles(p1.id, p2.id, scoreBattleDraft);
+  const totals = t;
+
+  const battleRows = scoreBattleDraft
+    .map((b, i) => {
+      const wName = b.winnerId === p1.id ? p1.name : b.winnerId === p2.id ? p2.name : "?";
+      const lName = b.winnerId === p1.id ? p2.name : p1.name;
+      const b1 = beyShortAt(p1, b.p1BeyIndex);
+      const b2 = beyShortAt(p2, b.p2BeyIndex);
+      return `
+        <div class="battle-log-row">
+          <div class="battle-log-num">第 ${i + 1} 場</div>
+          <div class="battle-log-body">
+            <div class="battle-log-bey">${escapeHtml(b1)} <span class="muted">vs</span> ${escapeHtml(b2)}</div>
+            <div class="battle-log-res">
+              <strong>${escapeHtml(wName)}</strong> 勝
+              · ${escapeHtml(finishLabel(b.finishType))}
+              · +${b.points || finishPts(b.finishType)} 分
+              <span class="muted">（${escapeHtml(lName)} 0 分）</span>
+            </div>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm battle-del" data-i="${i}">刪</button>
+        </div>`;
+    })
+    .join("");
+
+  const nextI = scoreBattleDraft.length;
+  const def1 = defaultBeyIndexForBattle(m.p1BeyOrder, nextI);
+  const def2 = defaultBeyIndexForBattle(m.p2BeyOrder, nextI);
+
+  const beyOpts = (player, selected) =>
+    [0, 1, 2]
+      .map((i) => {
+        const lab = beyShortAt(player, i);
+        const empty = lab === "—" || lab === "（未登記）";
+        return `<option value="${i}" ${selected === i ? "selected" : ""} ${empty ? "" : ""}>${i + 1}：${escapeHtml(empty ? "未登記" : lab)}</option>`;
+      })
+      .join("");
+
+  body.innerHTML = `
+    <div class="battle-score-head">
+      <div class="score-side ${totals.winnerId === p1.id ? "is-winner" : ""}">
+        <div class="name">${escapeHtml(p1.name)}</div>
+        <div class="p-bp">${totals.p1Bp}</div>
+      </div>
+      <div class="score-mid">BP</div>
+      <div class="score-side ${totals.winnerId === p2.id ? "is-winner" : ""}">
+        <div class="name">${escapeHtml(p2.name)}</div>
+        <div class="p-bp">${totals.p2Bp}</div>
+      </div>
+    </div>
+    <div class="winner-banner ${totals.done ? "ok" : ""}" id="winnerBanner">
+      ${
+        totals.done
+          ? `Match 完場 · 勝方：${escapeHtml(totals.winnerId === p1.id ? p1.name : p2.name)}（${totals.p1Bp}:${totals.p2Bp}）`
+          : `累計 ${totals.p1Bp} : ${totals.p2Bp} · 先到 ${MATCH_TARGET} 分`
+      }
+    </div>
+
+    <div class="battle-log-list">
+      ${battleRows || `<div class="empty-mini">尚未記錄 Battle — 下面新增第 1 場</div>`}
+    </div>
+
+    ${
+      totals.done
+        ? ""
+        : `
+    <div class="battle-add-panel">
+      <h4>新增第 ${nextI + 1} 場 Battle</h4>
+      <div class="battle-add-grid">
+        <label>勝方
+          <select id="battleWinner" class="input select">
+            <option value="${p1.id}">${escapeHtml(p1.name)}</option>
+            <option value="${p2.id}">${escapeHtml(p2.name)}</option>
+          </select>
+        </label>
+        <label>Finish
+          <select id="battleFinish" class="input select">
+            <option value="over">Over（2）</option>
+            <option value="burst">Burst（2）</option>
+            <option value="spin">Spin（1）</option>
+            <option value="extreme">Extreme（3）</option>
+          </select>
+        </label>
+        <label>${escapeHtml(p1.name)} 陀螺
+          <select id="battleP1Bey" class="input select">
+            <option value="">—</option>
+            ${beyOpts(p1, def1)}
+          </select>
+        </label>
+        <label>${escapeHtml(p2.name)} 陀螺
+          <select id="battleP2Bey" class="input select">
+            <option value="">—</option>
+            ${beyOpts(p2, def2)}
+          </select>
+        </label>
+      </div>
+      <button type="button" class="btn btn-secondary" id="btnAddBattle" style="width:100%;margin-top:10px">＋ 加入此場 Battle</button>
+    </div>`
+    }
+
+    <div class="btn-row wrap mt-16">
+      <button type="button" class="btn btn-ghost" id="btnSaveBattlesPartial">暫存進度</button>
+      <button type="button" class="btn btn-primary" id="btnSaveBattlesDone" style="margin-left:auto">
+        ${totals.done ? "確認完場並關閉" : `儲存（需一方 ≥ ${MATCH_TARGET}）`}
+      </button>
+    </div>
+  `;
+
+  body.querySelectorAll(".battle-del").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      scoreBattleDraft.splice(Number(btn.dataset.i), 1);
+      renderBattleScoreModal(p1, p2, m, opts);
+    });
+  });
+  document.getElementById("btnAddBattle")?.addEventListener("click", () => {
+    const winnerId = document.getElementById("battleWinner").value;
+    const finishType = document.getElementById("battleFinish").value;
+    const p1b = document.getElementById("battleP1Bey").value;
+    const p2b = document.getElementById("battleP2Bey").value;
+    const points = finishPts(finishType);
+    scoreBattleDraft.push({
+      id: uid("b"),
+      p1BeyIndex: p1b === "" ? null : Number(p1b),
+      p2BeyIndex: p2b === "" ? null : Number(p2b),
+      winnerId,
+      finishType,
+      points,
+    });
+    renderBattleScoreModal(p1, p2, m, opts);
+  });
+  document.getElementById("btnSaveBattlesPartial")?.addEventListener("click", () => {
+    if (opts.knockout) {
+      saveKoBattles(false);
+    } else {
+      if (commitMatchBattles(scoreModalMatchId, scoreBattleDraft, false)) {
+        // 保持 modal 開住可繼續？暫存後關閉較清晰
+        closeScoreModal();
+      }
+    }
+  });
+  document.getElementById("btnSaveBattlesDone")?.addEventListener("click", () => {
+    if (opts.knockout) {
+      saveKoBattles(true);
+    } else {
+      const t2 = totalsFromBattles(p1.id, p2.id, scoreBattleDraft);
+      if (!t2.done) {
+        if (!confirm(`尚未有一方 ≥ ${MATCH_TARGET}（${t2.p1Bp}:${t2.p2Bp}）。仍強制完場？`)) return;
+        if (commitMatchBattles(scoreModalMatchId, scoreBattleDraft, true)) closeScoreModal();
+      } else {
+        if (commitMatchBattles(scoreModalMatchId, scoreBattleDraft, false)) closeScoreModal();
+      }
     }
   });
 }
 
-function buildScoreForm(p1, p2, p1Bp, p2Bp) {
+function saveKoBattles(requireDone) {
+  if (!koModalRef || !state.knockout) return;
+  let m;
+  if (koModalRef.type === "semi") m = state.knockout.semis[koModalRef.index];
+  else if (koModalRef.type === "third") m = state.knockout.third;
+  else m = state.knockout.final;
+  if (!m) return;
+  m.battles = normalizeBattles(scoreBattleDraft);
+  const t = totalsFromBattles(m.p1, m.p2, m.battles);
+  m.p1Bp = t.p1Bp;
+  m.p2Bp = t.p2Bp;
+  if (t.done) {
+    m.winner = t.winnerId;
+    m.done = true;
+  } else if (requireDone) {
+    if (t.p1Bp === 0 && t.p2Bp === 0) {
+      toast("請至少記錄一場 Battle", "error");
+      return;
+    }
+    if (!confirm(`尚未達 ${MATCH_TARGET} 分。強制完場？`)) return;
+    m.winner = t.p1Bp >= t.p2Bp ? m.p1 : m.p2;
+    m.done = true;
+  } else {
+    m.winner = null;
+    m.done = false;
+  }
+  // 沿用 saveKoResult 晉級邏輯
+  if (m.done) {
+    saveKoResult(koModalRef, m.winner, m.p1Bp, m.p2Bp);
+  } else {
+    saveState();
+    render();
+    toast(`已暫存（${m.p1Bp}:${m.p2Bp}）`, "success");
+  }
+  closeScoreModal();
+}
+
+function buildScoreFormSimple(p1, p2, p1Bp, p2Bp) {
   return `
-    <div class="score-note">輸入雙方比賽分（BP）。<strong>≥ ${MATCH_TARGET} 分</strong> 自動判定為勝方（Extreme 3 · Over/Burst 2 · Spin 1）。</div>
+    <div class="score-note">輸入雙方比賽分（BP）。<strong>≥ ${MATCH_TARGET} 分</strong> 自動判定勝方。</div>
     <div class="score-vs">
       <div class="score-side" id="scoreSide1" data-id="${p1.id}">
         <div class="name">${escapeHtml(p1.name)}</div>
         <input type="number" id="scoreP1" min="0" max="6" value="${p1Bp || 0}" inputmode="numeric" />
         <div class="quick">
-          ${[0, 1, 2, 3, 4, 5, 6]
-            .map(
-              (n) =>
-                `<button type="button" data-target="scoreP1" data-val="${n}">${n}</button>`
-            )
-            .join("")}
+          ${[0, 1, 2, 3, 4, 5, 6].map((n) => `<button type="button" data-target="scoreP1" data-val="${n}">${n}</button>`).join("")}
         </div>
         <div class="auto-win-tag" id="winTag1" hidden>勝方</div>
       </div>
@@ -2966,12 +3396,7 @@ function buildScoreForm(p1, p2, p1Bp, p2Bp) {
         <div class="name">${escapeHtml(p2.name)}</div>
         <input type="number" id="scoreP2" min="0" max="6" value="${p2Bp || 0}" inputmode="numeric" />
         <div class="quick">
-          ${[0, 1, 2, 3, 4, 5, 6]
-            .map(
-              (n) =>
-                `<button type="button" data-target="scoreP2" data-val="${n}">${n}</button>`
-            )
-            .join("")}
+          ${[0, 1, 2, 3, 4, 5, 6].map((n) => `<button type="button" data-target="scoreP2" data-val="${n}">${n}</button>`).join("")}
         </div>
         <div class="auto-win-tag" id="winTag2" hidden>勝方</div>
       </div>
@@ -2982,82 +3407,52 @@ function buildScoreForm(p1, p2, p1Bp, p2Bp) {
   `;
 }
 
-function bindScoreForm(onSave) {
+function bindScoreFormSimple(onSave) {
   const body = document.getElementById("scoreModalBody");
   body.querySelectorAll(".quick button").forEach((btn) => {
     btn.addEventListener("click", () => {
       const inp = document.getElementById(btn.dataset.target);
-      if (btn.dataset.delta) {
-        inp.value = Math.max(0, (parseInt(inp.value, 10) || 0) + Number(btn.dataset.delta));
-      } else {
-        inp.value = btn.dataset.val;
-      }
-      updateScoreHint();
+      inp.value = btn.dataset.val;
+      updateScoreHintSimple();
     });
   });
-  document.getElementById("scoreP1").addEventListener("input", updateScoreHint);
-  document.getElementById("scoreP2").addEventListener("input", updateScoreHint);
-  document.getElementById("btnSaveScore").addEventListener("click", onSave);
-  updateScoreHint();
+  document.getElementById("scoreP1")?.addEventListener("input", updateScoreHintSimple);
+  document.getElementById("scoreP2")?.addEventListener("input", updateScoreHintSimple);
+  document.getElementById("btnSaveScore")?.addEventListener("click", onSave);
+  updateScoreHintSimple();
 }
 
-function updateScoreHint() {
+function updateScoreHintSimple() {
   const hint = document.getElementById("scoreHint");
   const banner = document.getElementById("winnerBanner");
-  const tag1 = document.getElementById("winTag1");
-  const tag2 = document.getElementById("winTag2");
   const side1 = document.getElementById("scoreSide1");
   const side2 = document.getElementById("scoreSide2");
+  const tag1 = document.getElementById("winTag1");
+  const tag2 = document.getElementById("winTag2");
   if (!hint) return;
-
-  const a = Math.max(0, parseInt(document.getElementById("scoreP1").value, 10) || 0);
-  const b = Math.max(0, parseInt(document.getElementById("scoreP2").value, 10) || 0);
+  const a = Math.max(0, parseInt(document.getElementById("scoreP1")?.value, 10) || 0);
+  const b = Math.max(0, parseInt(document.getElementById("scoreP2")?.value, 10) || 0);
   const auto = autoWinnerFromScores(scoreModalP1Id, scoreModalP2Id, a, b);
   scoreModalWinner = auto;
-
-  // UI 高亮
   side1?.classList.toggle("is-winner", auto === scoreModalP1Id);
   side2?.classList.toggle("is-winner", auto === scoreModalP2Id);
-  side1?.classList.toggle("is-loser", auto && auto !== scoreModalP1Id);
-  side2?.classList.toggle("is-loser", auto && auto !== scoreModalP2Id);
-  if (tag1) {
-    tag1.hidden = auto !== scoreModalP1Id;
-  }
-  if (tag2) {
-    tag2.hidden = auto !== scoreModalP2Id;
-  }
-
+  if (tag1) tag1.hidden = auto !== scoreModalP1Id;
+  if (tag2) tag2.hidden = auto !== scoreModalP2Id;
   const p1 = playerById(scoreModalP1Id);
   const p2 = playerById(scoreModalP2Id);
-
   if (auto) {
-    const wName = auto === scoreModalP1Id ? p1?.name : p2?.name;
-    const winBp = auto === scoreModalP1Id ? a : b;
-    const loseBp = auto === scoreModalP1Id ? b : a;
     if (banner) {
-      banner.textContent = `自動判定勝方：${wName}（${winBp} : ${loseBp}）`;
+      banner.textContent = `勝方：${auto === scoreModalP1Id ? p1?.name : p2?.name}（${a}:${b}）`;
       banner.className = "winner-banner ok";
     }
-    if (a >= MATCH_TARGET && b >= MATCH_TARGET && a !== b) {
-      hint.textContent = `雙方都 ≥ ${MATCH_TARGET} 分，已按較高分判定勝方。`;
-      hint.className = "score-note warn";
-    } else {
-      hint.textContent = `分數已達 ${MATCH_TARGET} 分，勝方已自動選定。可直接儲存。`;
-      hint.className = "score-note";
-    }
-  } else if (a >= MATCH_TARGET && b >= MATCH_TARGET && a === b) {
-    if (banner) {
-      banner.textContent = `雙方同為 ${a} 分（≥${MATCH_TARGET}），無法自動判定 — 請調分`;
-      banner.className = "winner-banner warn";
-    }
-    hint.textContent = `雙方分數相同且都 ≥ ${MATCH_TARGET}，請調整其中一方分數。`;
-    hint.className = "score-note warn";
+    hint.textContent = "可儲存結果。";
+    hint.className = "score-note";
   } else {
     if (banner) {
-      banner.textContent = `尚未判定勝方（需一方 ≥ ${MATCH_TARGET} 分）`;
+      banner.textContent = `目前 ${a} : ${b}`;
       banner.className = "winner-banner";
     }
-    hint.textContent = `目前 ${a} : ${b} — 先到 ${MATCH_TARGET} 分者自動勝出。`;
+    hint.textContent = `先到 ${MATCH_TARGET} 分勝出。`;
     hint.className = "score-note";
   }
 }
@@ -3069,6 +3464,7 @@ function closeScoreModal() {
   scoreModalP1Id = null;
   scoreModalP2Id = null;
   koModalRef = null;
+  scoreBattleDraft = [];
 }
 
 // ─── Manual pairing modal ────────────────────────────────
@@ -3130,7 +3526,7 @@ function closeManualModal() {
 
 // ─── Tabs ────────────────────────────────────────────────
 const TAB_STORAGE_KEY = "baoluo-cup-active-tab";
-const VALID_TABS = ["settings", "players", "pairings", "standings", "ties", "knockout", "export"];
+const VALID_TABS = ["settings", "players", "pairings", "standings", "history", "ties", "knockout", "export"];
 
 function getSavedTab() {
   try {
@@ -3172,6 +3568,7 @@ function switchTab(name, opts = {}) {
   updateProjectionBodyClass();
   if (name === "pairings") renderPairings();
   if (name === "standings") renderStandings();
+  if (name === "history") renderHistory();
 }
 
 // ─── Init ────────────────────────────────────────────────
