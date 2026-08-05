@@ -19,7 +19,7 @@ const PARTS = {
     { id: "bx-03", code: "BX-03", name: "魔導幻箭", en: "WizardArrow", series: "BX", tier: "" },
     { id: "bx-04", code: "BX-04", name: "騎士重盾", en: "KnightShield", series: "BX", tier: "" },
     { id: "bx-13", code: "BX-13", name: "騎士長槍", en: "KnightLance", series: "BX", tier: "" },
-    { id: "bx-14", code: "BX-14", name: "鮫鯊鋒鰭", en: "SharkEdge", series: "BX", tier: "T0" },
+    { id: "bx-14", code: "BX-14", name: "鮫鯊鋒鰭", en: "SharkEdge", series: "BX", tier: "" },
     { id: "bx-15", code: "BX-15", name: "雄獅獵爪", en: "LeonClaw", series: "BX", tier: "" },
     { id: "bx-16", code: "BX-16", name: "王蛇鞭尾", en: "ViperTail", series: "BX", tier: "" },
     { id: "bx-19", code: "BX-19", name: "戰犀號角", en: "RhinoHorn", series: "BX", tier: "" },
@@ -51,7 +51,7 @@ const PARTS = {
     { id: "ux-10", code: "UX-10", name: "騎士圓甲", en: "KnightMail", series: "UX", tier: "" },
     { id: "ux-11", code: "UX-11", name: "衝擊龍神", en: "ImpactDrake", series: "UX", tier: "" },
     { id: "ux-14", code: "UX-14", name: "天蠍長矛", en: "ScorpioSpear", series: "UX", tier: "" },
-    { id: "ux-15", code: "UX-15", name: "鮫鯊狂鱗", en: "SharkScale", series: "UX", tier: "" },
+    { id: "ux-15", code: "UX-15", name: "鮫鯊狂鱗", en: "SharkScale", series: "UX", tier: "T0" },
     { id: "ux-16", code: "UX-16", name: "時鐘幻影", en: "ClockMirage", series: "UX", tier: "T1" },
     { id: "ux-17", code: "UX-17", name: "隕星龍騎士", en: "MeteorDragoon", series: "UX", tier: "T1" },
     { id: "ux-19", code: "UX-19", name: "子彈獅鷲", en: "BulletGriffon", series: "UX", tier: "T1" },
@@ -642,8 +642,10 @@ function getBeyTier(bey) {
   }
   // custom text match activity keywords
   const name = partDisplayBladeShort(bey) || partDisplayBlade(bey);
-  const t0 = ["神仗", "魔導神杖", "鯊魚", "鮫鯊鋒鰭", "天馬爆擊", "空力天馬", "左膠龍", "蒼穹龍騎士", "女武神", "榮耀戰神", "薯片龍", "帝王紋章", "戰神紋章"];
-  const t1 = ["鳳凰", "鳳凰飛翼", "鳳凰尾翼", "左龍", "隕星龍騎士", "突擊", "蒼龍突擊", "時鐘", "時鐘幻影", "子彈獅鷲", "惡魔幽冥"];
+  // 活動 T0／T1 關鍵字（以零件 tier 為準；此處作自填／別名後備）
+  // T0：含 UX15 鮫鯊狂鱗；BX14 鮫鯊鋒鰭 不在限制內
+  const t0 = ["神仗", "魔導神杖", "鯊魚", "鮫鯊狂鱗", "SharkScale", "UX15", "天馬爆擊", "空力天馬", "左膠龍", "蒼穹龍騎士", "女武神", "榮耀戰神", "薯片龍", "帝王紋章", "戰神紋章"];
+  const t1 = ["鳳凰飛翼", "鳳凰尾翼", "左龍", "隕星龍騎士", "突擊", "蒼龍突擊", "時鐘", "時鐘幻影", "子彈獅鷲", "惡魔幽冥"];
   if (t0.some((k) => name.includes(k))) return "T0";
   if (t1.some((k) => name.includes(k))) return "T1";
   return "";
