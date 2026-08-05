@@ -2139,7 +2139,6 @@ function renderProjectionBoard(round) {
     <div class="proj-zones">
       <div class="proj-fit-head">
         <div class="proj-fit-title">第 ${round.round} 輪對戰 · 請到自己報到區</div>
-        <div class="proj-fit-hint">同一區嘅對戰排同一行 · 例如 <strong>A 區：甲 VS 乙 ｜ 丙 VS 丁</strong></div>
       </div>
       <div class="zg-board">${zoneRows}</div>
     </div>`;
