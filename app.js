@@ -1995,7 +1995,26 @@ function escapeHtml(s) {
     .replace(/>/g, "&gt;");
 }
 
-function renderMatchCard(m, round, statsMap) {
+/** 對戰表顯示：project = 投影看板；staff = 計分操作 */
+let pairingsViewMode = "project";
+
+function setPairingsViewMode(mode) {
+  pairingsViewMode = mode === "staff" ? "staff" : "project";
+  document.body.classList.toggle("projection-mode", pairingsViewMode === "project");
+  document.querySelectorAll(".view-mode-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.pairView === pairingsViewMode);
+    b.classList.toggle("btn-secondary", b.dataset.pairView === pairingsViewMode);
+    b.classList.toggle("btn-ghost", b.dataset.pairView !== pairingsViewMode);
+  });
+  const panel = document.querySelector(".pairings-panel");
+  if (panel) {
+    panel.classList.toggle("is-project", pairingsViewMode === "project");
+    panel.classList.toggle("is-staff", pairingsViewMode === "staff");
+  }
+  renderPairings();
+}
+
+function renderMatchCardStaff(m, round, statsMap) {
   const p1 = playerById(m.p1);
   const p2 = playerById(m.p2);
   const same = p1 && p2 && p1.church === p2.church;
@@ -2011,20 +2030,20 @@ function renderMatchCard(m, round, statsMap) {
       <div class="match-top">
         <span class="match-num">場次 ${m.table}</span>
         <span class="zone-badge zone-${zCode}">報到：${escapeHtml(zLabel)}</span>
-        <span class="vs-tag ${same ? "same" : "diff"}">${same ? "同教會對賽" : "不同教會對賽"}</span>
+        <span class="vs-tag ${same ? "same" : "diff"}">${same ? "同教會" : "不同教會"}</span>
       </div>
       <div class="match-players">
         <div class="player-side ${m.done && m.winner === m.p1 ? "winner" : ""} ${m.done && m.winner === m.p2 ? "loser" : ""}">
           <div class="p-name">${escapeHtml(p1?.name || "?")}</div>
           <div class="p-meta"><span class="church-tag ${p1?.church}">${churchLabel(p1?.church)}</span></div>
-          <div class="p-meta">本輪前 ${pre1} 勝 · 總分 ${m.done ? s1.battlePoints - (m.p1Bp || 0) : s1.battlePoints}</div>
+          <div class="p-meta">本輪前 ${pre1} 勝</div>
           ${m.done ? `<div class="p-bp">${m.p1Bp}</div>` : ""}
         </div>
         <div class="vs-center">VS</div>
         <div class="player-side ${m.done && m.winner === m.p2 ? "winner" : ""} ${m.done && m.winner === m.p1 ? "loser" : ""}">
           <div class="p-name">${escapeHtml(p2?.name || "?")}</div>
           <div class="p-meta"><span class="church-tag ${p2?.church}">${churchLabel(p2?.church)}</span></div>
-          <div class="p-meta">本輪前 ${pre2} 勝 · 總分 ${m.done ? s2.battlePoints - (m.p2Bp || 0) : s2.battlePoints}</div>
+          <div class="p-meta">本輪前 ${pre2} 勝</div>
           ${m.done ? `<div class="p-bp">${m.p2Bp}</div>` : ""}
         </div>
       </div>
@@ -2041,6 +2060,124 @@ function renderMatchCard(m, round, statsMap) {
     </div>`;
 }
 
+/** 投影看板：一大列顯示 報到區 + 雙方姓名（全場一目了然） */
+function renderProjectionBoard(round, stations) {
+  const matches = [...round.matches].sort((a, b) => {
+    const za = a.zone ?? 0;
+    const zb = b.zone ?? 0;
+    if (za !== zb) return za - zb;
+    return (a.table || 0) - (b.table || 0);
+  });
+
+  const rows = matches
+    .map((m) => {
+      const p1 = playerById(m.p1);
+      const p2 = playerById(m.p2);
+      const zCode = m.zoneCode || zoneCode(m.zone ?? 0);
+      const zLabel = m.zoneLabel || zoneLabel(m.zone ?? 0);
+      const status = m.done
+        ? `<span class="proj-score">${m.p1Bp} – ${m.p2Bp}</span>`
+        : `<span class="proj-wait">進行中</span>`;
+      const w1 = m.done && m.winner === m.p1 ? "is-win" : m.done ? "is-lose" : "";
+      const w2 = m.done && m.winner === m.p2 ? "is-win" : m.done ? "is-lose" : "";
+
+      return `
+        <div class="proj-row zone-${zCode} ${m.done ? "is-done" : ""}">
+          <div class="proj-zone zone-${zCode}">
+            <span class="proj-zone-letter">${escapeHtml(zCode)}</span>
+            <span class="proj-zone-text">區</span>
+          </div>
+          <div class="proj-players">
+            <div class="proj-name ${w1}">
+              <span class="proj-pname">${escapeHtml(p1?.name || "?")}</span>
+              <span class="proj-church church-tag ${p1?.church || ""}">${churchLabel(p1?.church)}</span>
+            </div>
+            <div class="proj-vs">VS</div>
+            <div class="proj-name ${w2}">
+              <span class="proj-pname">${escapeHtml(p2?.name || "?")}</span>
+              <span class="proj-church church-tag ${p2?.church || ""}">${churchLabel(p2?.church)}</span>
+            </div>
+          </div>
+          <div class="proj-meta">
+            <span class="proj-zone-full">報到 ${escapeHtml(zLabel)}</span>
+            ${status}
+          </div>
+        </div>`;
+    })
+    .join("");
+
+  // 選手速查：按姓名排序 → 對手 + 報到區
+  const lookup = [];
+  matches.forEach((m) => {
+    const p1 = playerById(m.p1);
+    const p2 = playerById(m.p2);
+    const zLabel = m.zoneLabel || zoneLabel(m.zone ?? 0);
+    const zCode = m.zoneCode || zoneCode(m.zone ?? 0);
+    lookup.push({
+      name: p1?.name || "?",
+      opp: p2?.name || "?",
+      zone: zLabel,
+      zoneCode: zCode,
+      church: p1?.church,
+      done: m.done,
+      myBp: m.p1Bp,
+      oppBp: m.p2Bp,
+      won: m.winner === m.p1,
+    });
+    lookup.push({
+      name: p2?.name || "?",
+      opp: p1?.name || "?",
+      zone: zLabel,
+      zoneCode: zCode,
+      church: p2?.church,
+      done: m.done,
+      myBp: m.p2Bp,
+      oppBp: m.p1Bp,
+      won: m.winner === m.p2,
+    });
+  });
+  lookup.sort((a, b) => a.name.localeCompare(b.name, "zh-Hant"));
+
+  const lookupRows = lookup
+    .map(
+      (r) => `
+      <div class="lookup-row zone-${r.zoneCode}">
+        <div class="lookup-me">
+          <span class="lookup-name">${escapeHtml(r.name)}</span>
+          <span class="church-tag ${r.church || ""}">${churchLabel(r.church)}</span>
+        </div>
+        <div class="lookup-arrow">→</div>
+        <div class="lookup-opp">
+          <span class="lookup-opp-label">對手</span>
+          <span class="lookup-opp-name">${escapeHtml(r.opp)}</span>
+        </div>
+        <div class="lookup-zone zone-${r.zoneCode}">
+          <span class="lookup-zone-label">報到</span>
+          <span class="lookup-zone-name">${escapeHtml(r.zone)}</span>
+        </div>
+        ${
+          r.done
+            ? `<div class="lookup-result ${r.won ? "win" : "lose"}">${r.won ? "勝" : "負"} ${r.myBp}-${r.oppBp}</div>`
+            : `<div class="lookup-result pending">未完</div>`
+        }
+      </div>`
+    )
+    .join("");
+
+  return `
+    <div class="proj-board">
+      <div class="proj-board-title">
+        <span>第 ${round.round} 輪對戰</span>
+        <span class="proj-board-sub">請睇自己嘅<strong>對手</strong>同<strong>報到區</strong></span>
+      </div>
+      <div class="proj-matches">${rows}</div>
+      <div class="proj-lookup-wrap">
+        <div class="proj-lookup-title">選手速查（按姓名）</div>
+        <div class="proj-lookup-grid">${lookupRows}</div>
+      </div>
+    </div>`;
+}
+
 function renderPairings() {
   const grid = document.getElementById("matchGrid");
   const round = currentRoundObj();
@@ -2050,6 +2187,16 @@ function renderPairings() {
   const manualBtn = document.getElementById("btnManualPair");
   const progress = document.getElementById("roundProgress");
   const zoneBar = document.getElementById("zoneSummaryBar");
+  const panel = document.querySelector(".pairings-panel");
+
+  if (panel) {
+    panel.classList.toggle("is-project", pairingsViewMode === "project");
+    panel.classList.toggle("is-staff", pairingsViewMode === "staff");
+  }
+  document.body.classList.toggle(
+    "projection-mode",
+    pairingsViewMode === "project" && document.getElementById("tab-pairings")?.classList.contains("active")
+  );
 
   if (!round) {
     badge.textContent = "—";
@@ -2062,16 +2209,18 @@ function renderPairings() {
     return;
   }
 
-  // 確保 zone 與最新設定一致（未鎖定時）
   if (!round.locked) {
     round.matches = assignMatchZones(round.matches);
   }
 
   const stations = getActiveStations();
   const settings = normalizeSettings(state.settings);
-  badge.textContent = `第 ${round.round} 輪${round.locked ? " · 已鎖定" : ""} · ${stations} 站`;
+  badge.textContent = `第 ${round.round} / ${getSwissRounds()} 輪 · ${stations} 站`;
   const doneCount = round.matches.filter((m) => m.done).length;
-  progress.textContent = `完成進度：${doneCount} / ${round.matches.length} 場 · 報到站 ${stations} 個（min 裁判${settings.referees}／對戰盤${settings.stadiums}）`;
+  progress.textContent =
+    pairingsViewMode === "project"
+      ? `完成 ${doneCount} / ${round.matches.length} 場`
+      : `完成進度：${doneCount} / ${round.matches.length} 場 · 報到站 ${stations}（min 裁判${settings.referees}／對戰盤${settings.stadiums}）`;
   lockBtn.disabled = round.locked || doneCount < round.matches.length;
   lockBtn.textContent =
     round.round >= getSwissRounds()
@@ -2080,12 +2229,6 @@ function renderPairings() {
   regenBtn.disabled = round.locked || state.phase !== "swiss";
   manualBtn.disabled = round.locked || state.phase !== "swiss";
 
-  const statsMap = {};
-  state.players.forEach((p) => {
-    statsMap[p.id] = getPlayerStats(p.id);
-  });
-
-  // 按區分組
   const byZone = {};
   for (let z = 0; z < stations; z++) byZone[z] = [];
   round.matches.forEach((m) => {
@@ -2100,27 +2243,36 @@ function renderPairings() {
       .map((z) => {
         const list = byZone[z];
         const done = list.filter((m) => m.done).length;
-        return `<span class="ds-item zone-chip zone-${zoneCode(Number(z))}"><strong>${zoneLabel(Number(z))}</strong> ${done}/${list.length} 場</span>`;
+        return `<span class="ds-item zone-chip zone-${zoneCode(Number(z))}"><strong>${zoneLabel(Number(z))}</strong> ${done}/${list.length}</span>`;
       })
       .join("");
   }
+
+  // ── 投影看板模式 ──
+  if (pairingsViewMode === "project") {
+    grid.innerHTML = renderProjectionBoard(round, stations);
+    return;
+  }
+
+  // ── 計分操作模式 ──
+  const statsMap = {};
+  state.players.forEach((p) => {
+    statsMap[p.id] = getPlayerStats(p.id);
+  });
 
   grid.innerHTML = Object.keys(byZone)
     .sort((a, b) => Number(a) - Number(b))
     .map((z) => {
       const zNum = Number(z);
       const list = byZone[z];
-      const names = list
-        .flatMap((m) => [playerById(m.p1)?.name, playerById(m.p2)?.name])
-        .filter(Boolean);
       return `
         <div class="zone-section zone-${zoneCode(zNum)}">
           <div class="zone-section-header">
-            <h3 class="zone-title">📍 ${zoneLabel(zNum)} · 請到此報到</h3>
-            <span class="meta">${list.length} 場 · 選手：${names.map(escapeHtml).join("、")}</span>
+            <h3 class="zone-title">📍 ${zoneLabel(zNum)}</h3>
+            <span class="meta">${list.length} 場</span>
           </div>
           <div class="match-grid zone-matches">
-            ${list.map((m) => renderMatchCard(m, round, statsMap)).join("")}
+            ${list.map((m) => renderMatchCardStaff(m, round, statsMap)).join("")}
           </div>
         </div>`;
     })
@@ -2677,6 +2829,12 @@ function switchTab(name) {
   document.querySelectorAll(".tab").forEach((t) => {
     t.classList.toggle("active", t.id === "tab-" + name);
   });
+  // 只有對戰表 + 投影模式先加 body class
+  document.body.classList.toggle(
+    "projection-mode",
+    name === "pairings" && pairingsViewMode === "project"
+  );
+  if (name === "pairings") renderPairings();
 }
 
 // ─── Init ────────────────────────────────────────────────
@@ -2727,6 +2885,9 @@ function init() {
       render();
     }
   });
+  document.getElementById("btnViewProject")?.addEventListener("click", () => setPairingsViewMode("project"));
+  document.getElementById("btnViewStaff")?.addEventListener("click", () => setPairingsViewMode("staff"));
+
   document.getElementById("btnSaveSettings")?.addEventListener("click", saveSettingsFromForm);
   ["setReferees", "setStadiums", "setSwissRounds"].forEach((id) => {
     document.getElementById(id)?.addEventListener("change", () => {

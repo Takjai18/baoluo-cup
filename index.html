@@ -160,19 +160,23 @@
 
       <!-- ===== PAIRINGS ===== -->
       <section id="tab-pairings" class="tab">
-        <div class="panel">
-          <div class="panel-header">
+        <div class="panel pairings-panel">
+          <div class="panel-header pairings-toolbar">
             <h2>本輪對戰表 <span class="badge" id="pairRoundBadge">—</span></h2>
-            <div class="btn-row">
-              <button class="btn btn-ghost" id="btnRegenPairing" title="僅未鎖定時可用">重新配對</button>
-              <button class="btn btn-secondary" id="btnManualPair" title="手動微調配對">手動調整</button>
-              <button class="btn btn-primary" id="btnLockRound" disabled>鎖定本輪 · 進入下一輪</button>
+            <div class="btn-row wrap">
+              <div class="view-toggle" role="group" aria-label="顯示模式">
+                <button type="button" class="btn btn-secondary btn-sm view-mode-btn active" data-pair-view="project" id="btnViewProject">📺 投影看板</button>
+                <button type="button" class="btn btn-ghost btn-sm view-mode-btn" data-pair-view="staff" id="btnViewStaff">⌨️ 計分操作</button>
+              </div>
+              <button class="btn btn-ghost btn-sm" id="btnRegenPairing" title="僅未鎖定時可用">重新配對</button>
+              <button class="btn btn-ghost btn-sm" id="btnManualPair" title="手動微調配對">手動調整</button>
+              <button class="btn btn-primary btn-sm" id="btnLockRound" disabled>鎖定本輪 · 進入下一輪</button>
             </div>
           </div>
 
-          <div class="hint" id="pairingHint">
+          <div class="hint staff-only" id="pairingHint">
             配對原則：① 同分優先互打 → ② 同分時優先不同教會 → ③ 盡量避開重複對手。
-            每場 Match 先到 <strong>4 分</strong>。報到區由「大會設定」的裁判／對戰盤數量決定（A／B／C／D 區）。
+            投影看板適合大螢幕：每位選手可同一畫面看到<strong>對手</strong>同<strong>報到區</strong>。
           </div>
 
           <div class="deck-summary-bar" id="zoneSummaryBar"></div>
