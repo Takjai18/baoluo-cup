@@ -2069,73 +2069,79 @@ function renderMatchCardStaff(m, round, statsMap) {
 }
 
 /**
- * 投影看板：同一畫面列出全部 16 人
- * 每格：我的名字 · 對手 · 報到區（4×4 網格，盡量一屏睇晒）
+ * 投影看板：按報到區分行
+ * 第 1 行 = A 區所有對戰（雙方放埋一齊）
+ * 第 2 行 = B 區 …
+ * 例：A區：甲 vs 乙 | 丙 vs 丁
  */
 function renderProjectionBoard(round) {
-  const cards = [];
+  const stations = getActiveStations();
+  const byZone = {};
+  for (let z = 0; z < stations; z++) byZone[z] = [];
   round.matches.forEach((m) => {
-    const p1 = playerById(m.p1);
-    const p2 = playerById(m.p2);
-    const zCode = m.zoneCode || zoneCode(m.zone ?? 0);
-    const zLabel = m.zoneLabel || zoneLabel(m.zone ?? 0);
-    cards.push({
-      name: p1?.name || "?",
-      church: p1?.church,
-      opp: p2?.name || "?",
-      zoneCode: zCode,
-      zoneLabel: zLabel,
-      done: !!m.done,
-      myBp: m.p1Bp || 0,
-      oppBp: m.p2Bp || 0,
-      won: m.winner === m.p1,
-    });
-    cards.push({
-      name: p2?.name || "?",
-      church: p2?.church,
-      opp: p1?.name || "?",
-      zoneCode: zCode,
-      zoneLabel: zLabel,
-      done: !!m.done,
-      myBp: m.p2Bp || 0,
-      oppBp: m.p1Bp || 0,
-      won: m.winner === m.p2,
-    });
+    const z = m.zone != null ? m.zone : 0;
+    if (!byZone[z]) byZone[z] = [];
+    byZone[z].push(m);
   });
-  // 按姓名排序，方便搵自己
-  cards.sort((a, b) => a.name.localeCompare(b.name, "zh-Hant"));
+  // 區內按場次排序
+  Object.keys(byZone).forEach((z) => {
+    byZone[z].sort((a, b) => (a.table || 0) - (b.table || 0));
+  });
 
-  const cells = cards
-    .map((c) => {
-      const result = c.done
-        ? `<div class="p16-result ${c.won ? "win" : "lose"}">${c.won ? "勝" : "負"} ${c.myBp}-${c.oppBp}</div>`
-        : `<div class="p16-result pending">對戰中</div>`;
+  const zoneRows = Object.keys(byZone)
+    .sort((a, b) => Number(a) - Number(b))
+    .map((z) => {
+      const zNum = Number(z);
+      const zCode = zoneCode(zNum);
+      const zLab = zoneLabel(zNum);
+      const list = byZone[z];
+      if (!list.length) return "";
+
+      const matchCells = list
+        .map((m) => {
+          const p1 = playerById(m.p1);
+          const p2 = playerById(m.p2);
+          const w1 = m.done && m.winner === m.p1 ? "is-win" : m.done ? "is-lose" : "";
+          const w2 = m.done && m.winner === m.p2 ? "is-win" : m.done ? "is-lose" : "";
+          const score = m.done
+            ? `<span class="zg-score">${m.p1Bp}–${m.p2Bp}</span>`
+            : `<span class="zg-live">對戰中</span>`;
+          return `
+            <div class="zg-match ${m.done ? "is-done" : ""}">
+              <div class="zg-pair">
+                <span class="zg-p ${w1}">${escapeHtml(p1?.name || "?")}</span>
+                <span class="zg-vs">VS</span>
+                <span class="zg-p ${w2}">${escapeHtml(p2?.name || "?")}</span>
+              </div>
+              <div class="zg-sub">
+                <span class="church-tag ${p1?.church || ""}">${churchLabel(p1?.church)}</span>
+                <span class="zg-dot">·</span>
+                <span class="church-tag ${p2?.church || ""}">${churchLabel(p2?.church)}</span>
+                ${score}
+              </div>
+            </div>`;
+        })
+        .join('<div class="zg-divider" aria-hidden="true"></div>');
+
       return `
-        <div class="p16-card zone-${c.zoneCode}">
-          <div class="p16-me">
-            <span class="p16-name">${escapeHtml(c.name)}</span>
-            <span class="church-tag ${c.church || ""}">${churchLabel(c.church)}</span>
+        <div class="zg-row zone-${zCode}">
+          <div class="zg-label zone-${zCode}">
+            <span class="zg-letter">${escapeHtml(zCode)}</span>
+            <span class="zg-label-text">區</span>
+            <span class="zg-label-full">報到 ${escapeHtml(zLab)}</span>
           </div>
-          <div class="p16-vs-line">
-            <span class="p16-vs-label">對手</span>
-            <span class="p16-opp">${escapeHtml(c.opp)}</span>
-          </div>
-          <div class="p16-zone-line zone-${c.zoneCode}">
-            <span class="p16-zone-label">報到</span>
-            <span class="p16-zone">${escapeHtml(c.zoneLabel)}</span>
-          </div>
-          ${result}
+          <div class="zg-matches">${matchCells}</div>
         </div>`;
     })
     .join("");
 
   return `
-    <div class="proj-fit">
+    <div class="proj-zones">
       <div class="proj-fit-head">
-        <div class="proj-fit-title">第 ${round.round} 輪 · 全部 ${cards.length} 位選手</div>
-        <div class="proj-fit-hint">搵<strong>自己嘅名</strong> → 睇<strong>對手</strong> → 去<strong>報到區</strong></div>
+        <div class="proj-fit-title">第 ${round.round} 輪對戰 · 請到自己報到區</div>
+        <div class="proj-fit-hint">同一區嘅對戰排同一行 · 例如 <strong>A 區：甲 VS 乙 ｜ 丙 VS 丁</strong></div>
       </div>
-      <div class="p16-grid">${cells}</div>
+      <div class="zg-board">${zoneRows}</div>
     </div>`;
 }
 
