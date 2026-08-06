@@ -1553,33 +1553,33 @@ function renderDeckModal() {
     .join("");
 
   const shortCombo = beyLabel(bey, { short: true });
-  const fullCombo = beyLabel(bey);
+  const currentLine =
+    shortCombo && shortCombo !== "（未登記）"
+      ? escapeHtml(shortCombo)
+      : "（未選）";
 
-  // 三隻概覽（放選手右方）
-  const allPreview = deckDraft
+  // 例：1. UX15 1-70 LR  2. …  3. …
+  const allLine = deckDraft
     .map((b, i) => {
       const s = beyLabel(b, { short: true });
+      const text = s && s !== "（未登記）" ? s : "—";
       const done = isBeyComplete(b);
-      return `<div class="deck-all-preview-item ${done ? "is-done" : ""}">
-        <span class="dap-n">${i + 1}</span>
-        <span class="dap-c">${escapeHtml(s)}</span>
-      </div>`;
+      return `<span class="deck-reg-item ${done ? "is-done" : ""}"><strong>${i + 1}.</strong> ${escapeHtml(text)}</span>`;
     })
-    .join("");
+    .join("<span class=\"deck-reg-sep\"> </span>");
 
   body.innerHTML = `
-    <div class="deck-top-bar">
-      <div class="deck-player-line">
+    <div class="deck-header-compact">
+      <div class="deck-line-player">
         <strong class="deck-player-name">${escapeHtml(p.name)}</strong>
         <span class="church-tag ${p.church}">${churchLabel(p.church)}</span>
-        <span class="meta deck-done-count">${completeCount}/3</span>
+        <span class="deck-current-label">現時登記的陀螺：</span>
+        <strong class="deck-current-combo">${currentLine}</strong>
       </div>
-      <div class="deck-combo-side">
-        <div class="combo-short">本隻：<strong>${escapeHtml(shortCombo)}</strong></div>
-        <div class="combo-full meta">${escapeHtml(fullCombo)}</div>
+      <div class="deck-line-all">
+        <span class="deck-reg-label">登記的陀螺：</span>${allLine}
       </div>
     </div>
-    <div class="deck-all-preview">${allPreview}</div>
     <div class="bey-tabs">${tabs}</div>
     ${
       warnings.length

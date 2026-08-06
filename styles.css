@@ -2242,75 +2242,62 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   min-height: 0;
   flex: 1;
 }
-.deck-top-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px 16px;
+/* 緊湊 header：選手+堂會+現時陀螺 / 三隻總覽 */
+.deck-header-compact {
   margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
 }
-.deck-player-line {
+.deck-line-player {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  min-width: 0;
+  gap: 6px 8px;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: #fff;
 }
 .deck-player-name {
-  font-size: 1.15rem;
+  font-size: 1.1rem;
   font-weight: 900;
   color: #fff;
 }
-.deck-done-count {
-  font-weight: 800;
+.deck-current-label {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.deck-current-combo {
   color: var(--accent);
-}
-.deck-combo-side {
-  text-align: right;
-  min-width: 0;
-  flex: 1 1 180px;
-}
-.deck-combo-side .combo-short {
+  font-weight: 800;
   font-size: 0.95rem;
-  color: #fff;
 }
-.deck-combo-side .combo-full {
-  font-size: 0.78rem;
-  margin-top: 2px;
-}
-.deck-all-preview {
+.deck-line-all {
+  margin-top: 6px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
+  align-items: baseline;
+  gap: 4px 10px;
 }
-.deck-all-preview-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
-  font-size: 0.8rem;
+.deck-reg-label {
+  font-weight: 700;
   color: var(--muted);
-  max-width: 100%;
+  white-space: nowrap;
 }
-.deck-all-preview-item.is-done {
-  border-color: rgba(200, 255, 0, 0.4);
+.deck-reg-item {
+  white-space: nowrap;
+}
+.deck-reg-item.is-done {
   color: #e5e5e5;
 }
-.dap-n {
-  font-weight: 900;
+.deck-reg-item.is-done strong {
   color: var(--accent);
-  min-width: 1em;
 }
-.dap-c {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 160px;
+.deck-reg-sep {
+  display: none;
 }
 .bey-tabs {
   display: flex;
