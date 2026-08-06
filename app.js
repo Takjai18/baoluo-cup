@@ -1628,11 +1628,27 @@ function renderBladePicker(bey) {
     selectedCompact = bey.bladeCustom || "自訂";
   }
 
+  const hotChips = (PARTS.bladesHot || [])
+    .map((h) => {
+      const blade = findBladeById(h.bladeId);
+      if (!blade) return "";
+      const sel = bey.bladeId === h.bladeId;
+      return `<button type="button" class="chip chip-hot ${sel ? "selected" : ""}" data-hot-blade="${escapeAttr(h.bladeId)}">
+        <input type="checkbox" ${sel ? "checked" : ""} tabindex="-1" />
+        <span>${escapeHtml(h.label)}</span>
+      </button>`;
+    })
+    .join("");
+
   return `
     <div class="part-block">
       <h4>上蓋 Blade <span class="req">必選</span>
         ${selectedCompact ? `<span class="selected-compact">已選 <strong>${escapeHtml(selectedCompact)}</strong></span>` : ""}
       </h4>
+      <div class="blade-hot-block">
+        <div class="blade-hot-title">熱門</div>
+        <div class="chip-grid chip-compact chip-row blade-hot-chips">${hotChips}</div>
+      </div>
       <div class="series-row">${seriesBtns}</div>
       ${
         bladeSeriesFilter === "CX" || (bladeSeriesFilter === "ALL" && bey.series === "CX")
@@ -2201,6 +2217,31 @@ function bindDeckModalEvents(body) {
     if (!selectBladeByStaffCode(q)) toast("搵唔到呢個編號", "error");
   });
 
+  const pickBlade = (blade) => {
+    if (!blade) return;
+    applyBladeToBey(deckDraft[deckEditBeyIndex], blade);
+    bladeSearchQuery = "";
+    if (blade.series && blade.series !== "OTHER") {
+      bladeSeriesFilter = blade.series;
+    } else if (blade.series === "OTHER") {
+      bladeSeriesFilter = "OTHER";
+    }
+    if (isBeyComplete(deckDraft[deckEditBeyIndex])) {
+      maybeAutoAdvanceDeckBey();
+      renderDeckModal();
+    } else {
+      renderDeckModal();
+      const hot = (PARTS.bladesHot || []).find((h) => h.bladeId === blade.id);
+      toast(`已選上蓋 ${hot ? hot.label : bladeStaffLabel(blade) || bladeCompactCode(blade)}`, "success");
+    }
+  };
+
+  body.querySelectorAll("[data-hot-blade]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      pickBlade(findBladeById(btn.dataset.hotBlade));
+    });
+  });
+
   body.querySelectorAll(".blade-option").forEach((btn) => {
     btn.addEventListener("click", () => {
       if (btn.dataset.series === "CX" || (btn.dataset.compact || "").startsWith("CX")) {
@@ -2212,17 +2253,7 @@ function bindDeckModalEvents(body) {
         toast(`已選 ${normalizeCodeQuery(compact)} — 請完成 CX 組件`, "success");
         return;
       }
-      const blade = findBladeById(btn.dataset.bladeId);
-      if (!blade) return;
-      applyBladeToBey(deckDraft[deckEditBeyIndex], blade);
-      bladeSearchQuery = "";
-      if (isBeyComplete(deckDraft[deckEditBeyIndex])) {
-        maybeAutoAdvanceDeckBey();
-        renderDeckModal();
-      } else {
-        renderDeckModal();
-        toast(`已選上蓋 ${bladeCompactCode(blade)}`, "success");
-      }
+      pickBlade(findBladeById(btn.dataset.bladeId));
     });
   });
 

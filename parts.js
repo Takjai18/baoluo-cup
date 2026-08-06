@@ -61,10 +61,28 @@ const PARTS = {
 
     // ── 活動限制但列表未列全者（OTHER，仍可選）──
     { id: "t0-pegasus-blast", code: "T0", name: "天馬爆擊", en: "PegasusBlast", series: "OTHER", tier: "T0" },
-    { id: "t0-aero-pegasus", code: "T0", name: "空力天馬", en: "AeroPegasus", series: "OTHER", tier: "T0" },
+    { id: "t0-aero-pegasus", code: "T0", name: "空力天馬", en: "AeroPegasus", series: "OTHER", tier: "T0", staffCode: "UX00" },
     { id: "t0-chip-dragon", code: "T0", name: "薯片龍", en: "ChipDragon", series: "OTHER", tier: "T0" },
     { id: "t0-emperor-crest", code: "T0", name: "帝王紋章", en: "EmperorCrest", series: "OTHER", tier: "T0" },
     { id: "t0-war-crest", code: "T0", name: "戰神紋章", en: "WarCrest", series: "OTHER", tier: "T0" },
+  ],
+
+  /**
+   * 上蓋熱門選單（現場快速點選）
+   * bladeId 對應 blades[]；label 為畫面顯示
+   */
+  bladesHot: [
+    { bladeId: "bx-23", label: "BX23 鳳凰飛翼" },
+    { bladeId: "bx-34", label: "BX34 蒼穹龍騎士" },
+    { bladeId: "bx-49", label: "BX49 蒼龍突擊" },
+    { bladeId: "t0-aero-pegasus", label: "UX00 空力天馬" },
+    { bladeId: "ux-03", label: "UX03 魔導神杖" },
+    { bladeId: "ux-15", label: "UX15 鮫鯊狂鱗" },
+    { bladeId: "ux-16", label: "UX16 時鐘幻影" },
+    { bladeId: "ux-17", label: "UX17 隕星龍騎士" },
+    { bladeId: "ux-19", label: "UX19 子彈獅鷲" },
+    { bladeId: "ux-20", label: "UX20 榮耀戰神" },
+    { bladeId: "ux-21", label: "UX21 惡魔幽冥" },
   ],
 
   /** 固鎖完整列表 */

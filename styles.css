@@ -2423,6 +2423,35 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
 .deck-col-blade .part-block {
   border-top: 3px solid var(--accent);
 }
+.blade-hot-block {
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+.blade-hot-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--accent);
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+.blade-hot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.blade-hot-chips .chip-hot {
+  min-height: 30px;
+  padding: 3px 8px;
+  font-size: 0.75rem;
+  border-color: rgba(200, 255, 0, 0.35);
+  background: rgba(200, 255, 0, 0.06);
+}
+.blade-hot-chips .chip-hot.selected {
+  background: rgba(200, 255, 0, 0.22);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 1px rgba(200, 255, 0, 0.35);
+}
 .deck-col-ratchet .part-block {
   border-top: 3px solid #a3a3a3;
 }
