@@ -2070,6 +2070,82 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
 .reg-step strong { display: block; font-size: 0.95rem; color: #fff; }
 .reg-step p { color: var(--text-secondary); font-size: 0.88rem; margin-top: 2px; }
 
+/* 選手列表篩選 */
+.player-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+}
+.player-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.player-filter-label {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.player-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.player-filter-chip {
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #141414;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+.player-filter-chip:hover {
+  border-color: rgba(200, 255, 0, 0.4);
+  color: #fff;
+}
+.player-filter-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.player-filter-chip.kcc.active {
+  background: rgba(0, 191, 255, 0.25);
+  border-color: #33ccff;
+  color: #33ccff;
+}
+.player-filter-chip.ky.active {
+  background: rgba(244, 114, 182, 0.2);
+  border-color: #f472b6;
+  color: #f9a8d4;
+}
+.player-filter-chip.ok.active {
+  background: rgba(52, 211, 153, 0.2);
+  border-color: #34d399;
+  color: #6ee7b7;
+}
+.player-filter-chip.warn.active {
+  background: rgba(251, 191, 36, 0.15);
+  border-color: #fbbf24;
+  color: #fcd34d;
+}
+#playerFilterCount {
+  margin-left: auto;
+  font-weight: 700;
+}
+
 .deck-summary-bar {
   display: flex;
   flex-wrap: wrap;

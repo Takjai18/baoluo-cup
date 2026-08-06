@@ -3106,6 +3106,31 @@ function renderHeaderTime() {
   if (rev) rev.textContent = state._rev ? `rev ${state._rev}` : "";
 }
 
+/** 選手列表篩選：教會 + 陀螺登記狀態 */
+let playerFilterChurch = "all"; // all | kcc | ky
+let playerFilterDeck = "all"; // all | done | pending
+
+function getFilteredPlayers() {
+  return state.players.filter((p) => {
+    if (playerFilterChurch !== "all" && p.church !== playerFilterChurch) return false;
+    const done = isDeckComplete(p);
+    if (playerFilterDeck === "done" && !done) return false;
+    if (playerFilterDeck === "pending" && done) return false;
+    return true;
+  });
+}
+
+function syncPlayerFilterChips() {
+  document.querySelectorAll("[data-filter-church]").forEach((btn) => {
+    const on = btn.dataset.filterChurch === playerFilterChurch;
+    btn.classList.toggle("active", on);
+  });
+  document.querySelectorAll("[data-filter-deck]").forEach((btn) => {
+    const on = btn.dataset.filterDeck === playerFilterDeck;
+    btn.classList.toggle("active", on);
+  });
+}
+
 function renderPlayers() {
   state.players.forEach(normalizePlayer);
 
@@ -3131,12 +3156,28 @@ function renderPlayers() {
     <span class="ds-item">未登陀螺 <strong>${deckNone}</strong></span>
   `;
 
+  syncPlayerFilterChips();
+
+  const filtered = getFilteredPlayers();
+  const filterCountEl = document.getElementById("playerFilterCount");
+  if (filterCountEl) {
+    const filtering = playerFilterChurch !== "all" || playerFilterDeck !== "all";
+    filterCountEl.textContent = filtering
+      ? `顯示 ${filtered.length} / ${state.players.length} 人`
+      : state.players.length
+        ? `共 ${state.players.length} 人`
+        : "";
+  }
+
   const list = document.getElementById("playerCards");
   if (!state.players.length) {
     list.innerHTML = `<div class="empty"><div class="big">📝</div>尚未登記選手。<br>可先預先輸入 ${getTotalPlayers()} 人姓名，活動當日再按「登記陀螺」。</div>`;
+  } else if (!filtered.length) {
+    list.innerHTML = `<div class="empty"><div class="big">🔍</div>沒有符合篩選嘅選手。<br>可改篩選條件或按「全部」。</div>`;
   } else {
-    list.innerHTML = state.players
-      .map((p, i) => {
+    list.innerHTML = filtered
+      .map((p) => {
+        const i = state.players.findIndex((x) => x.id === p.id);
         const prog = deckProgress(p);
         const complete = prog === 3;
         const partial = prog > 0 && prog < 3;
@@ -4842,6 +4883,20 @@ function init() {
       state.players = [];
       saveState();
       render();
+    }
+  });
+  // 選手列表篩選：教會／陀螺完成狀態
+  document.getElementById("playerFilterBar")?.addEventListener("click", (e) => {
+    const churchBtn = e.target.closest("[data-filter-church]");
+    if (churchBtn) {
+      playerFilterChurch = churchBtn.dataset.filterChurch || "all";
+      renderPlayers();
+      return;
+    }
+    const deckBtn = e.target.closest("[data-filter-deck]");
+    if (deckBtn) {
+      playerFilterDeck = deckBtn.dataset.filterDeck || "all";
+      renderPlayers();
     }
   });
   // 對戰表模式切換（固定工具列，不隨 matchGrid 重繪）

@@ -188,6 +188,26 @@
 
           <div class="deck-summary-bar" id="deckSummaryBar"></div>
 
+          <div class="player-filter-bar" id="playerFilterBar">
+            <div class="player-filter-group">
+              <span class="player-filter-label">教會</span>
+              <div class="player-filter-chips" role="group" aria-label="教會篩選">
+                <button type="button" class="player-filter-chip active" data-filter-church="all">全部</button>
+                <button type="button" class="player-filter-chip kcc" data-filter-church="kcc">城基</button>
+                <button type="button" class="player-filter-chip ky" data-filter-church="ky">基蔭</button>
+              </div>
+            </div>
+            <div class="player-filter-group">
+              <span class="player-filter-label">陀螺登記</span>
+              <div class="player-filter-chips" role="group" aria-label="登記狀態篩選">
+                <button type="button" class="player-filter-chip active" data-filter-deck="all">全部</button>
+                <button type="button" class="player-filter-chip ok" data-filter-deck="done">完成登記</button>
+                <button type="button" class="player-filter-chip warn" data-filter-deck="pending">未完成登記</button>
+              </div>
+            </div>
+            <span class="meta" id="playerFilterCount"></span>
+          </div>
+
           <div class="add-player-panel">
             <h3 class="section-label">預先登記姓名</h3>
             <div class="add-player-form">
@@ -414,6 +434,6 @@
   <div id="toast" class="toast hidden"></div>
   <!-- cache-bust：確保 GitHub Pages 載入最新 JS -->
   <script src="parts.js?v=20260806f"></script>
-  <script src="app.js?v=20260806m"></script>
+  <script src="app.js?v=20260806n"></script>
 </body>
 </html>
