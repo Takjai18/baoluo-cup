@@ -2614,12 +2614,21 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   padding: 3px 8px;
   font-size: 0.78rem;
 }
-.cx-assembler-compact .chip-cx-product.is-expand {
+.cx-type-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.cx-type-toggle .chip.is-expand {
   border-color: rgba(251, 191, 36, 0.45);
 }
-.cx-assembler-compact .chip-cx-product.selected {
+.cx-type-toggle .chip.selected {
   border-color: var(--accent);
   background: rgba(200, 255, 0, 0.15);
+}
+.cx-assembler-compact .mt-8 {
+  margin-top: 8px;
 }
 .cx-assembler-compact .cx-over-required {
   border: 1px solid rgba(251, 191, 36, 0.4);
