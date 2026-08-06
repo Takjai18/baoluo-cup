@@ -1455,7 +1455,7 @@ function renderDeckModal() {
   body.innerHTML = `
     <div class="deck-player-meta">
       <span class="church-tag ${p.church}">${churchLabel(p.church)}</span>
-      <span class="meta">已完成 ${completeCount} / 3 隻 · 上蓋可搜尋 · 固鎖／軸心下拉選</span>
+      <span class="meta">已完成 ${completeCount} / 3 隻 · 左上蓋 · 中固鎖 · 右軸心</span>
     </div>
     <div class="bey-tabs">${tabs}</div>
     <div class="deck-preview">
@@ -1469,9 +1469,17 @@ function renderDeckModal() {
           ? `<div class="deck-restrict-ok">✓ 三隻已齊，未見明顯違規</div>`
           : ""
     }
-    ${renderBladePicker(bey)}
-    ${renderRatchetPicker(bey)}
-    ${renderBitPicker(bey)}
+    <div class="deck-parts-grid">
+      <div class="deck-col deck-col-blade">
+        ${renderBladePicker(bey)}
+      </div>
+      <div class="deck-col deck-col-ratchet">
+        ${renderRatchetPicker(bey)}
+      </div>
+      <div class="deck-col deck-col-bit">
+        ${renderBitPicker(bey)}
+      </div>
+    </div>
     <div class="btn-row wrap mt-16">
       <button type="button" class="btn btn-ghost" id="btnClearBey">清空此陀螺</button>
       <button type="button" class="btn btn-secondary" id="btnCopyBey" ${deckEditBeyIndex === 0 ? "disabled" : ""}>複製陀螺1配置</button>
