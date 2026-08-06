@@ -2454,6 +2454,34 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   border: 1px solid rgba(248, 113, 113, 0.4);
 }
 
+/* 同分指定勝方 modal */
+.tie-score-line {
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin: 12px 0 16px;
+}
+.tie-pick-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.btn-tie-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 88px;
+  padding: 16px 12px;
+}
+.tie-pick-name {
+  font-size: 1.15rem;
+  font-weight: 900;
+}
+.hist-match.is-ko {
+  border-left: 3px solid #fbbf24;
+}
+
 /* 本機備份列表 */
 .backup-list {
   display: flex;

@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="#0f172a" />
   <title>寶螺盃 · 瑞士制管理系統</title>
-  <link rel="stylesheet" href="styles.css?v=20260806a" />
+  <link rel="stylesheet" href="styles.css?v=20260806b" />
 </head>
 <body>
   <div id="app">
@@ -286,11 +286,12 @@
             <h2 id="knockoutTitle">淘汰賽</h2>
             <div class="btn-row">
               <button class="btn btn-primary" id="btnStartKnockout" disabled>產生淘汰賽配對</button>
+              <button class="btn btn-ghost" id="btnRedoKnockout" type="button" style="display:none">重做淘汰賽</button>
             </div>
           </div>
           <div class="hint">
             種子配對：第1 vs 第N、第2 vs 第N−1…（標準 bracket）。
-            準決賽（剩 2 場）完場後產生<strong>決賽</strong>同<strong>季軍賽</strong>。規模喺大會設定選 4／8／16 強。
+            修改已晉級場次會清除下游並重建。可用「重做淘汰賽」清 bracket（保留瑞士制）。規模喺大會設定選 4／8／16 強。
           </div>
           <div id="knockoutBracket" class="knockout"></div>
         </div>
@@ -365,15 +366,26 @@
       </div>
     </div>
 
+    <div id="tieWinnerModal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="tieWinnerModalTitle">指定勝方</h3>
+          <button class="btn-icon" id="btnCloseTieWinner" type="button">✕</button>
+        </div>
+        <div class="modal-body" id="tieWinnerModalBody"></div>
+      </div>
+    </div>
+
     <footer class="footer">
-      <span>資料自動儲存於本機瀏覽器（localStorage）</span>
+      <span>資料自動儲存於本機瀏覽器（localStorage）· 建議單機操作</span>
       <span id="saveTime"></span>
+      <span id="revPill" class="meta"></span>
     </footer>
   </div>
 
   <div id="toast" class="toast hidden"></div>
   <!-- cache-bust：確保 GitHub Pages 載入最新 JS -->
-  <script src="parts.js?v=20260806a"></script>
-  <script src="app.js?v=20260806a"></script>
+  <script src="parts.js?v=20260806b"></script>
+  <script src="app.js?v=20260806b"></script>
 </body>
 </html>

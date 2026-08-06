@@ -157,6 +157,64 @@ const elapsed = Date.now() - t0;
 assert(pairs.length === 16, "32 人 greedy 產生 16 對");
 assert(elapsed < 100, "32 人 greedy < 100ms（實際 " + elapsed + "ms）");
 
+console.log("\n── KO invalidate cascade ──");
+// 模擬：2 場準決賽完 → final/third；改 early 後清下游
+function invalidateKnockoutAfter(ko, roundIndex) {
+  const ri = Math.max(0, roundIndex);
+  ko.rounds = ko.rounds.slice(0, ri + 1);
+  ko.final = null;
+  ko.third = null;
+  const adv = { ...(ko._advancedFrom || {}) };
+  Object.keys(adv).forEach((k) => {
+    if (Number(k) >= ri) delete adv[k];
+  });
+  ko._advancedFrom = adv;
+}
+function tryAdvance(ko) {
+  const ri = ko.rounds.length - 1;
+  const last = ko.rounds[ri];
+  if (!last.matches.every((m) => m.done && m.winner)) return false;
+  if (ko._advancedFrom?.[ri]) return false;
+  if (last.matches.length === 2 && !ko.final) {
+    const [m0, m1] = last.matches;
+    ko.final = { p1: m0.winner, p2: m1.winner, done: false };
+    ko.third = {
+      p1: m0.p1 === m0.winner ? m0.p2 : m0.p1,
+      p2: m1.p1 === m1.winner ? m1.p2 : m1.p1,
+      done: false,
+    };
+    ko._advancedFrom[ri] = true;
+    return true;
+  }
+  return false;
+}
+const ko = {
+  rounds: [
+    {
+      name: "準決賽",
+      matches: [
+        { p1: "a", p2: "d", winner: "a", done: true },
+        { p1: "b", p2: "c", winner: "b", done: true },
+      ],
+    },
+  ],
+  final: null,
+  third: null,
+  _advancedFrom: {},
+};
+assert(tryAdvance(ko) === true && ko.final.p1 === "a" && ko.final.p2 === "b", "晉級產生決賽 a vs b");
+// 改準決賽1勝方 a→d
+ko.rounds[0].matches[0].winner = "d";
+invalidateKnockoutAfter(ko, 0);
+assert(!ko.final && !ko.third && !ko._advancedFrom[0], "invalidate 清 final/third/_advancedFrom");
+ko.rounds[0].matches[0].done = true;
+ko.rounds[0].matches[1].done = true;
+assert(tryAdvance(ko) === true && ko.final.p1 === "d" && ko.final.p2 === "b", "重建決賽 d vs b");
+
+console.log("\n── resolveWinner scores edge ──");
+assert(autoWinnerFromScores("a", "b", 4, 4) === null, "4-4 不可自動");
+assert(autoWinnerFromScores("a", "b", 5, 5) === null, "5-5 不可自動");
+
 console.log("\n════════════════════════");
 console.log(`結果：${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

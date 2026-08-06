@@ -896,27 +896,94 @@ function greedyPair(players, playedSet, lastOpp, hardNoRematch = false) {
 }
 
 /**
- * 同分強制完場：不可默認 p1 勝，必須人手指定
- * @returns {string|null} winnerId
+ * 同分／無法自動判定時：用 modal 人手揀勝方（唔用 prompt，平板較穩）
+ * @returns {Promise<string|null>} winnerId
  */
 function resolveForceWinner(p1Id, p2Id, p1Bp, p2Bp) {
   const auto = autoWinnerFromScores(p1Id, p2Id, p1Bp, p2Bp);
-  if (auto) return auto;
+  if (auto) return Promise.resolve(auto);
   const a = Math.max(0, parseInt(p1Bp, 10) || 0);
   const b = Math.max(0, parseInt(p2Bp, 10) || 0);
-  if (a > b) return p1Id;
-  if (b > a) return p2Id;
-  // 真正同分
-  const p1 = playerById(p1Id);
-  const p2 = playerById(p2Id);
-  const pick = window.prompt(
-    `雙方同分 ${a}–${b}，必須指定勝方。\n輸入 1 = ${p1?.name || "選手1"}\n輸入 2 = ${p2?.name || "選手2"}`,
-    ""
-  );
-  if (pick === "1") return p1Id;
-  if (pick === "2") return p2Id;
-  toast("已取消：同分必須指定勝方", "error");
-  return null;
+  if (a > b) return Promise.resolve(p1Id);
+  if (b > a) return Promise.resolve(p2Id);
+  return pickWinnerByModal(p1Id, p2Id, a, b, "雙方同分，必須指定勝方");
+}
+
+/** 簡單表單 4–4 等同分：強制 modal 揀勝方（唔沿用舊 winner） */
+function resolveWinnerForScores(p1Id, p2Id, p1Bp, p2Bp) {
+  const auto = autoWinnerFromScores(p1Id, p2Id, p1Bp, p2Bp);
+  if (auto) return Promise.resolve(auto);
+  const a = Math.max(0, parseInt(p1Bp, 10) || 0);
+  const b = Math.max(0, parseInt(p2Bp, 10) || 0);
+  if (a >= MATCH_TARGET || b >= MATCH_TARGET) {
+    // 至少一方達標但仍無法自動判（典型 4–4）→ 人手
+    return pickWinnerByModal(p1Id, p2Id, a, b, "雙方已達標但同分，請指定勝方");
+  }
+  return Promise.resolve(null);
+}
+
+let _tieWinnerResolve = null;
+
+function pickWinnerByModal(p1Id, p2Id, p1Bp, p2Bp, reason) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("tieWinnerModal");
+    const body = document.getElementById("tieWinnerModalBody");
+    const title = document.getElementById("tieWinnerModalTitle");
+    if (!modal || !body) {
+      toast("無法開啟勝方選擇（介面缺失）", "error");
+      resolve(null);
+      return;
+    }
+    // 若已有未完成選擇，先取消舊嘅
+    if (_tieWinnerResolve) {
+      _tieWinnerResolve(null);
+      _tieWinnerResolve = null;
+    }
+    _tieWinnerResolve = resolve;
+    const p1 = playerById(p1Id);
+    const p2 = playerById(p2Id);
+    if (title) title.textContent = "指定勝方";
+    const s1 = Math.max(0, parseInt(p1Bp, 10) || 0);
+    const s2 = Math.max(0, parseInt(p2Bp, 10) || 0);
+    body.innerHTML = `
+      <div class="hint" style="margin-top:0">${escapeHtml(reason || "請選擇勝方")}</div>
+      <div class="tie-score-line">比分 <strong>${s1}</strong> : <strong>${s2}</strong></div>
+      <div class="tie-pick-grid">
+        <button type="button" class="btn btn-primary btn-tie-pick" data-id="${escapeAttr(p1Id)}">
+          <span class="tie-pick-name">${escapeHtml(p1?.name || "選手1")}</span>
+          <span class="meta">勝方 · ${s1} 分</span>
+        </button>
+        <button type="button" class="btn btn-primary btn-tie-pick" data-id="${escapeAttr(p2Id)}">
+          <span class="tie-pick-name">${escapeHtml(p2?.name || "選手2")}</span>
+          <span class="meta">勝方 · ${s2} 分</span>
+        </button>
+      </div>
+      <button type="button" class="btn btn-ghost" id="btnTieCancel" style="width:100%;margin-top:12px">取消</button>
+    `;
+    const finish = (id) => {
+      modal.classList.add("hidden");
+      const r = _tieWinnerResolve;
+      _tieWinnerResolve = null;
+      if (r) r(id);
+    };
+    body.querySelectorAll(".btn-tie-pick").forEach((btn) => {
+      btn.addEventListener("click", () => finish(btn.dataset.id));
+    });
+    document.getElementById("btnTieCancel")?.addEventListener("click", () => {
+      toast("已取消：必須指定勝方", "error");
+      finish(null);
+    });
+    modal.classList.remove("hidden");
+  });
+}
+
+function closeTieWinnerModal() {
+  document.getElementById("tieWinnerModal")?.classList.add("hidden");
+  if (_tieWinnerResolve) {
+    const r = _tieWinnerResolve;
+    _tieWinnerResolve = null;
+    r(null);
+  }
 }
 
 /** 標準種子 bracket 順序：4→[1,4,2,3]；8→[1,8,4,5,2,7,3,6]… */
@@ -1100,7 +1167,71 @@ function saveSettingsFromForm() {
     return;
   }
 
+  const prevSwiss = getSwissRounds();
+  const prevKo = getKoBracketSize();
+  const lockedCount = state.rounds.filter((r) => r.locked).length;
+
+  // 仍可改瑞士輪數：給安全提示／必要時重開瑞士階段（保留可改）
+  if (state.phase !== "setup" && next.swissRounds !== prevSwiss) {
+    if (state.knockout) {
+      if (
+        !confirm(
+          `淘汰賽已產生。改瑞士輪數（${prevSwiss}→${next.swissRounds}）唔會改動現有 bracket。\n若要按新排名重產淘汰賽，請之後用「重做淘汰賽」。仍儲存？`
+        )
+      ) {
+        renderSettings();
+        return;
+      }
+    } else if (next.swissRounds < lockedCount) {
+      if (
+        !confirm(
+          `已鎖定 ${lockedCount} 輪，新設定只有 ${next.swissRounds} 輪。\n多出嘅輪次資料會保留，但「是否完結瑞士」會以新輪數為準。仍儲存？`
+        )
+      ) {
+        renderSettings();
+        return;
+      }
+    } else if (next.swissRounds > prevSwiss && lockedCount >= prevSwiss) {
+      // 延長瑞士制：若已標記完結但未產 bracket，重開瑞士並產下一輪
+      if (
+        !confirm(
+          `將瑞士制由 ${prevSwiss} 輪延長至 ${next.swissRounds} 輪？\n若已結束瑞士制但未產生淘汰賽，會重新開放瑞士配對。`
+        )
+      ) {
+        renderSettings();
+        return;
+      }
+    }
+  }
+
+  if (state.knockout && next.koSize !== prevKo) {
+    if (
+      !confirm(
+        `淘汰賽 bracket 已係 ${state.knockout.bracketSize} 強。\n設定改為 ${next.koSize} 強只影響「重做淘汰賽」後；現有對戰唔會自動改。仍儲存？`
+      )
+    ) {
+      renderSettings();
+      return;
+    }
+  }
+
   state.settings = next;
+
+  // 延長瑞士且未有 knockout：回到 swiss 並補下一輪（若需要）
+  if (
+    state.phase !== "setup" &&
+    !state.knockout &&
+    next.swissRounds > lockedCount &&
+    lockedCount > 0 &&
+    state.rounds.every((r) => r.locked)
+  ) {
+    state.phase = "swiss";
+    state.currentRound = lockedCount + 1;
+    if (!state.rounds.some((r) => r.round === state.currentRound)) {
+      const pairs = generateSwissPairings();
+      state.rounds.push(createRoundFromPairs(pairs, state.currentRound));
+    }
+  }
 
   // 未鎖定輪次重新分配報到區
   state.rounds.forEach((r) => {
@@ -1109,7 +1240,7 @@ function saveSettingsFromForm() {
   saveState({ backup: "儲存設定" });
   render();
   toast(
-    `已儲存：${state.settings.playerCount} 人 · 瑞士 ${getSwissRounds()} 輪 · 淘汰 ${getKoBracketSize()} 強 · 站 ${getActiveStations()}`,
+    `已儲存：${state.settings.playerCount} 人 · 瑞士 ${getSwissRounds()} 輪 · 淘汰設定 ${getKoBracketSize()} 強 · 站 ${getActiveStations()}`,
     "success"
   );
 }
@@ -2055,18 +2186,11 @@ function saveMatchResult(matchId, winnerId, p1Bp, p2Bp) {
   const m = round.matches.find((x) => x.id === matchId);
   if (!m) return false;
 
-  // 若有 battle 明細，以 battles 為準
+  // 若有 battle 明細，以 battles 為準（強制完場必須經 resolveForceWinner，同分唔靜默）
   if (Array.isArray(m.battles) && m.battles.length > 0) {
     applyBattleTotals(m);
-    if (!m.done && winnerId) {
-      // 允許強制完場
-      m.winner = winnerId;
-      m.p1Bp = Math.max(0, parseInt(p1Bp, 10) || m.p1Bp);
-      m.p2Bp = Math.max(0, parseInt(p2Bp, 10) || m.p2Bp);
-      m.done = true;
-    }
     if (!m.done) {
-      toast(`尚未有一方達到 ${MATCH_TARGET} 分，請繼續記錄 Battle`, "error");
+      toast(`尚未有一方達到 ${MATCH_TARGET} 分，請用 Battle 紀錄完場（或強制完場）`, "error");
       return false;
     }
     saveState();
@@ -2077,15 +2201,21 @@ function saveMatchResult(matchId, winnerId, p1Bp, p2Bp) {
 
   p1Bp = Math.max(0, parseInt(p1Bp, 10) || 0);
   p2Bp = Math.max(0, parseInt(p2Bp, 10) || 0);
+  // 同步路徑：caller 應已 resolve 勝方；此處再校驗
   const auto = autoWinnerFromScores(m.p1, m.p2, p1Bp, p2Bp);
   if (auto) winnerId = auto;
   if (winnerId !== m.p1 && winnerId !== m.p2) {
     toast("請選擇勝方", "error");
     return false;
   }
-  const winBp = winnerId === m.p1 ? p1Bp : p2Bp;
-  if (winBp < MATCH_TARGET) {
-    if (!confirm(`勝方比賽分（${winBp}）未達 ${MATCH_TARGET}，仍要儲存？`)) return false;
+  // 同分但傳入勝方：允許（已由 modal 揀）；雙方未達標則 confirm
+  if (p1Bp === p2Bp && p1Bp < MATCH_TARGET) {
+    if (!confirm(`雙方均未達 ${MATCH_TARGET} 分（${p1Bp}:${p2Bp}）。仍要儲存？`)) return false;
+  } else {
+    const winBp = winnerId === m.p1 ? p1Bp : p2Bp;
+    if (winBp < MATCH_TARGET) {
+      if (!confirm(`勝方比賽分（${winBp}）未達 ${MATCH_TARGET}，仍要儲存？`)) return false;
+    }
   }
   m.winner = winnerId;
   m.p1Bp = p1Bp;
@@ -2112,7 +2242,7 @@ function clearMatchResult(matchId) {
 }
 
 /** 儲存瑞士制 Match 的 battle 列表並完場（如已達 4 分） */
-function commitMatchBattles(matchId, battles, forceComplete) {
+async function commitMatchBattles(matchId, battles, forceComplete) {
   const round = currentRoundObj();
   if (!round || round.locked) {
     toast("本輪已鎖定", "error");
@@ -2133,7 +2263,7 @@ function commitMatchBattles(matchId, battles, forceComplete) {
     }
     m.p1Bp = t.p1Bp;
     m.p2Bp = t.p2Bp;
-    const w = resolveForceWinner(m.p1, m.p2, t.p1Bp, t.p2Bp);
+    const w = await resolveForceWinner(m.p1, m.p2, t.p1Bp, t.p2Bp);
     if (!w) return false;
     m.winner = w;
     m.done = true;
@@ -2227,7 +2357,6 @@ function getKoMatch(matchRef) {
   if (!state.knockout || !matchRef) return null;
   if (matchRef.type === "third") return state.knockout.third;
   if (matchRef.type === "final") return state.knockout.final;
-  // 相容舊 semi
   if (matchRef.type === "semi") {
     if (state.knockout.semis) return state.knockout.semis[matchRef.index];
     const last = state.knockout.rounds?.[state.knockout.rounds.length - 1];
@@ -2239,15 +2368,62 @@ function getKoMatch(matchRef) {
   return null;
 }
 
+/** 實際淘汰規模（已產生 bracket 時以 bracket 為準） */
+function getEffectiveKoSize() {
+  if (state.knockout?.bracketSize) return state.knockout.bracketSize;
+  return getKoBracketSize();
+}
+
+function swissReadyForKnockout() {
+  return (
+    state.rounds.length >= getSwissRounds() &&
+    state.rounds.length > 0 &&
+    state.rounds.every((r) => r.locked) &&
+    state.rounds.filter((r) => r.locked).length >= getSwissRounds()
+  );
+}
+
+/** 改早期場次時：清掉下游輪／決賽／季軍，之後重新晉級 */
+function invalidateKnockoutAfter(roundIndex) {
+  const ko = state.knockout;
+  if (!ko?.rounds) return;
+  const ri = Math.max(0, roundIndex);
+  ko.rounds = ko.rounds.slice(0, ri + 1);
+  ko.final = null;
+  ko.third = null;
+  const adv = { ...(ko._advancedFrom || {}) };
+  Object.keys(adv).forEach((k) => {
+    if (Number(k) >= ri) delete adv[k];
+  });
+  ko._advancedFrom = adv;
+  if (state.phase === "done") state.phase = "knockout";
+}
+
+function koMatchHasDownstream(matchRef) {
+  const ko = state.knockout;
+  if (!ko) return false;
+  if (matchRef.type === "final" || matchRef.type === "third") return false;
+  let ri = null;
+  if (matchRef.type === "round") ri = matchRef.roundIndex;
+  else if (matchRef.type === "semi") ri = (ko.rounds?.length || 1) - 1;
+  if (ri == null || ri < 0) return false;
+  if ((ko.rounds?.length || 0) > ri + 1) return true;
+  if (ko.final || ko.third) return true;
+  if (ko._advancedFrom?.[ri]) return true;
+  return false;
+}
+
 function startKnockout() {
-  const swissDone =
-    state.rounds.length === getSwissRounds() && state.rounds.every((r) => r.locked);
-  if (state.phase !== "knockout" && !(state.phase === "swiss" && swissDone)) {
-    toast(`請先完成 ${getSwissRounds()} 輪瑞士制`, "error");
+  const need = getSwissRounds();
+  const relevant = state.rounds.filter((r) => r.round <= need);
+  const okSwiss = relevant.length >= need && relevant.every((r) => r.locked);
+  if (!okSwiss) {
+    const lockedN = state.rounds.filter((r) => r.locked).length;
+    toast(`請先完成 ${need} 輪瑞士制（已鎖定 ${lockedN} 輪）`, "error");
     return;
   }
   if (state.knockout) {
-    toast("淘汰賽已產生", "error");
+    toast("淘汰賽已產生。若要重做請按「重做淘汰賽」", "error");
     return;
   }
 
@@ -2258,7 +2434,6 @@ function startKnockout() {
     return;
   }
 
-  // 晉級邊界同分警告
   const cut = ranked[koN - 1];
   if (cut?.tied) {
     const atCut = ranked.filter((r) => r.rank === cut.rank).length;
@@ -2273,8 +2448,11 @@ function startKnockout() {
     }
   }
 
-  // 種子：1 vs N、2 vs N-1…（標準 bracket 順序）
   const order = seededBracketOrder(koN);
+  if (!order.length) {
+    toast("淘汰規模無效", "error");
+    return;
+  }
   const matches = [];
   for (let i = 0; i < order.length; i += 2) {
     const s1 = order[i];
@@ -2299,14 +2477,40 @@ function startKnockout() {
   toast(`${koN} 強已產生：${pairHint}`, "success");
 }
 
-/** 當前輪完場後晉級：>2 場 → 下一輪；2 場 → 決賽+季軍 */
+/** 清除淘汰賽 bracket，保留瑞士制（可按新設定重產） */
+function redoKnockout() {
+  if (!state.knockout) {
+    toast("尚未有淘汰賽", "error");
+    return;
+  }
+  if (
+    !confirm(
+      "清除現有淘汰賽 bracket（準決賽／決賽等）？\n瑞士制成績會保留，之後可按目前設定重新產生。"
+    )
+  ) {
+    return;
+  }
+  pushAutoBackup("重做淘汰賽前");
+  state.knockout = null;
+  const locked = state.rounds.filter((r) => r.locked).length;
+  state.phase = locked >= getSwissRounds() ? "knockout" : "swiss";
+  if (state.phase === "done") state.phase = "knockout";
+  saveState({ backup: "已清除淘汰賽" });
+  render();
+  toast("已清除淘汰賽，可重新產生", "success");
+}
+
+/**
+ * 當前輪完場後晉級：>2 場 → 下一輪；2 場 → 決賽+季軍
+ * @returns {boolean} 是否剛產生新輪／決賽
+ */
 function tryAdvanceKnockout() {
   const ko = state.knockout;
-  if (!ko?.rounds?.length) return;
+  if (!ko?.rounds?.length) return false;
   const ri = ko.rounds.length - 1;
   const last = ko.rounds[ri];
-  if (!last.matches.every((m) => m.done && m.winner)) return;
-  if (ko._advancedFrom?.[ri]) return;
+  if (!last.matches.every((m) => m.done && m.winner)) return false;
+  if (ko._advancedFrom?.[ri]) return false;
 
   if (last.matches.length === 2) {
     if (!ko.final) {
@@ -2318,12 +2522,13 @@ function tryAdvanceKnockout() {
       ko.final = makeKoMatch("決賽", w1, w2);
       ko.third = makeKoMatch("季軍賽", l1, l2);
       ko._advancedFrom = { ...(ko._advancedFrom || {}), [ri]: true };
+      return true;
     }
-    return;
+    return false;
   }
 
   if (last.matches.length > 2 && last.matches.length % 2 === 0) {
-    const nextPlayerCount = last.matches.length; // 晉級人數 = 本輪場數
+    const nextPlayerCount = last.matches.length;
     const name = koRoundLabel(nextPlayerCount);
     const nextMatches = [];
     for (let i = 0; i < last.matches.length; i += 2) {
@@ -2333,7 +2538,9 @@ function tryAdvanceKnockout() {
     }
     ko.rounds.push({ name, matches: nextMatches });
     ko._advancedFrom = { ...(ko._advancedFrom || {}), [ri]: true };
+    return true;
   }
+  return false;
 }
 
 function saveKoResult(matchRef, winnerId, p1Bp, p2Bp) {
@@ -2348,20 +2555,38 @@ function saveKoResult(matchRef, winnerId, p1Bp, p2Bp) {
     toast("請選擇勝方", "error");
     return false;
   }
+
+  // 修改已晉級場次 → 確認後清下游再重建
+  if (koMatchHasDownstream(matchRef)) {
+    if (
+      !confirm(
+        "修改此場會清除之後輪次／決賽／季軍賽結果，並按新勝方重新晉級。確定？"
+      )
+    ) {
+      return false;
+    }
+    let ri = matchRef.type === "round" ? matchRef.roundIndex : null;
+    if (matchRef.type === "semi") ri = (state.knockout.rounds?.length || 1) - 1;
+    if (ri != null) invalidateKnockoutAfter(ri);
+  }
+
   m.winner = winnerId;
   m.p1Bp = p1Bp;
   m.p2Bp = p2Bp;
   m.done = true;
 
-  tryAdvanceKnockout();
+  const advanced = tryAdvanceKnockout();
 
   if (state.knockout.final?.done && state.knockout.third?.done) {
     state.phase = "done";
+  } else {
+    state.phase = "knockout";
   }
-  // 僅決賽完亦可標 done（若跳過季軍）— 仍要求季軍
-  saveState({ backup: "淘汰賽結果" });
+
+  // 只在晉級（新一輪／決賽產生）時 full backup，唔好每場都 snapshot
+  saveState(advanced ? { backup: "淘汰賽晉級" } : {});
   render();
-  toast("淘汰賽結果已儲存", "success");
+  toast(advanced ? "結果已儲存，已產生下一輪／決賽" : "淘汰賽結果已儲存", "success");
   return true;
 }
 
@@ -2424,7 +2649,7 @@ function exportStandingsCsv() {
 }
 
 function exportMatchesCsv() {
-  const lines = ["輪次,場次,報到區,選手1,教會1,選手2,教會2,勝方,P1比賽分,P2比賽分,同教會"];
+  const lines = ["階段,輪次,場次,報到區,選手1,教會1,選手2,教會2,勝方,P1比賽分,P2比賽分,同教會,標籤"];
   for (const r of state.rounds) {
     for (const m of r.matches) {
       const p1 = playerById(m.p1);
@@ -2433,6 +2658,7 @@ function exportMatchesCsv() {
       const same = p1 && p2 && p1.church === p2.church ? "是" : "否";
       lines.push(
         [
+          "瑞士",
           r.round,
           m.table,
           m.zoneLabel || zoneLabel(m.zone ?? 0),
@@ -2444,13 +2670,50 @@ function exportMatchesCsv() {
           m.p1Bp,
           m.p2Bp,
           same,
-        ].join(",")
+          "",
+        ]
+          .map((x) => `"${String(x).replace(/"/g, '""')}"`)
+          .join(",")
       );
     }
   }
+  if (state.knockout) {
+    const pushKo = (m, stage) => {
+      if (!m) return;
+      const p1 = playerById(m.p1);
+      const p2 = playerById(m.p2);
+      const w = m.winner ? playerById(m.winner)?.name : "";
+      const same = p1 && p2 && p1.church === p2.church ? "是" : "否";
+      lines.push(
+        [
+          "淘汰",
+          stage,
+          "",
+          "",
+          p1?.name || "",
+          churchLabel(p1?.church),
+          p2?.name || "",
+          churchLabel(p2?.church),
+          w,
+          m.p1Bp ?? "",
+          m.p2Bp ?? "",
+          same,
+          m.label || "",
+        ]
+          .map((x) => `"${String(x).replace(/"/g, '""')}"`)
+          .join(",")
+      );
+    };
+    (state.knockout.rounds || []).forEach((r) => {
+      (r.matches || []).forEach((m) => pushKo(m, r.name || "KO"));
+    });
+    if (state.knockout.semis) state.knockout.semis.forEach((m) => pushKo(m, "準決賽"));
+    pushKo(state.knockout.third, "季軍賽");
+    pushKo(state.knockout.final, "決賽");
+  }
   downloadText("寶螺盃_對戰紀錄.csv", lines.join("\n"), "text/csv;charset=utf-8");
   document.getElementById("exportPreview").textContent = lines.join("\n");
-  toast("已匯出對戰紀錄 CSV", "success");
+  toast("已匯出對戰紀錄 CSV（含淘汰賽）", "success");
 }
 
 function exportTextReport() {
@@ -2592,6 +2855,8 @@ function renderHeaderTime() {
   if (el && state.updatedAt) {
     el.textContent = "上次儲存 " + new Date(state.updatedAt).toLocaleTimeString("zh-HK");
   }
+  const rev = document.getElementById("revPill");
+  if (rev) rev.textContent = state._rev ? `rev ${state._rev}` : "";
 }
 
 function renderPlayers() {
@@ -3393,12 +3658,62 @@ function renderHistory() {
   for (const r of state.rounds) {
     for (const m of r.matches) {
       if (!m.done && !(m.battles && m.battles.length)) continue;
-      matches.push({ ...m, round: r.round });
+      matches.push({
+        ...m,
+        round: r.round,
+        roundLabel: `第 ${r.round} 輪`,
+        tableLabel: m.table != null ? `場次 ${m.table}` : "",
+        stage: "swiss",
+        sortKey: r.round * 1000 + (m.table || 0),
+      });
     }
+  }
+  // 淘汰賽
+  if (state.knockout) {
+    let koSort = 100000;
+    (state.knockout.rounds || []).forEach((r, ri) => {
+      (r.matches || []).forEach((m, mi) => {
+        if (!m.done && !(m.battles && m.battles.length)) return;
+        matches.push({
+          ...m,
+          round: `KO${ri}`,
+          roundLabel: r.name || "淘汰賽",
+          tableLabel: m.label || `場 ${mi + 1}`,
+          stage: "ko",
+          sortKey: koSort + ri * 100 + mi,
+        });
+      });
+    });
+    if (state.knockout.semis) {
+      state.knockout.semis.forEach((m, mi) => {
+        if (!m.done && !(m.battles && m.battles.length)) return;
+        matches.push({
+          ...m,
+          round: "KO-S",
+          roundLabel: "準決賽",
+          tableLabel: m.label || `場 ${mi + 1}`,
+          stage: "ko",
+          sortKey: koSort + 500 + mi,
+        });
+      });
+    }
+    [["third", "季軍賽"], ["final", "決賽"]].forEach(([key, lab], i) => {
+      const m = state.knockout[key];
+      if (!m) return;
+      if (!m.done && !(m.battles && m.battles.length)) return;
+      matches.push({
+        ...m,
+        round: "KO-" + key,
+        roundLabel: lab,
+        tableLabel: m.label || lab,
+        stage: "ko",
+        sortKey: koSort + 800 + i,
+      });
+    });
   }
 
   if (!matches.length) {
-    panel.innerHTML = `<div class="empty"><div class="big">📖</div>完成比賽並記錄 Battle 後，詳細戰績會顯示於此。</div>`;
+    panel.innerHTML = `<div class="empty"><div class="big">📖</div>完成比賽並記錄 Battle 後，詳細戰績會顯示於此（含淘汰賽）。</div>`;
     return;
   }
 
@@ -3406,7 +3721,7 @@ function renderHistory() {
     normalizePlayer(p);
     const mine = matches
       .filter((m) => m.p1 === p.id || m.p2 === p.id)
-      .sort((a, b) => a.round - b.round || (a.table || 0) - (b.table || 0));
+      .sort((a, b) => (a.sortKey || 0) - (b.sortKey || 0));
     return { player: p, matches: mine };
   });
 
@@ -3457,10 +3772,13 @@ function renderHistory() {
           const resultTxt = !matchDone
             ? `進行中 ${myBp}–${oppBp}`
             : `${won ? "勝" : "負"} ${myBp}–${oppBp}`;
+          const headLeft = m.stage === "ko"
+            ? `${escapeHtml(m.roundLabel)}${m.tableLabel ? " · " + escapeHtml(m.tableLabel) : ""}`
+            : `${escapeHtml(m.roundLabel)}${m.tableLabel ? " · " + escapeHtml(m.tableLabel) : ""}`;
           return `
-            <div class="hist-match ${matchDone ? "" : "is-live"}">
+            <div class="hist-match ${matchDone ? "" : "is-live"} ${m.stage === "ko" ? "is-ko" : ""}">
               <div class="hist-match-head">
-                <span>第 ${m.round} 輪 · 場次 ${m.table}</span>
+                <span>${headLeft}</span>
                 <span>vs <strong>${escapeHtml(opp?.name || "?")}</strong></span>
                 <span class="${resultCls}">${resultTxt}</span>
               </div>
@@ -3563,13 +3881,26 @@ function renderTies() {
 function renderKnockout() {
   const box = document.getElementById("knockoutBracket");
   const btn = document.getElementById("btnStartKnockout");
-  const koN = getKoBracketSize();
+  const btnRedo = document.getElementById("btnRedoKnockout");
+  const settingsKo = getKoBracketSize();
+  const koN = getEffectiveKoSize();
   const titleEl = document.getElementById("knockoutTitle");
-  if (titleEl) titleEl.textContent = `淘汰賽（${koN} 強）`;
-  if (btn) btn.textContent = state.knockout ? `${koN} 強已產生` : `產生 ${koN} 強配對`;
+  if (titleEl) {
+    titleEl.textContent = state.knockout
+      ? `淘汰賽（${koN} 強）`
+      : `淘汰賽（設定 ${settingsKo} 強）`;
+  }
+  if (btn) {
+    btn.textContent = state.knockout ? `${koN} 強進行中` : `產生 ${settingsKo} 強配對`;
+  }
+  if (btnRedo) {
+    btnRedo.style.display = state.knockout ? "" : "none";
+    btnRedo.disabled = !state.knockout;
+  }
 
-  const swissReady =
-    state.rounds.length === getSwissRounds() && state.rounds.every((r) => r.locked);
+  const need = getSwissRounds();
+  const relevant = state.rounds.filter((r) => r.round <= need);
+  const swissReady = relevant.length >= need && relevant.every((r) => r.locked);
   if (btn) {
     if (state.knockout) btn.disabled = true;
     else btn.disabled = !swissReady;
@@ -3577,8 +3908,8 @@ function renderKnockout() {
 
   if (!state.knockout) {
     box.innerHTML = swissReady
-      ? `<div class="empty"><div class="big">🏆</div>瑞士制已完成（${getSwissRounds()} 輪）。按上方按鈕產生 ${koN} 強（第1 vs 第${koN}、第2 vs 第${koN - 1}…）。</div>`
-      : `<div class="empty"><div class="big">🏆</div>完成 ${getSwissRounds()} 輪瑞士制後可產生 ${koN} 強淘汰賽。</div>`;
+      ? `<div class="empty"><div class="big">🏆</div>瑞士制已完成（${need} 輪）。按上方按鈕產生 <strong>${settingsKo} 強</strong>（第1 vs 第${settingsKo}、第2 vs 第${settingsKo - 1}…）。</div>`
+      : `<div class="empty"><div class="big">🏆</div>完成 ${need} 輪瑞士制後可產生 ${settingsKo} 強淘汰賽。</div>`;
     return;
   }
 
@@ -3723,15 +4054,16 @@ function openScoreModal(matchId) {
     document.getElementById("scoreModalTitle").textContent = `場次 ${m.table} · 輸入結果`;
     document.getElementById("scoreModalBody").innerHTML = buildScoreFormSimple(p1, p2, m.p1Bp, m.p2Bp);
     document.getElementById("scoreModal").classList.remove("hidden");
-    bindScoreFormSimple(() => {
+    bindScoreFormSimple(async () => {
       const p1Bp = document.getElementById("scoreP1").value;
       const p2Bp = document.getElementById("scoreP2").value;
-      const auto = autoWinnerFromScores(scoreModalP1Id, scoreModalP2Id, p1Bp, p2Bp);
-      scoreModalWinner = auto || scoreModalWinner;
-      if (!scoreModalWinner) {
-        toast(`請輸入分數：先到 ${MATCH_TARGET} 分`, "error");
+      // 唔沿用舊 scoreModalWinner：每次按分數重新判定（4–4 開 modal）
+      let winner = await resolveWinnerForScores(scoreModalP1Id, scoreModalP2Id, p1Bp, p2Bp);
+      if (!winner) {
+        toast(`請輸入分數：先到 ${MATCH_TARGET} 分（同分請指定勝方）`, "error");
         return;
       }
+      scoreModalWinner = winner;
       m.battles = [];
       if (saveMatchResult(scoreModalMatchId, scoreModalWinner, p1Bp, p2Bp)) closeScoreModal();
     });
@@ -3790,15 +4122,15 @@ function openKoScoreModal(type, index, roundIndex) {
   document.querySelector("#scoreModal .modal-card")?.classList.remove("modal-wide");
   document.getElementById("scoreModalBody").innerHTML = buildScoreFormSimple(p1, p2, m.p1Bp || 0, m.p2Bp || 0);
   document.getElementById("scoreModal").classList.remove("hidden");
-  bindScoreFormSimple(() => {
+  bindScoreFormSimple(async () => {
     const p1Bp = document.getElementById("scoreP1").value;
     const p2Bp = document.getElementById("scoreP2").value;
-    const auto = autoWinnerFromScores(scoreModalP1Id, scoreModalP2Id, p1Bp, p2Bp);
-    scoreModalWinner = auto || scoreModalWinner;
-    if (!scoreModalWinner) {
-      toast(`請輸入分數：先到 ${MATCH_TARGET} 分`, "error");
+    let winner = await resolveWinnerForScores(scoreModalP1Id, scoreModalP2Id, p1Bp, p2Bp);
+    if (!winner) {
+      toast(`請輸入分數：先到 ${MATCH_TARGET} 分（同分請指定勝方）`, "error");
       return;
     }
+    scoreModalWinner = winner;
     if (saveKoResult(koModalRef, scoreModalWinner, p1Bp, p2Bp)) closeScoreModal();
   });
 }
@@ -3939,59 +4271,69 @@ function renderBattleScoreModal(p1, p2, m, opts = {}) {
     });
     renderBattleScoreModal(p1, p2, m, opts);
   });
-  document.getElementById("btnSaveBattlesPartial")?.addEventListener("click", () => {
+  document.getElementById("btnSaveBattlesPartial")?.addEventListener("click", async () => {
     if (opts.knockout) {
-      saveKoBattles(false);
+      await saveKoBattles(false);
     } else {
-      if (commitMatchBattles(scoreModalMatchId, scoreBattleDraft, false)) {
-        // 保持 modal 開住可繼續？暫存後關閉較清晰
+      if (await commitMatchBattles(scoreModalMatchId, scoreBattleDraft, false)) {
         closeScoreModal();
       }
     }
   });
-  document.getElementById("btnSaveBattlesDone")?.addEventListener("click", () => {
+  document.getElementById("btnSaveBattlesDone")?.addEventListener("click", async () => {
     if (opts.knockout) {
-      saveKoBattles(true);
+      await saveKoBattles(true);
     } else {
       const t2 = totalsFromBattles(p1.id, p2.id, scoreBattleDraft);
       if (!t2.done) {
         if (!confirm(`尚未有一方 ≥ ${MATCH_TARGET}（${t2.p1Bp}:${t2.p2Bp}）。仍強制完場？`)) return;
-        if (commitMatchBattles(scoreModalMatchId, scoreBattleDraft, true)) closeScoreModal();
+        if (await commitMatchBattles(scoreModalMatchId, scoreBattleDraft, true)) closeScoreModal();
       } else {
-        if (commitMatchBattles(scoreModalMatchId, scoreBattleDraft, false)) closeScoreModal();
+        if (await commitMatchBattles(scoreModalMatchId, scoreBattleDraft, false)) closeScoreModal();
       }
     }
   });
 }
 
-function saveKoBattles(requireDone) {
+async function saveKoBattles(requireDone) {
   if (!koModalRef || !state.knockout) return;
   const m = getKoMatch(koModalRef);
   if (!m) return;
-  m.battles = normalizeBattles(scoreBattleDraft);
-  const t = totalsFromBattles(m.p1, m.p2, m.battles);
-  m.p1Bp = t.p1Bp;
-  m.p2Bp = t.p2Bp;
-  if (t.done) {
-    m.winner = t.winnerId;
-    m.done = true;
-  } else if (requireDone) {
+  const wasDone = !!m.done;
+  const draft = normalizeBattles(scoreBattleDraft);
+  const t = totalsFromBattles(m.p1, m.p2, draft);
+
+  let willDone = !!t.done;
+  let winnerId = t.winnerId;
+  if (!willDone && requireDone) {
     if (t.p1Bp === 0 && t.p2Bp === 0) {
       toast("請至少記錄一場 Battle", "error");
       return;
     }
     if (!confirm(`尚未達 ${MATCH_TARGET} 分。強制完場？`)) return;
-    const w = resolveForceWinner(m.p1, m.p2, t.p1Bp, t.p2Bp);
-    if (!w) return;
-    m.winner = w;
+    winnerId = await resolveForceWinner(m.p1, m.p2, t.p1Bp, t.p2Bp);
+    if (!winnerId) return;
+    willDone = true;
+  }
+
+  // 完場 → 未完：先 confirm 再改資料
+  if (wasDone && !willDone && koMatchHasDownstream(koModalRef)) {
+    if (!confirm("此場改為未完場會清除之後輪次／決賽結果。確定？")) return;
+    let ri = koModalRef.type === "round" ? koModalRef.roundIndex : null;
+    if (koModalRef.type === "semi") ri = (state.knockout.rounds?.length || 1) - 1;
+    if (ri != null) invalidateKnockoutAfter(ri);
+  }
+
+  m.battles = draft;
+  m.p1Bp = t.p1Bp;
+  m.p2Bp = t.p2Bp;
+  if (willDone) {
+    m.winner = winnerId;
     m.done = true;
+    saveKoResult(koModalRef, m.winner, m.p1Bp, m.p2Bp);
   } else {
     m.winner = null;
     m.done = false;
-  }
-  if (m.done) {
-    saveKoResult(koModalRef, m.winner, m.p1Bp, m.p2Bp);
-  } else {
     saveState();
     render();
     toast(`已暫存（${m.p1Bp}:${m.p2Bp}）`, "success");
@@ -4066,6 +4408,13 @@ function updateScoreHintSimple() {
       banner.className = "winner-banner ok";
     }
     hint.textContent = "可儲存結果。";
+    hint.className = "score-note";
+  } else if (a === b && a >= MATCH_TARGET) {
+    if (banner) {
+      banner.textContent = `同分 ${a}:${b} · 儲存時須指定勝方`;
+      banner.className = "winner-banner";
+    }
+    hint.textContent = "雙方達標但同分：按儲存後會彈出選擇勝方（唔會沿用舊勝方）。";
     hint.className = "score-note";
   } else {
     if (banner) {
@@ -4385,6 +4734,17 @@ function init() {
   });
 
   document.getElementById("btnStartKnockout").addEventListener("click", startKnockout);
+  document.getElementById("btnRedoKnockout")?.addEventListener("click", redoKnockout);
+  document.getElementById("btnCloseTieWinner")?.addEventListener("click", () => {
+    toast("已取消：必須指定勝方", "error");
+    closeTieWinnerModal();
+  });
+  document.getElementById("tieWinnerModal")?.addEventListener("click", (e) => {
+    if (e.target.id === "tieWinnerModal") {
+      toast("已取消：必須指定勝方", "error");
+      closeTieWinnerModal();
+    }
+  });
 
   document.getElementById("btnExportStandings").addEventListener("click", exportStandingsCsv);
   document.getElementById("btnExportMatches").addEventListener("click", exportMatchesCsv);
@@ -4406,10 +4766,16 @@ function init() {
   });
   document.getElementById("btnResetAll").addEventListener("click", resetAll);
 
-  // 多 tab 覆蓋警告
+  // 多 tab／多視窗：提示重新載入（無真正多機同步）
   window.addEventListener("storage", (e) => {
     if (e.key === STORAGE_KEY || e.key === STORAGE_KEY + "-rev") {
-      toast("偵測到另一分頁更新了資料！請重新整理本頁，以免互相覆蓋。", "error");
+      const msg =
+        "偵測到另一分頁／裝置分頁更新了資料！\n\n按「確定」重新載入本頁以取得最新資料（未儲存於本頁嘅改動會丟失）。\n按「取消」繼續用本頁（之後儲存可能覆蓋對方）。";
+      if (confirm(msg)) {
+        location.reload();
+      } else {
+        toast("請盡快重新整理，避免互相覆蓋", "error");
+      }
     }
   });
 
