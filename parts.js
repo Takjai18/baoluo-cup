@@ -95,17 +95,45 @@ const PARTS = {
     "簡易固鎖",
   ],
 
+  /**
+   * 固鎖快速選擇：按「系」分行（1 系、2 系…）
+   * 只顯示本列表內有、且在 ratchets 完整表內嘅代碼
+   */
+  ratchetsBySeries: [
+    { label: "1 系", items: ["1-50", "1-60", "1-70"] },
+    { label: "2 系", items: ["2-60"] },
+    { label: "3 系", items: ["3-60", "3-70"] },
+    { label: "4 系", items: ["4-50", "4-60"] },
+    { label: "5 系", items: ["5-60", "5-70"] },
+    { label: "6 系", items: ["6-60", "6-70"] },
+    { label: "7 系", items: ["7-60", "7-70"] },
+    { label: "8 系", items: ["8-70", "8-80"] },
+    { label: "9 系", items: ["9-60", "9-70"] },
+  ],
+
   /** 軸心完整列表（只顯示代碼） */
   bits: [
     "F", "LF", "R", "A", "Q", "C", "L", "LR", "V", "GR", "Tr", "UF", "J", "FF", "RA",
     "T", "HT", "P", "GP", "H", "U", "E", "TP", "M", "K", "Z", "Op", "I",
-    "B", "O", "GB", "DB", "G", "FB", "LO", "WB",
+    "B", "O", "GB", "DB", "G", "FB", "LO", "WB", "W",
     "N", "HN", "S", "GN", "MN", "UN", "BS", "Nr", "NR", "DS", "GU",
   ],
 
   /** 常用軸心（快速 checkbox） */
   bitsFrequent: [
     "LR", "R", "UF", "FF", "J", "L", "K", "H", "E", "NR", "B", "FB", "LO", "O", "P",
+  ],
+
+  /**
+   * 軸心快速選擇：按系列分行
+   */
+  bitsBySeries: [
+    { label: "Rubber", items: ["R", "LR"] },
+    { label: "Flat", items: ["F", "FF", "LF", "UF"] },
+    { label: "尖／釘", items: ["J", "L", "K"] },
+    { label: "Ball", items: ["B", "FB", "DB", "NR"] },
+    { label: "Orb", items: ["O", "LO"] },
+    { label: "其他常用", items: ["H", "E", "W", "M"] },
   ],
 
   /**

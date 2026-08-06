@@ -2314,8 +2314,38 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   -webkit-overflow-scrolling: touch;
 }
 .deck-col .chip-grid {
-  max-height: min(38vh, 300px);
+  max-height: none;
+}
+.deck-col .part-series-list {
+  flex: 1;
   overflow-y: auto;
+  max-height: min(42vh, 380px);
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.part-series-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.part-series-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.part-series-row .chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.part-series-row .chip {
+  min-height: 36px;
+  padding: 4px 10px;
+  font-size: 0.82rem;
 }
 .deck-col .hint {
   font-size: 0.8rem;

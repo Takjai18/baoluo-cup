@@ -1948,6 +1948,29 @@ function bindCxAssemblerEvents(body) {
   });
 }
 
+/** 零件 chip 按「系」分行 */
+function renderSeriesChipRows(rows, selected, dataAttr) {
+  return (rows || [])
+    .map((row) => {
+      const chips = (row.items || [])
+        .map((code) => {
+          const sel = selected === code;
+          return `<button type="button" class="chip ${sel ? "selected" : ""}" data-${dataAttr}="${escapeAttr(code)}">
+            <input type="checkbox" ${sel ? "checked" : ""} tabindex="-1" />
+            <span>${escapeHtml(code)}</span>
+          </button>`;
+        })
+        .join("");
+      if (!chips) return "";
+      return `
+        <div class="part-series-row">
+          <span class="part-series-label">${escapeHtml(row.label)}</span>
+          <div class="chip-grid chip-compact chip-row">${chips}</div>
+        </div>`;
+    })
+    .join("");
+}
+
 function renderRatchetPicker(bey) {
   // UX-19／20／21：新 UX 一體化固鎖，無需登記
   if (beyHasIntegratedRatchet(bey)) {
@@ -1970,26 +1993,42 @@ function renderRatchetPicker(bey) {
   const allRatchets = PARTS.ratchets.includes("簡易固鎖")
     ? PARTS.ratchets
     : [...PARTS.ratchets, "簡易固鎖"];
-  const frequent = (PARTS.ratchetsFrequent || []).filter((r) => allRatchets.includes(r));
+  const allSet = new Set(allRatchets);
+
+  // 按系分行（只顯示完整表內有嘅）
+  const seriesRows = (PARTS.ratchetsBySeries || []).map((row) => ({
+    label: row.label,
+    items: (row.items || []).filter((r) => allSet.has(r)),
+  }));
+
+  // 其餘未列入分組嘅固鎖 → 下拉
+  const inSeries = new Set(seriesRows.flatMap((r) => r.items));
+  const others = allRatchets.filter((r) => !inSeries.has(r));
 
   const opts = allRatchets
     .map((r) => `<option value="${r}" ${bey.ratchet === r ? "selected" : ""}>${r}</option>`)
     .join("");
+
   return `
     <div class="part-block">
       <h4>固鎖 Ratchet <span class="req">必選</span></h4>
-      <div class="chip-grid chip-compact" style="margin-bottom:10px">
-        ${frequent
-          .map(
-            (r) =>
-              `<button type="button" class="chip ${bey.ratchet === r ? "selected" : ""}" data-quick-ratchet="${escapeAttr(r)}">
-                <input type="checkbox" ${bey.ratchet === r ? "checked" : ""} tabindex="-1" />
-                <span>${escapeHtml(r)}</span>
-              </button>`
-          )
-          .join("")}
+      <div class="part-series-list">
+        ${renderSeriesChipRows(seriesRows, bey.ratchet, "quick-ratchet")}
+        <div class="part-series-row">
+          <span class="part-series-label">其他</span>
+          <div class="chip-grid chip-compact chip-row">
+            ${
+              others.includes("簡易固鎖")
+                ? `<button type="button" class="chip ${bey.ratchet === "簡易固鎖" ? "selected" : ""}" data-quick-ratchet="簡易固鎖">
+                    <input type="checkbox" ${bey.ratchet === "簡易固鎖" ? "checked" : ""} tabindex="-1" />
+                    <span>簡易固鎖</span>
+                  </button>`
+                : ""
+            }
+          </div>
+        </div>
       </div>
-      <select class="input select part-select" id="ratchetSelect">
+      <select class="input select part-select mt-8" id="ratchetSelect">
         <option value="">— 其他固鎖 —</option>
         ${opts}
       </select>
@@ -2000,8 +2039,23 @@ function renderRatchetPicker(bey) {
 function renderBitPicker(bey) {
   const { freq, rest } = sortedBits();
   const current = normalizeBitCode(bey.bit || "");
-  // 確保草稿只存代碼
   if (bey.bit && bey.bit !== current) bey.bit = current;
+
+  const validBits = new Set(
+    (PARTS.bits || []).map((c) => normalizeBitCode(c)).filter(Boolean)
+  );
+
+  const seriesRows = (PARTS.bitsBySeries || []).map((row) => ({
+    label: row.label,
+    items: (row.items || [])
+      .map((c) => normalizeBitCode(c))
+      .filter((c) => validBits.has(c) || (PARTS.bits || []).includes(c)),
+  }));
+
+  // 確保 W 等自訂分組代碼可選（若已加入 bits）
+  seriesRows.forEach((row) => {
+    row.items = [...new Set(row.items.filter(Boolean))];
+  });
 
   const optGroup = (label, codes) =>
     `<optgroup label="${label}">${codes
@@ -2011,18 +2065,10 @@ function renderBitPicker(bey) {
   return `
     <div class="part-block">
       <h4>軸心 Bit <span class="req">必選</span></h4>
-      <div class="chip-grid chip-compact" style="margin-bottom:10px">
-        ${freq
-          .map(
-            (c) =>
-              `<button type="button" class="chip ${current === c ? "selected" : ""}" data-quick-bit="${c}">
-                <input type="checkbox" ${current === c ? "checked" : ""} tabindex="-1" />
-                <span>${c}</span>
-              </button>`
-          )
-          .join("")}
+      <div class="part-series-list">
+        ${renderSeriesChipRows(seriesRows, current, "quick-bit")}
       </div>
-      <select class="input select part-select" id="bitSelect">
+      <select class="input select part-select mt-8" id="bitSelect">
         <option value="">— 其他軸心 —</option>
         ${optGroup("常用", freq)}
         ${optGroup("全部", rest)}
