@@ -2653,16 +2653,19 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   overflow: visible !important;
   max-height: none !important;
   flex: 0 0 auto !important;
-  gap: 3px;
+  gap: 5px;
 }
-.deck-col-ratchet .part-series-row .chip {
-  min-height: 28px;
-  padding: 2px 6px;
-  font-size: 0.72rem;
-  border-radius: 6px;
+/* 固鎖字級同軸心一致（唔再額外縮細） */
+.deck-col-ratchet .part-series-row .chip,
+.deck-col-bit .part-series-row .chip {
+  min-height: 32px;
+  padding: 3px 8px;
+  font-size: 0.8rem;
+  border-radius: 8px;
 }
-.deck-col-ratchet .part-series-row .chip-row {
-  gap: 3px;
+.deck-col-ratchet .part-series-row .chip-row,
+.deck-col-bit .part-series-row .chip-row {
+  gap: 4px;
 }
 .deck-col-ratchet .part-block h4 {
   margin-bottom: 4px;
