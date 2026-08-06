@@ -19,9 +19,9 @@
   --success: #34d399;
   --warning: #fbbf24;
   --danger: #ff3b3b;
-  --kcc: #d4d4d4;
+  --kcc: #33ccff;
   --ky: #f0a8c8;
-  --kcc-glow: #737373;
+  --kcc-glow: #00bfff;
   --ky-glow: #be185d;
   --same-church: #fbbf24;
   --diff-church: #c8ff00;
@@ -510,9 +510,10 @@ select.input option, .select option {
   font-weight: 700;
 }
 .church-tag.kcc {
-  background: #262626;
-  color: #f5f5f5;
-  border: 1px solid #525252;
+  background: rgba(0, 191, 255, 0.18);
+  color: #33ccff;
+  border: 1px solid rgba(51, 204, 255, 0.55);
+  font-weight: 800;
 }
 .church-tag.ky {
   background: #3f1d2e;
@@ -2009,9 +2010,9 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
 .church-check.kcc.on,
 .church-check.kcc:has(input:checked) {
   border-color: var(--kcc);
-  background: #262626aa;
+  background: rgba(0, 191, 255, 0.2);
   color: var(--kcc);
-  box-shadow: 0 0 0 1px var(--kcc);
+  box-shadow: 0 0 0 1px var(--kcc), 0 0 12px rgba(51, 204, 255, 0.25);
 }
 .church-check.ky.on,
 .church-check.ky:has(input:checked) {
