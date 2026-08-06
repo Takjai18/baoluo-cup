@@ -2299,10 +2299,8 @@ function bindDeckModalEvents(body) {
     bey.bladeCustom = e.target.value;
     bey.bladeName = e.target.value;
     if (!bey.series) bey.series = bladeSeriesFilter === "CX" ? "CX" : "OTHER";
-    const short = body.querySelector(".combo-short strong");
-    const full = body.querySelector(".combo-full");
-    if (short) short.textContent = beyLabel(bey, { short: true });
-    if (full) full.textContent = beyLabel(bey);
+    const cur = body.querySelector(".deck-current-combo");
+    if (cur) cur.textContent = beyLabel(bey, { short: true });
   });
 
   document.getElementById("ratchetSelect")?.addEventListener("change", (e) => {
