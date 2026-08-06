@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="#0f172a" />
   <title>寶螺盃 · 瑞士制管理系統</title>
-  <link rel="stylesheet" href="styles.css?v=20260805k" />
+  <link rel="stylesheet" href="styles.css?v=20260806a" />
 </head>
 <body>
   <div id="app">
@@ -48,8 +48,8 @@
             </div>
           </div>
           <div class="hint">
-            可設定<strong>參賽人數</strong>（8／16／32／64／自訂，須為雙數）、裁判、對戰盤、瑞士制輪次。
-            可用報到站 = <strong>min(裁判, 對戰盤)</strong>，對戰會分派到 A／B／C／D 區…
+            可設定<strong>參賽人數</strong>（8／16／32／64／自訂，須為雙數）、裁判、對戰盤、瑞士制輪次、淘汰賽規模。
+            可用報到站 = <strong>min(裁判, 對戰盤)</strong>，對戰會分派到 A／B／C… 區。
           </div>
           <div class="settings-grid">
             <label class="settings-field">
@@ -111,11 +111,20 @@
                 <option value="8">8</option>
               </select>
             </label>
+            <label class="settings-field">
+              <span class="section-label">淘汰賽規模</span>
+              <select id="setKoSize" class="input select part-select">
+                <option value="4" selected>4 強（1v4、2v3）</option>
+                <option value="8">8 強（1v8…4v5）</option>
+                <option value="16">16 強（1v16…8v9）</option>
+              </select>
+            </label>
           </div>
+          <div id="swissCalcPanel" class="mt-16"></div>
           <div id="settingsPreview" class="mt-16"></div>
           <div class="hint mt-16" style="margin-bottom:0">
-            例：16 人 → 每輪 8 場；32 人 → 每輪 16 場。
-            3 盤 + 4 裁判 → 3 站（A／B／C）。人數須為<strong>雙數</strong>；比賽開始後不可再改人數。
+            人數須為<strong>雙數</strong>；比賽開始後不可再改人數。
+            瑞士輪數有建議計算器（可無視警告）。淘汰種子：第1 vs 第N、第2 vs 第N−1…
           </div>
         </div>
       </section>
@@ -124,7 +133,7 @@
       <section id="tab-players" class="tab">
         <div class="panel">
           <div class="panel-header">
-            <h2>選手登記 <span class="badge" id="playerCount">0 / 16</span></h2>
+            <h2>選手登記 <span class="badge" id="playerCount">0 / —</span></h2>
             <div class="btn-row">
               <button class="btn btn-ghost" id="btnFillDemo">填入示範</button>
               <button class="btn btn-ghost" id="btnClearPlayers">清空</button>
@@ -137,7 +146,7 @@
               <span class="reg-step-num">1</span>
               <div>
                 <strong>預先登記姓名</strong>
-                <p>賽前可先輸入 16 人姓名 + 教會</p>
+                <p>賽前可先輸入姓名 + 教會（人數見大會設定）</p>
               </div>
             </div>
             <div class="reg-step">
@@ -196,7 +205,7 @@
         </div>
         <div class="panel pairings-panel">
           <div class="hint staff-only" id="pairingHint">
-            計分模式：可輸入結果。投影模式會同一畫面列出<strong>全部 16 人</strong>的對手同報到區。
+            計分模式：可輸入結果。投影模式會同一畫面列出全部選手的對手同報到區。
           </div>
           <div class="deck-summary-bar staff-only" id="zoneSummaryBar"></div>
           <div id="matchGrid" class="match-grid-wrap"></div>
@@ -218,8 +227,8 @@
         <div id="standingsBoard" class="standings-board"></div>
         <div class="panel standings-detail-panel" id="standingsDetailPanel">
           <div class="hint">
-            排序：瑞士積分（勝場）→ 對賽成績（Head-to-Head）→ 比賽總分（Total Battle Points）。
-            前 4 名晉級淘汰賽。
+            排序：瑞士積分（勝場）→ 二人同分且曾對賽則 Head-to-Head → 否則比賽總分（BP）→ 姓名。
+            多角同分不用 pairwise H2H（避免循環）。晉級名額見大會設定（4／8／16 強）。
           </div>
           <div class="standings-wrap">
             <table class="table standings" id="standingsTable">
@@ -264,7 +273,7 @@
             <h2>同分處理</h2>
           </div>
           <div class="hint">
-            當瑞士積分相同時，依序檢視：① 是否曾對賽及勝負 → ② 比賽總分 → ③ 仍相同則需加賽。
+            當瑞士積分相同：① 剛好 2 人且曾對賽 → Head-to-Head；② 多角同分或無對賽 → 比賽總分 BP；③ 仍相同則需加賽。
           </div>
           <div id="tieBreakPanel"></div>
         </div>
@@ -274,13 +283,14 @@
       <section id="tab-knockout" class="tab">
         <div class="panel">
           <div class="panel-header">
-            <h2>淘汰賽（前 4 名）</h2>
+            <h2 id="knockoutTitle">淘汰賽</h2>
             <div class="btn-row">
-              <button class="btn btn-primary" id="btnStartKnockout" disabled>產生準決賽配對</button>
+              <button class="btn btn-primary" id="btnStartKnockout" disabled>產生淘汰賽配對</button>
             </div>
           </div>
           <div class="hint">
-            準決賽固定：瑞士制<strong>第1名 vs 第4名</strong>、<strong>第2名 vs 第3名</strong>。準決賽負方打季軍賽。
+            種子配對：第1 vs 第N、第2 vs 第N−1…（標準 bracket）。
+            準決賽（剩 2 場）完場後產生<strong>決賽</strong>同<strong>季軍賽</strong>。規模喺大會設定選 4／8／16 強。
           </div>
           <div id="knockoutBracket" class="knockout"></div>
         </div>
@@ -292,15 +302,23 @@
           <div class="panel-header">
             <h2>匯出 / 備份</h2>
           </div>
+          <div class="hint">
+            資料存於本機瀏覽器。建議每輪鎖定後檢查自動備份；換機請用「完整 JSON 備份」帶走檔案。
+            出場次序只應裁判知道：公開分享可用「安全匯出（隱藏次序）」。
+          </div>
           <div class="btn-row wrap">
             <button class="btn btn-secondary" id="btnExportStandings">匯出排名 CSV</button>
             <button class="btn btn-secondary" id="btnExportMatches">匯出對戰紀錄 CSV</button>
             <button class="btn btn-secondary" id="btnExportText">匯出文字報告</button>
-            <button class="btn btn-ghost" id="btnExportJson">備份 JSON</button>
-            <button class="btn btn-ghost" id="btnImportJson">還原 JSON</button>
+            <button class="btn btn-primary" id="btnExportJson">完整 JSON 備份</button>
+            <button class="btn btn-ghost" id="btnExportJsonSafe">安全匯出（隱藏次序）</button>
+            <button class="btn btn-ghost" id="btnImportJson">還原 JSON 檔</button>
+            <button class="btn btn-secondary" id="btnManualBackup">立即本機備份</button>
             <button class="btn btn-danger" id="btnResetAll">重置全部資料</button>
           </div>
           <input type="file" id="jsonFileInput" accept=".json,application/json" class="hidden" />
+          <h3 class="section-label mt-16">本機自動備份（最多 8 份）</h3>
+          <div id="backupList" class="backup-list"></div>
           <pre id="exportPreview" class="export-preview mt-16"></pre>
         </div>
       </section>
@@ -355,7 +373,7 @@
 
   <div id="toast" class="toast hidden"></div>
   <!-- cache-bust：確保 GitHub Pages 載入最新 JS -->
-  <script src="parts.js?v=20260805k"></script>
-  <script src="app.js?v=20260805k"></script>
+  <script src="parts.js?v=20260806a"></script>
+  <script src="app.js?v=20260806a"></script>
 </body>
 </html>

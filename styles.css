@@ -593,6 +593,17 @@ select.input option, .select option {
 .zg-row.zone-C { border-left: 6px solid #fbbf24; }
 .zg-row.zone-D { border-left: 6px solid #34d399; }
 .zg-row.zone-E { border-left: 6px solid #a78bfa; }
+.zg-row.zone-F { border-left: 6px solid #fb923c; }
+.zg-row.zone-G { border-left: 6px solid #2dd4bf; }
+.zg-row.zone-H { border-left: 6px solid #e879f9; }
+.zg-row.zone-I { border-left: 6px solid #60a5fa; }
+.zg-row.zone-J { border-left: 6px solid #f87171; }
+.zg-row.zone-K { border-left: 6px solid #a3e635; }
+.zg-row.zone-L { border-left: 6px solid #c084fc; }
+.zg-row.zone-M { border-left: 6px solid #fbbf24; }
+.zg-row.zone-N { border-left: 6px solid #22d3ee; }
+.zg-row.zone-O { border-left: 6px solid #f472b6; }
+.zg-row.zone-P { border-left: 6px solid #94a3b8; }
 
 .zg-label {
   display: flex;
@@ -614,6 +625,18 @@ select.input option, .select option {
 .zg-label.zone-B .zg-letter { color: #f472b6; }
 .zg-label.zone-C .zg-letter { color: #fbbf24; }
 .zg-label.zone-D .zg-letter { color: #34d399; }
+.zg-label.zone-E .zg-letter { color: #a78bfa; }
+.zg-label.zone-F .zg-letter { color: #fb923c; }
+.zg-label.zone-G .zg-letter { color: #2dd4bf; }
+.zg-label.zone-H .zg-letter { color: #e879f9; }
+.zg-label.zone-I .zg-letter { color: #60a5fa; }
+.zg-label.zone-J .zg-letter { color: #f87171; }
+.zg-label.zone-K .zg-letter { color: #a3e635; }
+.zg-label.zone-L .zg-letter { color: #c084fc; }
+.zg-label.zone-M .zg-letter { color: #fbbf24; }
+.zg-label.zone-N .zg-letter { color: #22d3ee; }
+.zg-label.zone-O .zg-letter { color: #f472b6; }
+.zg-label.zone-P .zg-letter { color: #94a3b8; }
 .zg-label-text {
   font-size: 1rem;
   font-weight: 800;
@@ -1145,6 +1168,8 @@ body.standings-fit .pair-sticky-left .meta {
 }
 .hist-win { color: #6ee7b7; font-weight: 900; }
 .hist-lose { color: #fca5a5; font-weight: 900; }
+.hist-live { color: #fcd34d; font-weight: 900; }
+.hist-match.is-live { border-color: rgba(251, 191, 36, 0.45); }
 .hist-battles {
   display: flex;
   flex-direction: column;
@@ -1273,6 +1298,17 @@ body.standings-fit .pair-sticky-left .meta {
 .zone-section.zone-C { border-left-color: #fbbf24; }
 .zone-section.zone-D { border-left-color: #34d399; }
 .zone-section.zone-E { border-left-color: #a78bfa; }
+.zone-section.zone-F { border-left-color: #fb923c; }
+.zone-section.zone-G { border-left-color: #2dd4bf; }
+.zone-section.zone-H { border-left-color: #e879f9; }
+.zone-section.zone-I { border-left-color: #60a5fa; }
+.zone-section.zone-J { border-left-color: #f87171; }
+.zone-section.zone-K { border-left-color: #a3e635; }
+.zone-section.zone-L { border-left-color: #c084fc; }
+.zone-section.zone-M { border-left-color: #fbbf24; }
+.zone-section.zone-N { border-left-color: #22d3ee; }
+.zone-section.zone-O { border-left-color: #f472b6; }
+.zone-section.zone-P { border-left-color: #94a3b8; }
 .zone-section-header {
   display: flex;
   flex-wrap: wrap;
@@ -1301,10 +1337,26 @@ body.standings-fit .pair-sticky-left .meta {
 .zone-badge.zone-B { background: rgba(244, 114, 182, 0.2); color: #f9a8d4; border-color: #f472b6; }
 .zone-badge.zone-C { background: rgba(251, 191, 36, 0.2); color: #fcd34d; border-color: #fbbf24; }
 .zone-badge.zone-D { background: rgba(52, 211, 153, 0.2); color: #6ee7b7; border-color: #34d399; }
+.zone-badge.zone-E { background: rgba(167, 139, 250, 0.2); color: #c4b5fd; border-color: #a78bfa; }
+.zone-badge.zone-F { background: rgba(251, 146, 60, 0.2); color: #fdba74; border-color: #fb923c; }
+.zone-badge.zone-G { background: rgba(45, 212, 191, 0.2); color: #5eead4; border-color: #2dd4bf; }
+.zone-badge.zone-H { background: rgba(232, 121, 249, 0.2); color: #f0abfc; border-color: #e879f9; }
+.zone-badge.zone-I,
+.zone-badge.zone-J,
+.zone-badge.zone-K,
+.zone-badge.zone-L,
+.zone-badge.zone-M,
+.zone-badge.zone-N,
+.zone-badge.zone-O,
+.zone-badge.zone-P { background: rgba(148, 163, 184, 0.15); color: #e2e8f0; border-color: #94a3b8; }
 .zone-chip.zone-A { border-color: #38bdf8 !important; color: #7dd3fc !important; }
 .zone-chip.zone-B { border-color: #f472b6 !important; color: #f9a8d4 !important; }
 .zone-chip.zone-C { border-color: #fbbf24 !important; color: #fcd34d !important; }
 .zone-chip.zone-D { border-color: #34d399 !important; color: #6ee7b7 !important; }
+.zone-chip.zone-E { border-color: #a78bfa !important; color: #c4b5fd !important; }
+.zone-chip.zone-F { border-color: #fb923c !important; color: #fdba74 !important; }
+.zone-chip.zone-G { border-color: #2dd4bf !important; color: #5eead4 !important; }
+.zone-chip.zone-H { border-color: #e879f9 !important; color: #f0abfc !important; }
 
 /* Match cards */
 .match-grid,
@@ -2351,4 +2403,71 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   min-width: 44px;
   justify-content: center;
   font-size: 1rem;
+}
+
+/* 瑞士制輪數計算器 */
+.swiss-calc {
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.08), rgba(15, 23, 42, 0.6));
+}
+.swiss-calc-title {
+  font-weight: 900;
+  font-size: 1.05rem;
+  margin-bottom: 8px;
+  color: #7dd3fc;
+}
+.swiss-calc-body p {
+  margin: 0 0 8px;
+  line-height: 1.45;
+}
+.swiss-calc .accent {
+  color: #fbbf24;
+  font-size: 1.25rem;
+}
+.swiss-calc-msgs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.swiss-msg {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+.swiss-msg-ok {
+  background: rgba(52, 211, 153, 0.12);
+  color: #6ee7b7;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+}
+.swiss-msg-warn {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fcd34d;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+}
+.swiss-msg-danger {
+  background: rgba(248, 113, 113, 0.12);
+  color: #fca5a5;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+}
+
+/* 本機備份列表 */
+.backup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.backup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.55);
 }
