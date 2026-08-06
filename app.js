@@ -1431,6 +1431,53 @@ function closeDeckModal() {
   deckDraft = null;
 }
 
+/**
+ * 當前陀螺上蓋／固鎖／軸心齊 → 自動跳去下一隻未齊嘅陀螺
+ * @returns {boolean} 是否已切換
+ */
+function maybeAutoAdvanceDeckBey() {
+  if (!deckDraft || !Array.isArray(deckDraft)) return false;
+  const cur = deckDraft[deckEditBeyIndex];
+  if (!cur || !isBeyComplete(cur)) return false;
+
+  let next = -1;
+  for (let i = deckEditBeyIndex + 1; i < deckDraft.length; i++) {
+    if (!isBeyComplete(deckDraft[i])) {
+      next = i;
+      break;
+    }
+  }
+  // 若後面都齊，再睇前面有冇未齊（例如由第 2 隻改齊時）
+  if (next < 0) {
+    for (let i = 0; i < deckEditBeyIndex; i++) {
+      if (!isBeyComplete(deckDraft[i])) {
+        next = i;
+        break;
+      }
+    }
+  }
+
+  if (next >= 0) {
+    const from = deckEditBeyIndex + 1;
+    deckEditBeyIndex = next;
+    bladeSearchQuery = "";
+    bladeSeriesFilter = "ALL";
+    toast(`陀螺 ${from} 已齊 ✓ → 請登記陀螺 ${next + 1}`, "success");
+    return true;
+  }
+
+  if (deckDraft.every(isBeyComplete)) {
+    toast("三隻陀螺已全部齊備，可按「儲存 3 隻配置」", "success");
+  }
+  return false;
+}
+
+/** 零件變更後：必要時自動跳下一隻，再重繪 modal */
+function renderDeckModalAfterPartChange() {
+  maybeAutoAdvanceDeckBey();
+  renderDeckModal();
+}
+
 function renderDeckModal() {
   const p = playerById(deckEditPlayerId);
   if (!p || !deckDraft) return;
@@ -1764,8 +1811,15 @@ function selectBladeByStaffCode(query) {
   applyBladeToBey(deckDraft[deckEditBeyIndex], blade);
   bladeSearchQuery = "";
   if (bladeSeriesFilter === "CX") bladeSeriesFilter = blade.series || "ALL";
-  renderDeckModal();
-  toast(`已選上蓋 ${bladeCompactCode(blade)}`, "success");
+  // 一體化固鎖 + 已有軸心時可能即齊 → 自動跳下一隻
+  const label = bladeCompactCode(blade);
+  if (isBeyComplete(deckDraft[deckEditBeyIndex])) {
+    maybeAutoAdvanceDeckBey();
+    renderDeckModal();
+  } else {
+    renderDeckModal();
+    toast(`已選上蓋 ${label}`, "success");
+  }
   return true;
 }
 
@@ -1786,7 +1840,7 @@ function bindCxAssemblerEvents(body) {
         bey.mainBladeCustom = "";
       }
       syncCxDisplayFields(bey);
-      renderDeckModal();
+      renderDeckModalAfterPartChange();
     });
   });
 
@@ -1796,7 +1850,7 @@ function bindCxAssemblerEvents(body) {
       bey.cxProduct = "";
       syncCxDisplayFields(bey);
     }
-    renderDeckModal();
+    renderDeckModalAfterPartChange();
   });
 
   const cxProdIn = document.getElementById("cxProductInput");
@@ -1804,7 +1858,7 @@ function bindCxAssemblerEvents(body) {
     cxProdIn.addEventListener("change", () => {
       const v = cxProdIn.value.trim();
       if (v) applyCxProductToBey(bey, v);
-      renderDeckModal();
+      renderDeckModalAfterPartChange();
     });
     cxProdIn.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
@@ -1812,7 +1866,7 @@ function bindCxAssemblerEvents(body) {
         const v = cxProdIn.value.trim();
         if (v) {
           applyCxProductToBey(bey, v);
-          renderDeckModal();
+          renderDeckModalAfterPartChange();
         }
       }
     });
@@ -1824,7 +1878,7 @@ function bindCxAssemblerEvents(body) {
     bey.lockChip = e.target.value;
     if (bey.lockChip !== "__custom__") bey.lockChipCustom = "";
     syncCxDisplayFields(bey);
-    renderDeckModal();
+    renderDeckModalAfterPartChange();
   });
   document.getElementById("cxLockCustom")?.addEventListener("input", (e) => {
     bey.lockChip = "__custom__";
@@ -1840,7 +1894,7 @@ function bindCxAssemblerEvents(body) {
       bey.lockChip = btn.dataset.cxLock;
       bey.lockChipCustom = "";
       syncCxDisplayFields(bey);
-      renderDeckModal();
+      renderDeckModalAfterPartChange();
     });
   });
 
@@ -1850,7 +1904,7 @@ function bindCxAssemblerEvents(body) {
     bey.mainBlade = e.target.value;
     if (bey.mainBlade !== "__custom__") bey.mainBladeCustom = "";
     syncCxDisplayFields(bey);
-    renderDeckModal();
+    renderDeckModalAfterPartChange();
   });
   document.getElementById("cxMainCustom")?.addEventListener("input", (e) => {
     bey.mainBlade = "__custom__";
@@ -1866,7 +1920,7 @@ function bindCxAssemblerEvents(body) {
       bey.mainBlade = btn.dataset.cxMain;
       bey.mainBladeCustom = "";
       syncCxDisplayFields(bey);
-      renderDeckModal();
+      renderDeckModalAfterPartChange();
     });
   });
 
@@ -1877,7 +1931,7 @@ function bindCxAssemblerEvents(body) {
       bey.bladeId = "cx";
       bey.assistBlade = bey.assistBlade === c ? "" : c;
       syncCxDisplayFields(bey);
-      renderDeckModal();
+      renderDeckModalAfterPartChange();
     });
   });
 
@@ -1889,7 +1943,7 @@ function bindCxAssemblerEvents(body) {
       bey.cxType = "expand";
       bey.overBlade = bey.overBlade === c ? "" : c;
       syncCxDisplayFields(bey);
-      renderDeckModal();
+      renderDeckModalAfterPartChange();
     });
   });
 }
@@ -2052,8 +2106,13 @@ function bindDeckModalEvents(body) {
       if (!blade) return;
       applyBladeToBey(deckDraft[deckEditBeyIndex], blade);
       bladeSearchQuery = "";
-      renderDeckModal();
-      toast(`已選上蓋 ${bladeCompactCode(blade)}`, "success");
+      if (isBeyComplete(deckDraft[deckEditBeyIndex])) {
+        maybeAutoAdvanceDeckBey();
+        renderDeckModal();
+      } else {
+        renderDeckModal();
+        toast(`已選上蓋 ${bladeCompactCode(blade)}`, "success");
+      }
     });
   });
 
@@ -2093,11 +2152,11 @@ function bindDeckModalEvents(body) {
 
   document.getElementById("ratchetSelect")?.addEventListener("change", (e) => {
     deckDraft[deckEditBeyIndex].ratchet = e.target.value;
-    renderDeckModal();
+    renderDeckModalAfterPartChange();
   });
   document.getElementById("bitSelect")?.addEventListener("change", (e) => {
     deckDraft[deckEditBeyIndex].bit = normalizeBitCode(e.target.value);
-    renderDeckModal();
+    renderDeckModalAfterPartChange();
   });
 
   body.querySelectorAll("[data-quick-ratchet]").forEach((btn) => {
@@ -2105,7 +2164,7 @@ function bindDeckModalEvents(body) {
       const v = btn.dataset.quickRatchet;
       const bey = deckDraft[deckEditBeyIndex];
       bey.ratchet = bey.ratchet === v ? "" : v;
-      renderDeckModal();
+      renderDeckModalAfterPartChange();
     });
   });
   body.querySelectorAll("[data-quick-bit]").forEach((btn) => {
@@ -2113,7 +2172,7 @@ function bindDeckModalEvents(body) {
       const v = normalizeBitCode(btn.dataset.quickBit);
       const bey = deckDraft[deckEditBeyIndex];
       bey.bit = bey.bit === v ? "" : v;
-      renderDeckModal();
+      renderDeckModalAfterPartChange();
     });
   });
 
@@ -2124,7 +2183,8 @@ function bindDeckModalEvents(body) {
   });
   document.getElementById("btnCopyBey")?.addEventListener("click", () => {
     deckDraft[deckEditBeyIndex] = normalizeBey(JSON.parse(JSON.stringify(deckDraft[0])));
-    renderDeckModal();
+    // 複製後若齊備 → 自動跳下一隻
+    renderDeckModalAfterPartChange();
   });
   document.getElementById("btnSaveDeck")?.addEventListener("click", saveDeckFromModal);
 }
