@@ -1628,28 +1628,36 @@ function renderBladePicker(bey) {
     selectedCompact = bey.bladeCustom || "自訂";
   }
 
-  const hotChips = (PARTS.bladesHot || [])
-    .map((h) => {
-      const blade = findBladeById(h.bladeId);
-      if (!blade) return "";
-      const sel = bey.bladeId === h.bladeId;
-      return `<button type="button" class="chip chip-hot ${sel ? "selected" : ""}" data-hot-blade="${escapeAttr(h.bladeId)}">
-        <input type="checkbox" ${sel ? "checked" : ""} tabindex="-1" />
-        <span>${escapeHtml(h.label)}</span>
-      </button>`;
-    })
-    .join("");
+  // 熱門：只喺「全部」時顯示；揀咗 BX／UX／限制系就暫時收起
+  const showHot = bladeSeriesFilter === "ALL";
+  const hotChips = showHot
+    ? (PARTS.bladesHot || [])
+        .map((h) => {
+          const blade = findBladeById(h.bladeId);
+          if (!blade) return "";
+          const sel = bey.bladeId === h.bladeId;
+          return `<button type="button" class="chip chip-hot ${sel ? "selected" : ""}" data-hot-blade="${escapeAttr(h.bladeId)}">
+            <input type="checkbox" ${sel ? "checked" : ""} tabindex="-1" />
+            <span>${escapeHtml(h.label)}</span>
+          </button>`;
+        })
+        .join("")
+    : "";
 
   return `
     <div class="part-block">
       <h4>上蓋 Blade <span class="req">必選</span>
         ${selectedCompact ? `<span class="selected-compact">已選 <strong>${escapeHtml(selectedCompact)}</strong></span>` : ""}
       </h4>
-      <div class="blade-hot-block">
-        <div class="blade-hot-title">熱門</div>
-        <div class="chip-grid chip-compact chip-row blade-hot-chips">${hotChips}</div>
-      </div>
       <div class="series-row">${seriesBtns}</div>
+      ${
+        showHot
+          ? `<div class="blade-hot-block">
+              <div class="blade-hot-title">熱門</div>
+              <div class="chip-grid chip-compact chip-row blade-hot-chips">${hotChips}</div>
+            </div>`
+          : ""
+      }
       ${
         bladeSeriesFilter === "CX" || (bladeSeriesFilter === "ALL" && bey.series === "CX")
           ? renderCxAssembler(bey)
@@ -1659,21 +1667,75 @@ function renderBladePicker(bey) {
   `;
 }
 
+/** BX／UX／限制系：checklist；全部：搜尋 + 列表 */
 function renderBxUxBladePicker(bey) {
-  const list = filterBlades(bladeSeriesFilter, bladeSearchQuery);
+  const seriesMode = bladeSeriesFilter === "BX" || bladeSeriesFilter === "UX" || bladeSeriesFilter === "OTHER";
+  const list = filterBlades(bladeSeriesFilter, seriesMode ? "" : bladeSearchQuery);
   const exactHit =
-    bladeSearchQuery.trim() && list.length
+    !seriesMode &&
+    bladeSearchQuery.trim() &&
+    list.length
       ? findBladeByQuery(bladeSearchQuery) || (list.length === 1 ? list[0] : null)
       : null;
-  // CX 虛擬 blade 在 BX/UX 模式不應 quick confirm（除非 ALL）
   const canQuickConfirm =
     exactHit &&
     exactHit.series !== "CX" &&
     list.some((b) => b.id === exactHit.id || (exactHit.series === "CX" && b.compact === exactHit.compact));
-
-  // 若輸入 CX 碼，提示轉 CX 分頁
   const cxHint = /^CX\d/i.test(normalizeCodeQuery(bladeSearchQuery));
 
+  // 系列 checklist（checkbox 列表）
+  if (seriesMode) {
+    const checkItems = list
+      .map((b) => {
+        const sel = bey.bladeId === b.id;
+        const compact =
+          b.series === "OTHER" || b.code === "T0" || b.code === "T1"
+            ? b.staffCode || b.name
+            : bladeCompactCode(b);
+        const tier =
+          b.tier === "T0"
+            ? '<span class="tier t0">T0</span>'
+            : b.tier === "T1"
+              ? '<span class="tier t1">T1</span>'
+              : "";
+        return `
+          <label class="blade-check-item ${sel ? "selected" : ""}">
+            <input type="checkbox" class="blade-check-input" data-blade-id="${escapeAttr(b.id)}"
+              data-series="${escapeAttr(b.series)}" ${sel ? "checked" : ""} />
+            <span class="bci-code">${escapeHtml(compact)}</span>
+            <span class="bci-name">${escapeHtml(b.name)}</span>
+            ${tier}
+          </label>`;
+      })
+      .join("");
+
+    const seriesName =
+      bladeSeriesFilter === "BX"
+        ? "BX 系列"
+        : bladeSeriesFilter === "UX"
+          ? "UX 系列"
+          : "限制系（T0／活動）";
+
+    return `
+      <div class="blade-check-wrap">
+        <div class="blade-check-head">${escapeHtml(seriesName)} · 點選一項</div>
+        <div class="blade-check-list" id="bladeOptionList">
+          ${checkItems || '<div class="empty-mini">此系列暫無上蓋</div>'}
+        </div>
+        <div class="btn-row mt-8">
+          <button type="button" class="btn btn-ghost btn-sm" id="btnBladeCustom">自由輸入…</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnGoCx">CX 組裝…</button>
+          ${
+            bey.bladeId === "custom"
+              ? `<input class="input" id="bladeCustomInput" style="flex:1" placeholder="自訂上蓋名稱" value="${escapeAttr(bey.bladeCustom || "")}" />`
+              : ""
+          }
+        </div>
+      </div>
+    `;
+  }
+
+  // 「全部」：搜尋 + 列表
   const options = list
     .map((b) => {
       const sel = bey.bladeId === b.id || (b.series === "CX" && bey.cxProduct === b.compact);
@@ -1698,26 +1760,26 @@ function renderBxUxBladePicker(bey) {
   return `
       <div class="blade-code-entry">
         <input class="input blade-search" id="bladeSearchInput" inputmode="text" autocomplete="off"
-          placeholder="輸入 BX49 / UX15 / CX07 / CX15 後 Enter"
+          placeholder="輸入 BX49 / UX15 / CX07 後 Enter"
           value="${escapeAttr(bladeSearchQuery)}" />
         ${
-          canQuickConfirm && exactHit.series !== "CX"
+          canQuickConfirm && exactHit && exactHit.series !== "CX"
             ? `<button type="button" class="btn btn-primary" id="btnConfirmBlade">確認 ${escapeHtml(bladeCompactCode(exactHit))}</button>`
             : exactHit && exactHit.series === "CX"
               ? `<button type="button" class="btn btn-primary" id="btnConfirmBlade">確認 ${escapeHtml(exactHit.compact || "")}</button>`
               : ""
         }
       </div>
-      <div class="hint" style="margin:8px 0 6px">
-        打 <strong>BX49</strong> / <strong>UX15</strong> / <strong>CX07</strong> / <strong>CX15</strong> 即可。
-        ${cxHint ? "（偵測到 CX 編號，Enter 後進入 CX 組件選擇）" : ""}
+      <div class="hint" style="margin:6px 0">
+        或撳上方系列睇 checklist · 打 <strong>BX49</strong> / <strong>UX15</strong> 亦可
+        ${cxHint ? "（偵測到 CX，Enter 進入組裝）" : ""}
       </div>
       <div class="blade-option-list" id="bladeOptionList">
-        ${options || '<div class="empty-mini">無符合結果 — 試 BX49、UX15、CX07</div>'}
+        ${options || '<div class="empty-mini">無符合結果</div>'}
       </div>
       <div class="btn-row mt-8">
-        <button type="button" class="btn btn-ghost btn-sm" id="btnBladeCustom">改為自由輸入…</button>
-        <button type="button" class="btn btn-secondary btn-sm" id="btnGoCx">改用 CX 組裝…</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnBladeCustom">自由輸入…</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnGoCx">CX 組裝…</button>
         ${
           bey.bladeId === "custom"
             ? `<input class="input" id="bladeCustomInput" style="flex:1" placeholder="自訂上蓋名稱" value="${escapeAttr(bey.bladeCustom || "")}" />`
@@ -2253,6 +2315,26 @@ function bindDeckModalEvents(body) {
   body.querySelectorAll("[data-hot-blade]").forEach((btn) => {
     btn.addEventListener("click", () => {
       pickBlade(findBladeById(btn.dataset.hotBlade));
+    });
+  });
+
+  // 系列 checklist（單選：勾一項即選）
+  body.querySelectorAll(".blade-check-input").forEach((inp) => {
+    inp.addEventListener("change", () => {
+      if (!inp.checked) {
+        // 唔允許清空：保持選中
+        inp.checked = true;
+        return;
+      }
+      pickBlade(findBladeById(inp.dataset.bladeId));
+    });
+  });
+  body.querySelectorAll(".blade-check-item").forEach((lab) => {
+    lab.addEventListener("click", (e) => {
+      if (e.target.closest("input")) return;
+      const inp = lab.querySelector(".blade-check-input");
+      if (!inp) return;
+      pickBlade(findBladeById(inp.dataset.bladeId));
     });
   });
 

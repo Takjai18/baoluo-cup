@@ -2516,6 +2516,73 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   color: #fff;
   box-shadow: 0 0 0 1px rgba(200, 255, 0, 0.35);
 }
+
+/* BX／UX／限制系 checklist */
+.blade-check-wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.blade-check-head {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--muted);
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+.blade-check-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 2px;
+}
+.blade-check-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #e5e5e5;
+  user-select: none;
+  transition: 0.12s ease;
+}
+.blade-check-item:hover {
+  border-color: rgba(200, 255, 0, 0.4);
+  background: rgba(200, 255, 0, 0.06);
+}
+.blade-check-item.selected {
+  border-color: var(--accent);
+  background: rgba(200, 255, 0, 0.14);
+  box-shadow: 0 0 0 1px rgba(200, 255, 0, 0.25);
+}
+.blade-check-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+  margin: 0;
+  pointer-events: none;
+}
+.blade-check-item .bci-code {
+  font-weight: 900;
+  color: var(--accent);
+  min-width: 3.2em;
+  font-size: 0.82rem;
+}
+.blade-check-item .bci-name {
+  flex: 1;
+  font-weight: 600;
+  min-width: 0;
+}
 .deck-col-ratchet .part-block {
   border-top: 3px solid #a3a3a3;
 }
