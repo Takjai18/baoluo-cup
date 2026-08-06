@@ -2455,6 +2455,28 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
 .deck-col-ratchet .part-block {
   border-top: 3px solid #a3a3a3;
 }
+/* 固鎖：顯示全部，唔靠欄內 scroll */
+.deck-col-ratchet .part-block-ratchet-all {
+  overflow: visible;
+}
+.deck-col-ratchet .part-series-list-all {
+  overflow: visible !important;
+  max-height: none !important;
+  flex: 0 0 auto !important;
+  gap: 3px;
+}
+.deck-col-ratchet .part-series-row .chip {
+  min-height: 28px;
+  padding: 2px 6px;
+  font-size: 0.72rem;
+  border-radius: 6px;
+}
+.deck-col-ratchet .part-series-row .chip-row {
+  gap: 3px;
+}
+.deck-col-ratchet .part-block h4 {
+  margin-bottom: 4px;
+}
 .deck-col-bit .part-block {
   border-top: 3px solid #737373;
 }

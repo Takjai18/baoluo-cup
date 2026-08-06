@@ -2034,16 +2034,21 @@ function bindCxAssemblerEvents(body) {
   });
 }
 
-/** 零件 chip 按「系」分行（唔顯示系名，慳位） */
-function renderSeriesChipRows(rows, selected, dataAttr) {
+/**
+ * 零件 chip 按「系」分行（唔顯示系名，慳位）
+ * @param {object} [opts] labelMap: { code: displayLabel }
+ */
+function renderSeriesChipRows(rows, selected, dataAttr, opts = {}) {
+  const labelMap = opts.labelMap || {};
   return (rows || [])
     .map((row) => {
       const chips = (row.items || [])
         .map((code) => {
           const sel = selected === code;
+          const lab = labelMap[code] || code;
           return `<button type="button" class="chip ${sel ? "selected" : ""}" data-${dataAttr}="${escapeAttr(code)}">
             <input type="checkbox" ${sel ? "checked" : ""} tabindex="-1" />
-            <span>${escapeHtml(code)}</span>
+            <span>${escapeHtml(lab)}</span>
           </button>`;
         })
         .join("");
@@ -2054,6 +2059,39 @@ function renderSeriesChipRows(rows, selected, dataAttr) {
         </div>`;
     })
     .join("");
+}
+
+/** 由完整固鎖表自動按系分行（確保全部顯示） */
+function buildAllRatchetSeriesRows() {
+  const allRatchets = PARTS.ratchets.includes("簡易固鎖")
+    ? [...PARTS.ratchets]
+    : [...PARTS.ratchets, "簡易固鎖"];
+  const allSet = new Set(allRatchets);
+
+  // 優先用預設分組，再補漏網之魚
+  const rows = (PARTS.ratchetsBySeries || []).map((row) => ({
+    label: row.label,
+    items: (row.items || []).filter((r) => allSet.has(r)),
+  }));
+  const covered = new Set(rows.flatMap((r) => r.items));
+  const leftover = allRatchets.filter((r) => !covered.has(r));
+  if (leftover.length) {
+    // 按前綴再分：1-xx → 1 組
+    const byPrefix = {};
+    leftover.forEach((r) => {
+      const m = String(r).match(/^([0-9M]+)/i);
+      const key = m ? m[1] : "其他";
+      (byPrefix[key] ||= []).push(r);
+    });
+    Object.keys(byPrefix)
+      .sort()
+      .forEach((key) => {
+        const existing = rows.find((r) => r.label === key);
+        if (existing) existing.items.push(...byPrefix[key]);
+        else rows.push({ label: key, items: byPrefix[key] });
+      });
+  }
+  return rows.filter((r) => r.items.length);
 }
 
 function renderRatchetPicker(bey) {
@@ -2070,48 +2108,24 @@ function renderRatchetPicker(bey) {
     `;
   }
 
-  // 確保「簡易固鎖」在完整列表內
-  const allRatchets = PARTS.ratchets.includes("簡易固鎖")
-    ? PARTS.ratchets
-    : [...PARTS.ratchets, "簡易固鎖"];
-  const allSet = new Set(allRatchets);
-
-  // 按系分行（只顯示完整表內有嘅）
-  const seriesRows = (PARTS.ratchetsBySeries || []).map((row) => ({
-    label: row.label,
-    items: (row.items || []).filter((r) => allSet.has(r)),
+  const seriesRows = buildAllRatchetSeriesRows();
+  // 簡易固鎖顯示短名
+  const displayRows = seriesRows.map((row) => ({
+    ...row,
+    items: row.items,
+    _labels: Object.fromEntries(
+      row.items.map((r) => [r, r === "簡易固鎖" ? "簡易" : r])
+    ),
   }));
 
-  // 其餘未列入分組嘅固鎖 → 下拉
-  const inSeries = new Set(seriesRows.flatMap((r) => r.items));
-  const others = allRatchets.filter((r) => !inSeries.has(r));
-
-  const opts = allRatchets
-    .map((r) => `<option value="${r}" ${bey.ratchet === r ? "selected" : ""}>${r}</option>`)
-    .join("");
-
   return `
-    <div class="part-block">
-      <h4>固鎖 Ratchet <span class="req">必選</span></h4>
-      <div class="part-series-list">
-        ${renderSeriesChipRows(seriesRows, bey.ratchet, "quick-ratchet")}
-        ${
-          others.includes("簡易固鎖")
-            ? `<div class="part-series-row">
-                <div class="chip-grid chip-compact chip-row">
-                  <button type="button" class="chip ${bey.ratchet === "簡易固鎖" ? "selected" : ""}" data-quick-ratchet="簡易固鎖">
-                    <input type="checkbox" ${bey.ratchet === "簡易固鎖" ? "checked" : ""} tabindex="-1" />
-                    <span>簡易</span>
-                  </button>
-                </div>
-              </div>`
-            : ""
-        }
+    <div class="part-block part-block-ratchet-all">
+      <h4>固鎖 <span class="req">必選</span></h4>
+      <div class="part-series-list part-series-list-all">
+        ${renderSeriesChipRows(displayRows, bey.ratchet, "quick-ratchet", {
+          labelMap: Object.assign({}, ...displayRows.map((r) => r._labels)),
+        })}
       </div>
-      <select class="input select part-select part-select-compact" id="ratchetSelect">
-        <option value="">— 其他 —</option>
-        ${opts}
-      </select>
     </div>
   `;
 }
