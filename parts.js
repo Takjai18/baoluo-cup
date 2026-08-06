@@ -252,11 +252,12 @@ const PARTS = {
 };
 
 const SERIES_LABELS = {
+  HOT: "熱門",
   ALL: "全部",
   BX: "BX 系列",
   UX: "UX 系列",
   CX: "CX 系列",
-  OTHER: "其他／限制款",
+  OTHER: "其他",
 };
 
 function emptyCxParts() {

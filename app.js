@@ -1409,8 +1409,8 @@ let deckEditBeyIndex = 0;
 let deckDraft = null;
 /** 三隻齊後顯示確認清單 */
 let deckConfirmPending = false;
-/** Blade picker UI state */
-let bladeSeriesFilter = "ALL";
+/** Blade picker UI state：HOT | ALL | BX | UX | CX | OTHER */
+let bladeSeriesFilter = "HOT";
 let bladeSearchQuery = "";
 
 function openDeckModal(playerId) {
@@ -1421,7 +1421,7 @@ function openDeckModal(playerId) {
   deckEditBeyIndex = 0;
   deckConfirmPending = false;
   deckDraft = p.beys.map((b) => normalizeBey(JSON.parse(JSON.stringify(b))));
-  bladeSeriesFilter = "ALL";
+  bladeSeriesFilter = "HOT";
   bladeSearchQuery = "";
   document.getElementById("deckModalTitle").textContent = "登記陀螺";
   renderDeckModal();
@@ -1465,7 +1465,7 @@ function maybeAutoAdvanceDeckBey() {
     const from = deckEditBeyIndex + 1;
     deckEditBeyIndex = next;
     bladeSearchQuery = "";
-    bladeSeriesFilter = "ALL";
+    bladeSeriesFilter = "HOT";
     deckConfirmPending = false;
     toast(`陀螺 ${from} 已齊 ✓ → 請登記陀螺 ${next + 1}`, "success");
     return true;
@@ -1608,14 +1608,12 @@ function renderDeckModal() {
 }
 
 function renderBladePicker(bey) {
-  const seriesBtns = ["ALL", "BX", "UX", "CX", "OTHER"]
+  const seriesBtns = ["HOT", "ALL", "BX", "UX", "CX", "OTHER"]
     .map((s) => {
       const label = SERIES_LABELS[s] || s;
       return `<button type="button" class="series-chip ${bladeSeriesFilter === s ? "active" : ""}" data-series="${s}">${label}</button>`;
     })
     .join("");
-
-  const isCxMode = bladeSeriesFilter === "CX" || bey.series === "CX" || bey.bladeId === "cx";
 
   // 選中顯示
   let selectedCompact = "";
@@ -1623,26 +1621,24 @@ function renderBladePicker(bey) {
     selectedCompact = cxComboLabel(bey) || bey.cxProduct || "CX 組裝中";
   } else if (bey.bladeId && bey.bladeId !== "custom" && bey.bladeId !== "cx") {
     const selectedBlade = findBladeById(bey.bladeId);
-    selectedCompact = selectedBlade ? bladeStaffLabel(selectedBlade) : "";
+    const hot = (PARTS.bladesHot || []).find((h) => h.bladeId === bey.bladeId);
+    selectedCompact = hot
+      ? hot.label
+      : selectedBlade
+        ? bladeStaffLabel(selectedBlade)
+        : "";
   } else if (bey.bladeId === "custom") {
     selectedCompact = bey.bladeCustom || "自訂";
   }
 
-  // 熱門：只喺「全部」時顯示；揀咗 BX／UX／限制系就暫時收起
-  const showHot = bladeSeriesFilter === "ALL";
-  const hotChips = showHot
-    ? (PARTS.bladesHot || [])
-        .map((h) => {
-          const blade = findBladeById(h.bladeId);
-          if (!blade) return "";
-          const sel = bey.bladeId === h.bladeId;
-          return `<button type="button" class="chip chip-hot ${sel ? "selected" : ""}" data-hot-blade="${escapeAttr(h.bladeId)}">
-            <input type="checkbox" ${sel ? "checked" : ""} tabindex="-1" />
-            <span>${escapeHtml(h.label)}</span>
-          </button>`;
-        })
-        .join("")
-    : "";
+  let bodyHtml = "";
+  if (bladeSeriesFilter === "CX") {
+    bodyHtml = renderCxAssembler(bey);
+  } else if (bladeSeriesFilter === "HOT") {
+    bodyHtml = renderHotBladePicker(bey);
+  } else {
+    bodyHtml = renderBxUxBladePicker(bey);
+  }
 
   return `
     <div class="part-block">
@@ -1650,27 +1646,61 @@ function renderBladePicker(bey) {
         ${selectedCompact ? `<span class="selected-compact">已選 <strong>${escapeHtml(selectedCompact)}</strong></span>` : ""}
       </h4>
       <div class="series-row">${seriesBtns}</div>
-      ${
-        showHot
-          ? `<div class="blade-hot-block">
-              <div class="blade-hot-title">熱門</div>
-              <div class="chip-grid chip-compact chip-row blade-hot-chips">${hotChips}</div>
-            </div>`
-          : ""
-      }
-      ${
-        bladeSeriesFilter === "CX" || (bladeSeriesFilter === "ALL" && bey.series === "CX")
-          ? renderCxAssembler(bey)
-          : renderBxUxBladePicker(bey)
-      }
+      ${bodyHtml}
     </div>
   `;
 }
 
-/** BX／UX／限制系：checklist；全部：搜尋 + 列表 */
+/** 熱門上蓋 checklist（預設） */
+function renderHotBladePicker(bey) {
+  const checkItems = (PARTS.bladesHot || [])
+    .map((h) => {
+      const blade = findBladeById(h.bladeId);
+      if (!blade) return "";
+      const sel = bey.bladeId === h.bladeId;
+      return `
+        <label class="blade-check-item ${sel ? "selected" : ""}">
+          <input type="checkbox" class="blade-check-input" data-blade-id="${escapeAttr(h.bladeId)}"
+            data-series="${escapeAttr(blade.series || "")}" ${sel ? "checked" : ""} />
+          <span class="bci-code">${escapeHtml((h.label || "").split(" ")[0] || "")}</span>
+          <span class="bci-name">${escapeHtml(h.label)}</span>
+          ${
+            blade.tier === "T0"
+              ? '<span class="tier t0">T0</span>'
+              : blade.tier === "T1"
+                ? '<span class="tier t1">T1</span>'
+                : ""
+          }
+        </label>`;
+    })
+    .join("");
+
+  return `
+    <div class="blade-check-wrap">
+      <div class="blade-check-head">熱門上蓋 · 點選一項</div>
+      <div class="blade-check-list" id="bladeOptionList">
+        ${checkItems || '<div class="empty-mini">暫無熱門列表</div>'}
+      </div>
+      <div class="btn-row mt-8">
+        <button type="button" class="btn btn-ghost btn-sm" id="btnBladeCustom">自由輸入…</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnGoCx">CX 組裝…</button>
+        ${
+          bey.bladeId === "custom"
+            ? `<input class="input" id="bladeCustomInput" style="flex:1" placeholder="自訂上蓋名稱" value="${escapeAttr(bey.bladeCustom || "")}" />`
+            : ""
+        }
+      </div>
+    </div>
+  `;
+}
+
+/** BX／UX／其他：checklist；全部：搜尋 + 全列表 */
 function renderBxUxBladePicker(bey) {
   const seriesMode = bladeSeriesFilter === "BX" || bladeSeriesFilter === "UX" || bladeSeriesFilter === "OTHER";
-  const list = filterBlades(bladeSeriesFilter, seriesMode ? "" : bladeSearchQuery);
+  const list = filterBlades(
+    bladeSeriesFilter === "ALL" ? "ALL" : bladeSeriesFilter,
+    seriesMode ? "" : bladeSearchQuery
+  );
   const exactHit =
     !seriesMode &&
     bladeSearchQuery.trim() &&
@@ -2218,11 +2248,7 @@ function bindDeckModalEvents(body) {
     if (!blade) return;
     applyBladeToBey(deckDraft[deckEditBeyIndex], blade);
     bladeSearchQuery = "";
-    if (blade.series && blade.series !== "OTHER") {
-      bladeSeriesFilter = blade.series;
-    } else if (blade.series === "OTHER") {
-      bladeSeriesFilter = "OTHER";
-    }
+    // 揀完上蓋後保持而家 filter（熱門／全部／系列），唔自動跳走
     if (isBeyComplete(deckDraft[deckEditBeyIndex])) {
       maybeAutoAdvanceDeckBey();
       renderDeckModal();
@@ -2232,12 +2258,6 @@ function bindDeckModalEvents(body) {
       toast(`已選上蓋 ${hot ? hot.label : bladeStaffLabel(blade) || bladeCompactCode(blade)}`, "success");
     }
   };
-
-  body.querySelectorAll("[data-hot-blade]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      pickBlade(findBladeById(btn.dataset.hotBlade));
-    });
-  });
 
   // 系列 checklist（單選：勾一項即選）
   body.querySelectorAll(".blade-check-input").forEach((inp) => {
@@ -2279,7 +2299,7 @@ function bindDeckModalEvents(body) {
     const bey = deckDraft[deckEditBeyIndex];
     bey.series = "CX";
     bey.bladeId = "cx";
-    if (!bey.cxType) bey.cxType = "standard";
+    if (!bey.cxType) bey.cxType = resolveCxType(bey.cxProduct) || "standard";
     syncCxDisplayFields(bey);
     renderDeckModal();
   });
