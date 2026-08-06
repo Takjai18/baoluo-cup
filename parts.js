@@ -54,9 +54,10 @@ const PARTS = {
     { id: "ux-15", code: "UX-15", name: "鮫鯊狂鱗", en: "SharkScale", series: "UX", tier: "T0" },
     { id: "ux-16", code: "UX-16", name: "時鐘幻影", en: "ClockMirage", series: "UX", tier: "T1" },
     { id: "ux-17", code: "UX-17", name: "隕星龍騎士", en: "MeteorDragoon", series: "UX", tier: "T1" },
-    { id: "ux-19", code: "UX-19", name: "子彈獅鷲", en: "BulletGriffon", series: "UX", tier: "T1" },
-    { id: "ux-20", code: "UX-20", name: "榮耀戰神", en: "GloryValkyrie", series: "UX", tier: "T0" },
-    { id: "ux-21", code: "UX-21", name: "惡魔幽冥", en: "HellsNether", series: "UX", tier: "T1" },
+    // UX-19 起新 UX 一體化固鎖（登記時無需另選固鎖）
+    { id: "ux-19", code: "UX-19", name: "子彈獅鷲", en: "BulletGriffon", series: "UX", tier: "T1", integratedRatchet: true },
+    { id: "ux-20", code: "UX-20", name: "榮耀戰神", en: "GloryValkyrie", series: "UX", tier: "T0", integratedRatchet: true },
+    { id: "ux-21", code: "UX-21", name: "惡魔幽冥", en: "HellsNether", series: "UX", tier: "T1", integratedRatchet: true },
 
     // ── 活動限制但列表未列全者（OTHER，仍可選）──
     { id: "t0-pegasus-blast", code: "T0", name: "天馬爆擊", en: "PegasusBlast", series: "OTHER", tier: "T0" },
@@ -642,6 +643,43 @@ function applyBladeToBey(bey, blade) {
   bey.bladeCustom = "";
   // 清除 CX 組件
   Object.assign(bey, emptyCxParts());
+  // 新 UX 一體化固鎖：自動標記，無需人手選
+  if (bladeHasIntegratedRatchet(blade)) {
+    bey.ratchet = INTEGRATED_RATCHET_LABEL;
+  } else if (bey.ratchet === INTEGRATED_RATCHET_LABEL) {
+    bey.ratchet = "";
+  }
+}
+
+/** 一體化固鎖（UX-19／20／21 等）顯示用標籤 */
+const INTEGRATED_RATCHET_LABEL = "一體化";
+
+/** 上蓋是否使用一體化固鎖（無需另選 Ratchet） */
+function bladeHasIntegratedRatchet(blade) {
+  if (!blade) return false;
+  if (blade.integratedRatchet) return true;
+  const id = String(blade.id || "").toLowerCase();
+  const code = normalizeCodeQuery(blade.code || "");
+  return (
+    id === "ux-19" ||
+    id === "ux-20" ||
+    id === "ux-21" ||
+    code === "UX19" ||
+    code === "UX20" ||
+    code === "UX21"
+  );
+}
+
+function beyHasIntegratedRatchet(bey) {
+  if (!bey) return false;
+  if (bey.ratchet === INTEGRATED_RATCHET_LABEL) return true;
+  if (bey.bladeId && bey.bladeId !== "custom" && bey.bladeId !== "cx") {
+    const b = findBladeById(bey.bladeId);
+    if (bladeHasIntegratedRatchet(b)) return true;
+  }
+  // 後備：自填／代碼
+  const code = normalizeCodeQuery(bey.bladeCode || partDisplayBladeShort(bey) || "");
+  return code === "UX19" || code === "UX20" || code === "UX21";
 }
 
 function applyCxProductToBey(bey, compactOrCode) {
@@ -722,7 +760,15 @@ function partDisplayBladeShort(bey) {
 
 function partDisplay(bey, field) {
   if (field === "blade") return partDisplayBlade(bey);
-  if (field === "ratchet") return (bey?.ratchet || "").trim();
+  if (field === "ratchet") {
+    if (beyHasIntegratedRatchet(bey)) {
+      const r = (bey?.ratchet || "").trim();
+      // 已選一般固鎖時仍顯示該值；否則顯示一體化
+      if (r && r !== INTEGRATED_RATCHET_LABEL) return r;
+      return INTEGRATED_RATCHET_LABEL;
+    }
+    return (bey?.ratchet || "").trim();
+  }
   // 軸心：永遠只顯示代碼（O），絕不顯示全名（Orb）
   if (field === "bit") return normalizeBitCode(bey?.bit || "");
   return "";
@@ -733,7 +779,7 @@ function beyLabel(bey, opts = {}) {
   const rt = partDisplay(bey, "ratchet");
   const bt = partDisplay(bey, "bit");
   if (!partDisplayBlade(bey) && !rt && !bt) return "（未登記）";
-  // 短顯示：BX49 3-60 J（現場主用）
+  // 短顯示：BX49 3-60 J（現場主用）；一體化固鎖顯示 UX20 一體化 J
   if (opts.short) {
     const shortBl = partDisplayBladeShort(bey) || "?";
     return [shortBl, rt || "?", bt || "?"].join(" ");
@@ -743,9 +789,11 @@ function beyLabel(bey, opts = {}) {
 }
 
 function isBeyComplete(bey) {
-  const rt = partDisplay(bey, "ratchet");
   const bt = partDisplay(bey, "bit");
-  if (!rt || !bt) return false;
+  if (!bt) return false;
+  // UX-19／20／21：一體化固鎖，無需另選固鎖
+  const needRatchet = !beyHasIntegratedRatchet(bey);
+  if (needRatchet && !partDisplay(bey, "ratchet")) return false;
   if (bey.series === "CX" || bey.bladeId === "cx") {
     return isCxBladeComplete(bey);
   }
@@ -804,7 +852,11 @@ function checkDeckRestrictions(player) {
   if (t0 >= 1 && t1 > 1) warnings.push(`已用 T0 時，T1 最多 1 隻（目前 T1：${t1}）`);
   if (t0 === 0 && t1 > 2) warnings.push(`無 T0 時，T1 最多 2 隻（目前 ${t1}）`);
 
-  const ratchets = (player.beys || []).map((b) => partDisplay(b, "ratchet")).filter(Boolean);
+  // 一體化固鎖不計入「固鎖重複」檢查
+  const ratchets = (player.beys || [])
+    .filter((b) => !beyHasIntegratedRatchet(b))
+    .map((b) => partDisplay(b, "ratchet"))
+    .filter(Boolean);
   const bits = (player.beys || []).map((b) => partDisplay(b, "bit")).filter(Boolean);
   const rSet = new Set();
   for (const r of ratchets) {

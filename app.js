@@ -1887,6 +1887,23 @@ function bindCxAssemblerEvents(body) {
 }
 
 function renderRatchetPicker(bey) {
+  // UX-19／20／21：新 UX 一體化固鎖，無需登記
+  if (beyHasIntegratedRatchet(bey)) {
+    if (bey.ratchet !== INTEGRATED_RATCHET_LABEL) {
+      bey.ratchet = INTEGRATED_RATCHET_LABEL;
+    }
+    return `
+      <div class="part-block">
+        <h4>固鎖 Ratchet</h4>
+        <div class="hint" style="margin:0">
+          <strong>一體化固鎖</strong>（UX-19／UX-20／UX-21）— 無需另行選擇固鎖。
+          只需登記<strong>軸心</strong>即可完成此陀螺。
+        </div>
+        <div class="deck-restrict-ok" style="margin-top:10px">✓ 固鎖：一體化（已自動處理）</div>
+      </div>
+    `;
+  }
+
   // 確保「簡易固鎖」在完整列表內
   const allRatchets = PARTS.ratchets.includes("簡易固鎖")
     ? PARTS.ratchets
