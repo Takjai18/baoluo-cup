@@ -2583,6 +2583,65 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   font-weight: 600;
   min-width: 0;
 }
+
+/* CX 組裝（左欄 checklist 風格） */
+.cx-assembler-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 2px;
+}
+.cx-assembler-compact .cx-field {
+  margin: 0;
+}
+.cx-assembler-compact .cx-field label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+.cx-assembler-compact .cx-field label .req {
+  color: #f87171;
+  font-size: 0.7rem;
+}
+.cx-assembler-compact .chip {
+  min-height: 30px;
+  padding: 3px 8px;
+  font-size: 0.78rem;
+}
+.cx-assembler-compact .chip-cx-product.is-expand {
+  border-color: rgba(251, 191, 36, 0.45);
+}
+.cx-assembler-compact .chip-cx-product.selected {
+  border-color: var(--accent);
+  background: rgba(200, 255, 0, 0.15);
+}
+.cx-assembler-compact .cx-over-required {
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(251, 191, 36, 0.06);
+}
+.cx-preview-mini {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.88rem;
+}
+.cx-preview-mini .ok {
+  color: var(--accent);
+  font-weight: 900;
+}
 .deck-col-ratchet .part-block {
   border-top: 3px solid #a3a3a3;
 }
