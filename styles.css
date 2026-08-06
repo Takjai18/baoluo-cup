@@ -2228,36 +2228,109 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   border-radius: 8px;
 }
 
-/* Deck modal — 三欄：左上蓋 · 中固鎖 · 右軸心 */
+/* Deck modal — 緊湊：頂欄選手+組合，三欄零件，盡量唔使 scroll */
 .modal-deck {
   width: min(1100px, 100%);
-  max-height: 94vh;
+  max-height: 96vh;
+  display: flex;
+  flex-direction: column;
 }
-.deck-player-meta {
+.modal-deck .modal-body {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.deck-top-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+}
+.deck-player-line {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  margin-bottom: 12px;
+  gap: 8px;
+  min-width: 0;
+}
+.deck-player-name {
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #fff;
+}
+.deck-done-count {
+  font-weight: 800;
+  color: var(--accent);
+}
+.deck-combo-side {
+  text-align: right;
+  min-width: 0;
+  flex: 1 1 180px;
+}
+.deck-combo-side .combo-short {
+  font-size: 0.95rem;
+  color: #fff;
+}
+.deck-combo-side .combo-full {
+  font-size: 0.78rem;
+  margin-top: 2px;
+}
+.deck-all-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.deck-all-preview-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.8rem;
+  color: var(--muted);
+  max-width: 100%;
+}
+.deck-all-preview-item.is-done {
+  border-color: rgba(200, 255, 0, 0.4);
+  color: #e5e5e5;
+}
+.dap-n {
+  font-weight: 900;
+  color: var(--accent);
+  min-width: 1em;
+}
+.dap-c {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
 }
 .bey-tabs {
   display: flex;
   gap: 6px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 .bey-tab {
   flex: 1;
-  min-width: 90px;
-  min-height: 48px;
-  border-radius: 12px;
+  min-width: 72px;
+  min-height: 40px;
+  border-radius: 10px;
   border: 2px solid var(--border);
   background: #141414;
   color: var(--muted);
   font-weight: 800;
   cursor: pointer;
   font-family: inherit;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 .bey-tab.active {
   border-color: var(--accent);
@@ -2272,19 +2345,63 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   border-color: #22c55e;
   color: #fff;
 }
+.deck-footer-actions {
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+
+/* 確認 3 隻清單 */
+.deck-confirm-panel {
+  padding: 4px 0 8px;
+}
+.deck-confirm-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 1.1rem;
+}
+.deck-confirm-q {
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.deck-confirm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.deck-confirm-line {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+}
+.deck-confirm-num {
+  font-weight: 900;
+  color: var(--accent);
+  white-space: nowrap;
+}
 
 /* 三欄零件選擇 */
 .deck-parts-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 0.9fr);
-  gap: 12px;
+  gap: 8px;
   align-items: stretch;
-  margin-top: 4px;
+  margin-top: 0;
+  flex: 1;
+  min-height: 0;
 }
 .deck-col {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 .deck-col .part-block {
   flex: 1;
@@ -2292,11 +2409,16 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   height: 100%;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px;
+  border-radius: 10px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+.deck-col .part-block h4 {
+  font-size: 0.82rem;
+  margin-bottom: 6px;
+  flex-shrink: 0;
 }
 .deck-col-blade .part-block {
   border-top: 3px solid var(--accent);
@@ -2309,7 +2431,8 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
 }
 .deck-col .blade-option-list {
   flex: 1;
-  max-height: min(42vh, 360px);
+  max-height: none;
+  min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -2319,33 +2442,41 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
 .deck-col .part-series-list {
   flex: 1;
   overflow-y: auto;
-  max-height: min(42vh, 380px);
+  max-height: none;
+  min-height: 0;
   -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px;
+}
+.deck-col .hint {
+  font-size: 0.75rem;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+}
+.part-select-compact {
+  margin-top: 6px;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  flex-shrink: 0;
 }
 .part-series-row {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 .part-series-label {
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  text-transform: uppercase;
+  display: none; /* 慳位：唔顯示 1 系／Rubber 等 */
 }
 .part-series-row .chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 4px;
 }
 .part-series-row .chip {
-  min-height: 36px;
-  padding: 4px 10px;
-  font-size: 0.82rem;
+  min-height: 32px;
+  padding: 3px 8px;
+  font-size: 0.8rem;
 }
 .deck-col .hint {
   font-size: 0.8rem;

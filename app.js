@@ -1407,6 +1407,8 @@ let deckEditPlayerId = null;
 let deckEditBeyIndex = 0;
 /** Working copy while modal open */
 let deckDraft = null;
+/** 三隻齊後顯示確認清單 */
+let deckConfirmPending = false;
 /** Blade picker UI state */
 let bladeSeriesFilter = "ALL";
 let bladeSearchQuery = "";
@@ -1417,10 +1419,11 @@ function openDeckModal(playerId) {
   normalizePlayer(p);
   deckEditPlayerId = playerId;
   deckEditBeyIndex = 0;
+  deckConfirmPending = false;
   deckDraft = p.beys.map((b) => normalizeBey(JSON.parse(JSON.stringify(b))));
   bladeSeriesFilter = "ALL";
   bladeSearchQuery = "";
-  document.getElementById("deckModalTitle").textContent = `登記陀螺 · ${p.name}`;
+  document.getElementById("deckModalTitle").textContent = "登記陀螺";
   renderDeckModal();
   document.getElementById("deckModal").classList.remove("hidden");
 }
@@ -1429,10 +1432,12 @@ function closeDeckModal() {
   document.getElementById("deckModal").classList.add("hidden");
   deckEditPlayerId = null;
   deckDraft = null;
+  deckConfirmPending = false;
 }
 
 /**
  * 當前陀螺上蓋／固鎖／軸心齊 → 自動跳去下一隻未齊嘅陀螺
+ * 三隻都齊 → 進入確認清單
  * @returns {boolean} 是否已切換
  */
 function maybeAutoAdvanceDeckBey() {
@@ -1447,7 +1452,6 @@ function maybeAutoAdvanceDeckBey() {
       break;
     }
   }
-  // 若後面都齊，再睇前面有冇未齊（例如由第 2 隻改齊時）
   if (next < 0) {
     for (let i = 0; i < deckEditBeyIndex; i++) {
       if (!isBeyComplete(deckDraft[i])) {
@@ -1462,12 +1466,13 @@ function maybeAutoAdvanceDeckBey() {
     deckEditBeyIndex = next;
     bladeSearchQuery = "";
     bladeSeriesFilter = "ALL";
+    deckConfirmPending = false;
     toast(`陀螺 ${from} 已齊 ✓ → 請登記陀螺 ${next + 1}`, "success");
     return true;
   }
 
   if (deckDraft.every(isBeyComplete)) {
-    toast("三隻陀螺已全部齊備，可按「儲存 3 隻配置」", "success");
+    deckConfirmPending = true;
   }
   return false;
 }
@@ -1478,6 +1483,42 @@ function renderDeckModalAfterPartChange() {
   renderDeckModal();
 }
 
+function renderDeckConfirmPanel(p) {
+  const lines = deckDraft
+    .map((b, i) => {
+      const short = beyLabel(b, { short: true });
+      const full = beyLabel(b);
+      return `<div class="deck-confirm-line">
+        <span class="deck-confirm-num">陀螺 ${i + 1}</span>
+        <div>
+          <strong>${escapeHtml(short)}</strong>
+          <div class="meta">${escapeHtml(full)}</div>
+        </div>
+      </div>`;
+    })
+    .join("");
+  const warnings = checkDeckRestrictions({ beys: deckDraft });
+  return `
+    <div class="deck-confirm-panel">
+      <div class="deck-confirm-head">
+        <strong>${escapeHtml(p.name)}</strong>
+        <span class="church-tag ${p.church}">${churchLabel(p.church)}</span>
+      </div>
+      <p class="deck-confirm-q">請確認以下 3 隻陀螺登記是否正確：</p>
+      <div class="deck-confirm-list">${lines}</div>
+      ${
+        warnings.length
+          ? `<div class="deck-restrict-warn">⚠ ${warnings.map(escapeHtml).join("；")}</div>`
+          : ""
+      }
+      <div class="btn-row wrap mt-16">
+        <button type="button" class="btn btn-ghost" id="btnDeckConfirmEdit">需要更改</button>
+        <button type="button" class="btn btn-primary" id="btnDeckConfirmOk" style="margin-left:auto">確定登記</button>
+      </div>
+    </div>
+  `;
+}
+
 function renderDeckModal() {
   const p = playerById(deckEditPlayerId);
   if (!p || !deckDraft) return;
@@ -1486,6 +1527,21 @@ function renderDeckModal() {
   const draftPlayer = { beys: deckDraft };
   const warnings = checkDeckRestrictions(draftPlayer);
   const completeCount = deckDraft.filter(isBeyComplete).length;
+
+  // 三隻齊 → 確認畫面（唔使 scroll 揀零件）
+  if (deckConfirmPending && completeCount === 3) {
+    body.innerHTML = renderDeckConfirmPanel(p);
+    document.getElementById("btnDeckConfirmOk")?.addEventListener("click", () => {
+      saveDeckFromModal({ skipConfirmUi: true });
+    });
+    document.getElementById("btnDeckConfirmEdit")?.addEventListener("click", () => {
+      deckConfirmPending = false;
+      deckEditBeyIndex = 0;
+      renderDeckModal();
+      toast("可繼續修改，改完後會再確認", "success");
+    });
+    return;
+  }
 
   const tabs = deckDraft
     .map((b, i) => {
@@ -1499,22 +1555,36 @@ function renderDeckModal() {
   const shortCombo = beyLabel(bey, { short: true });
   const fullCombo = beyLabel(bey);
 
+  // 三隻概覽（放選手右方）
+  const allPreview = deckDraft
+    .map((b, i) => {
+      const s = beyLabel(b, { short: true });
+      const done = isBeyComplete(b);
+      return `<div class="deck-all-preview-item ${done ? "is-done" : ""}">
+        <span class="dap-n">${i + 1}</span>
+        <span class="dap-c">${escapeHtml(s)}</span>
+      </div>`;
+    })
+    .join("");
+
   body.innerHTML = `
-    <div class="deck-player-meta">
-      <span class="church-tag ${p.church}">${churchLabel(p.church)}</span>
-      <span class="meta">已完成 ${completeCount} / 3 隻 · 左上蓋 · 中固鎖 · 右軸心</span>
+    <div class="deck-top-bar">
+      <div class="deck-player-line">
+        <strong class="deck-player-name">${escapeHtml(p.name)}</strong>
+        <span class="church-tag ${p.church}">${churchLabel(p.church)}</span>
+        <span class="meta deck-done-count">${completeCount}/3</span>
+      </div>
+      <div class="deck-combo-side">
+        <div class="combo-short">本隻：<strong>${escapeHtml(shortCombo)}</strong></div>
+        <div class="combo-full meta">${escapeHtml(fullCombo)}</div>
+      </div>
     </div>
+    <div class="deck-all-preview">${allPreview}</div>
     <div class="bey-tabs">${tabs}</div>
-    <div class="deck-preview">
-      <div class="combo-short">組合：<strong>${escapeHtml(shortCombo)}</strong></div>
-      <div class="combo-full meta">${escapeHtml(fullCombo)}</div>
-    </div>
     ${
       warnings.length
         ? `<div class="deck-restrict-warn">⚠ 限制提示：${warnings.map(escapeHtml).join("；")}</div>`
-        : completeCount === 3
-          ? `<div class="deck-restrict-ok">✓ 三隻已齊，未見明顯違規</div>`
-          : ""
+        : ""
     }
     <div class="deck-parts-grid">
       <div class="deck-col deck-col-blade">
@@ -1527,10 +1597,10 @@ function renderDeckModal() {
         ${renderBitPicker(bey)}
       </div>
     </div>
-    <div class="btn-row wrap mt-16">
-      <button type="button" class="btn btn-ghost" id="btnClearBey">清空此陀螺</button>
-      <button type="button" class="btn btn-secondary" id="btnCopyBey" ${deckEditBeyIndex === 0 ? "disabled" : ""}>複製陀螺1配置</button>
-      <button type="button" class="btn btn-primary" id="btnSaveDeck" style="margin-left:auto">儲存 3 隻配置</button>
+    <div class="btn-row wrap deck-footer-actions">
+      <button type="button" class="btn btn-ghost btn-sm" id="btnClearBey">清空此陀螺</button>
+      <button type="button" class="btn btn-secondary btn-sm" id="btnCopyBey" ${deckEditBeyIndex === 0 ? "disabled" : ""}>複製陀螺1</button>
+      <button type="button" class="btn btn-primary btn-sm" id="btnSaveDeck" style="margin-left:auto">儲存</button>
     </div>
   `;
 
@@ -1948,7 +2018,7 @@ function bindCxAssemblerEvents(body) {
   });
 }
 
-/** 零件 chip 按「系」分行 */
+/** 零件 chip 按「系」分行（唔顯示系名，慳位） */
 function renderSeriesChipRows(rows, selected, dataAttr) {
   return (rows || [])
     .map((row) => {
@@ -1964,7 +2034,6 @@ function renderSeriesChipRows(rows, selected, dataAttr) {
       if (!chips) return "";
       return `
         <div class="part-series-row">
-          <span class="part-series-label">${escapeHtml(row.label)}</span>
           <div class="chip-grid chip-compact chip-row">${chips}</div>
         </div>`;
     })
@@ -1979,12 +2048,8 @@ function renderRatchetPicker(bey) {
     }
     return `
       <div class="part-block">
-        <h4>固鎖 Ratchet</h4>
-        <div class="hint" style="margin:0">
-          <strong>一體化固鎖</strong>（UX-19／UX-20／UX-21）— 無需另行選擇固鎖。
-          只需登記<strong>軸心</strong>即可完成此陀螺。
-        </div>
-        <div class="deck-restrict-ok" style="margin-top:10px">✓ 固鎖：一體化（已自動處理）</div>
+        <h4>固鎖</h4>
+        <div class="deck-restrict-ok" style="margin:0">✓ 一體化固鎖（免選）</div>
       </div>
     `;
   }
@@ -2014,22 +2079,21 @@ function renderRatchetPicker(bey) {
       <h4>固鎖 Ratchet <span class="req">必選</span></h4>
       <div class="part-series-list">
         ${renderSeriesChipRows(seriesRows, bey.ratchet, "quick-ratchet")}
-        <div class="part-series-row">
-          <span class="part-series-label">其他</span>
-          <div class="chip-grid chip-compact chip-row">
-            ${
-              others.includes("簡易固鎖")
-                ? `<button type="button" class="chip ${bey.ratchet === "簡易固鎖" ? "selected" : ""}" data-quick-ratchet="簡易固鎖">
+        ${
+          others.includes("簡易固鎖")
+            ? `<div class="part-series-row">
+                <div class="chip-grid chip-compact chip-row">
+                  <button type="button" class="chip ${bey.ratchet === "簡易固鎖" ? "selected" : ""}" data-quick-ratchet="簡易固鎖">
                     <input type="checkbox" ${bey.ratchet === "簡易固鎖" ? "checked" : ""} tabindex="-1" />
-                    <span>簡易固鎖</span>
-                  </button>`
-                : ""
-            }
-          </div>
-        </div>
+                    <span>簡易</span>
+                  </button>
+                </div>
+              </div>`
+            : ""
+        }
       </div>
-      <select class="input select part-select mt-8" id="ratchetSelect">
-        <option value="">— 其他固鎖 —</option>
+      <select class="input select part-select part-select-compact" id="ratchetSelect">
+        <option value="">— 其他 —</option>
         ${opts}
       </select>
     </div>
@@ -2068,8 +2132,8 @@ function renderBitPicker(bey) {
       <div class="part-series-list">
         ${renderSeriesChipRows(seriesRows, current, "quick-bit")}
       </div>
-      <select class="input select part-select mt-8" id="bitSelect">
-        <option value="">— 其他軸心 —</option>
+      <select class="input select part-select part-select-compact" id="bitSelect">
+        <option value="">— 其他 —</option>
         ${optGroup("常用", freq)}
         ${optGroup("全部", rest)}
       </select>
@@ -2235,9 +2299,16 @@ function bindDeckModalEvents(body) {
   document.getElementById("btnSaveDeck")?.addEventListener("click", saveDeckFromModal);
 }
 
-function saveDeckFromModal() {
+function saveDeckFromModal(opts = {}) {
   const p = playerById(deckEditPlayerId);
   if (!p || !deckDraft) return;
+
+  // 未齊 3 隻時：若撳儲存且已齊 → 先入確認畫面
+  if (!opts.skipConfirmUi && deckDraft.every(isBeyComplete) && !deckConfirmPending) {
+    deckConfirmPending = true;
+    renderDeckModal();
+    return;
+  }
 
   for (let i = 0; i < 3; i++) {
     const b = deckDraft[i];
@@ -2246,6 +2317,7 @@ function saveDeckFromModal() {
     // CX 完整度檢查
     if (b.series === "CX" || b.bladeId === "cx") {
       if (hasParts && !isCxBladeComplete(b)) {
+        deckConfirmPending = false;
         deckEditBeyIndex = i;
         bladeSeriesFilter = "CX";
         renderDeckModal();
@@ -2262,6 +2334,7 @@ function saveDeckFromModal() {
     }
 
     if (b.bladeId === "custom" && hasParts && !(b.bladeCustom || b.bladeName || "").trim()) {
+      deckConfirmPending = false;
       deckEditBeyIndex = i;
       renderDeckModal();
       toast(`陀螺 ${i + 1}：請填寫上蓋名稱`, "error");
