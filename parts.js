@@ -39,25 +39,36 @@ const PARTS = {
     { id: "bx-49", code: "BX-49", name: "蒼龍突擊", en: "DranStrike", series: "BX", tier: "T1" },
     { id: "bx-50", code: "BX-50", name: "天界之環", en: "Heaven's Ring", series: "BX", tier: "" },
 
-    // ── BXG（X-Over／復刻聯名系）──
+    // ── BXG（X-Over／復刻；產品碼常標 BX-00／BXG-xx）──
     { id: "bxg-01", code: "BXG-01", name: "升龍螺旋", en: "DranzerSpiral", series: "BXG", tier: "", staffCode: "BXG01" },
     { id: "bxg-04", code: "BXG-04", name: "白虎裂斬", en: "DrigerSlash", series: "BXG", tier: "", staffCode: "BXG04" },
     { id: "bxg-07", code: "BXG-07", name: "閃電天龍", en: "LightningLDrago", series: "BXG", tier: "", staffCode: "BXG07" },
     { id: "bxg-11", code: "BXG-11", name: "聖盾龜甲", en: "DracielShield", series: "BXG", tier: "", staffCode: "BXG11" },
+    { id: "bxg-13", code: "BXG-13", name: "異域聖劍", en: "XenoXcalibur", series: "BXG", tier: "", staffCode: "BXG13" },
     { id: "bxg-20", code: "BXG-20", name: "岩石雄獅", en: "RockLeone", series: "BXG", tier: "", staffCode: "BXG20" },
     { id: "bxg-21", code: "BXG-21", name: "風暴精靈", en: "StormSpriggan", series: "BXG", tier: "", staffCode: "BXG21" },
     { id: "bxg-22", code: "BXG-22", name: "蒼龍風暴", en: "DragoonStorm", series: "BXG", tier: "", staffCode: "BXG22" },
-    { id: "bxg-pegasis", code: "BXG-00", name: "風暴飛馬", en: "StormPegasis", series: "BXG", tier: "", staffCode: "BXG-飛馬" },
+    { id: "bxg-pegasis", code: "BXG-47", name: "風暴飛馬", en: "StormPegasis", series: "BXG", tier: "", staffCode: "BXG47" },
     { id: "bxg-valkyrie", code: "BXG-00", name: "勝利女武神", en: "VictoryValkyrie", series: "BXG", tier: "", staffCode: "BXG-戰神" },
 
-    // ── 其他聯名（品牌／IP collab；產品碼多為 BX-00）──
-    { id: "collab-optimus", code: "BX-00", name: "柯博文", en: "OptimusPrime", series: "COLLAB", tier: "", staffCode: "聯名-柯博文" },
-    { id: "collab-megatron", code: "BX-00", name: "威震天", en: "Megatron", series: "COLLAB", tier: "", staffCode: "聯名-威震天" },
-    { id: "collab-starscream", code: "BX-00", name: "紅蜘蛛", en: "Starscream", series: "COLLAB", tier: "", staffCode: "聯名-紅蜘蛛" },
-    { id: "collab-ironman", code: "BX-00", name: "鋼鐵俠", en: "IronMan", series: "COLLAB", tier: "", staffCode: "聯名-鋼鐵俠" },
-    { id: "collab-thanos", code: "BX-00", name: "滅霸", en: "Thanos", series: "COLLAB", tier: "", staffCode: "聯名-滅霸" },
-    { id: "collab-spiderman", code: "BX-00", name: "蜘蛛俠", en: "SpiderMan", series: "COLLAB", tier: "", staffCode: "聯名-蜘蛛俠" },
-    { id: "collab-venom", code: "BX-00", name: "毒液", en: "Venom", series: "COLLAB", tier: "", staffCode: "聯名-毒液" },
+    // ── IP 聯名（Marvel／Star Wars／Transformers／Jurassic；產品碼 BXG-xx）──
+    { id: "collab-ironman", code: "BXG-29", name: "鋼鐵俠", en: "IronMan", series: "COLLAB", tier: "", staffCode: "聯名-鋼鐵俠" },
+    { id: "collab-thanos", code: "BXG-29", name: "滅霸", en: "Thanos", series: "COLLAB", tier: "", staffCode: "聯名-滅霸" },
+    { id: "collab-spiderman", code: "BXG-30", name: "蜘蛛俠", en: "SpiderMan", series: "COLLAB", tier: "", staffCode: "聯名-蜘蛛俠" },
+    { id: "collab-venom", code: "BXG-30", name: "毒液", en: "Venom", series: "COLLAB", tier: "", staffCode: "聯名-毒液" },
+    { id: "collab-luke", code: "BXG-33", name: "天行者盧克", en: "LukeSkywalker", series: "COLLAB", tier: "", staffCode: "聯名-盧克" },
+    { id: "collab-vader", code: "BXG-33", name: "黑武士", en: "DarthVader", series: "COLLAB", tier: "", staffCode: "聯名-黑武士" },
+    { id: "collab-mandalorian", code: "BXG-34", name: "曼達洛人", en: "Mandalorian", series: "COLLAB", tier: "", staffCode: "聯名-曼達洛" },
+    { id: "collab-gideon", code: "BXG-34", name: "吉迪恩總督", en: "MoffGideon", series: "COLLAB", tier: "", staffCode: "聯名-吉迪恩" },
+    { id: "collab-optimus", code: "BXG-36", name: "柯博文", en: "OptimusPrime", series: "COLLAB", tier: "", staffCode: "聯名-柯博文" },
+    { id: "collab-megatron", code: "BXG-36", name: "威震天", en: "Megatron", series: "COLLAB", tier: "", staffCode: "聯名-威震天" },
+    { id: "collab-primal", code: "BXG-37", name: "至尊金剛", en: "OptimusPrimal", series: "COLLAB", tier: "", staffCode: "聯名-至尊金剛" },
+    { id: "collab-starscream", code: "BXG-37", name: "紅蜘蛛", en: "Starscream", series: "COLLAB", tier: "", staffCode: "聯名-紅蜘蛛" },
+    { id: "collab-spinosaurus", code: "BXG-41", name: "棘龍", en: "Spinosaurus", series: "COLLAB", tier: "", staffCode: "聯名-棘龍" },
+    { id: "collab-quetzalcoatlus", code: "BXG-41", name: "風神翼龍", en: "Quetzalcoatlus", series: "COLLAB", tier: "", staffCode: "聯名-風神翼龍" },
+    // Hasbro 變形金剛追加（常見改裝上蓋，現場登記用）
+    { id: "collab-bumblebee", code: "BX-00", name: "大黃蜂", en: "Bumblebee", series: "COLLAB", tier: "", staffCode: "聯名-大黃蜂" },
+    { id: "collab-shockwave", code: "BX-00", name: "震波", en: "Shockwave", series: "COLLAB", tier: "", staffCode: "聯名-震波" },
 
     // ── UX ──
     { id: "ux-01", code: "UX-01", name: "蒼龍爆刃", en: "DranBuster", series: "UX", tier: "" },
