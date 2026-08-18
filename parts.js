@@ -58,6 +58,16 @@ const PARTS = {
     { id: "ux-19", code: "UX-19", name: "子彈獅鷲", en: "BulletGriffon", series: "UX", tier: "T1", integratedRatchet: true },
     { id: "ux-20", code: "UX-20", name: "榮耀戰神", en: "GloryValkyrie", series: "UX", tier: "T0", integratedRatchet: true },
     { id: "ux-21", code: "UX-21", name: "惡魔幽冥", en: "HellsNether", series: "UX", tier: "T1", integratedRatchet: true },
+    {
+      id: "ux-21-02",
+      code: "UX-21-02",
+      name: "翱翔飛龍",
+      en: "SoarDragon",
+      series: "UX",
+      tier: "",
+      integratedRatchet: true,
+      staffCode: "UX21-02",
+    },
 
     // ── 活動限制但列表未列全者（OTHER，仍可選）──
     { id: "t0-pegasus-blast", code: "T0", name: "天馬爆擊", en: "PegasusBlast", series: "OTHER", tier: "T0" },
@@ -83,6 +93,7 @@ const PARTS = {
     { bladeId: "ux-19", label: "UX19 子彈獅鷲" },
     { bladeId: "ux-20", label: "UX20 榮耀戰神" },
     { bladeId: "ux-21", label: "UX21 惡魔幽冥" },
+    { bladeId: "ux-21-02", label: "UX21-02 翱翔飛龍" },
   ],
 
   /** 固鎖完整列表 */
@@ -726,9 +737,15 @@ function beyHasIntegratedRatchet(bey) {
     const b = findBladeById(bey.bladeId);
     if (bladeHasIntegratedRatchet(b)) return true;
   }
-  // 後備：自填／代碼
+  // 後備：自填／代碼（含 UX21-02 → UX2102）
   const code = normalizeCodeQuery(bey.bladeCode || partDisplayBladeShort(bey) || "");
-  return code === "UX19" || code === "UX20" || code === "UX21";
+  return (
+    code === "UX19" ||
+    code === "UX20" ||
+    code === "UX21" ||
+    code === "UX2102" ||
+    code.startsWith("UX21")
+  );
 }
 
 function applyCxProductToBey(bey, compactOrCode) {
@@ -745,9 +762,10 @@ function applyCxProductToBey(bey, compactOrCode) {
   return bey;
 }
 
-/** 工作人員用短標籤：BX49 */
+/** 工作人員用短標籤：BX49／UX21-02 */
 function bladeStaffLabel(blade) {
   if (!blade) return "";
+  if (blade.staffCode) return blade.staffCode;
   if (blade.series === "OTHER" || blade.code === "T0" || blade.code === "T1") {
     return blade.name;
   }
@@ -757,10 +775,13 @@ function bladeStaffLabel(blade) {
 function bladeFullLabel(blade) {
   if (!blade) return "";
   if (blade.series === "OTHER" || blade.code === "T0" || blade.code === "T1") {
+    // 有 staffCode（如 UX00）時一併顯示
+    if (blade.staffCode) return `${blade.staffCode} ${blade.name}`;
     return `${blade.name} (${blade.en})`;
   }
-  // 顯示精簡碼為主：BX49 蒼龍突擊
-  return `${bladeCompactCode(blade)} ${blade.name}`;
+  // 顯示精簡碼為主：BX49 蒼龍突擊／UX21-02 翱翔飛龍
+  const code = blade.staffCode || bladeCompactCode(blade);
+  return `${code} ${blade.name}`;
 }
 
 /** 顯示用上蓋名稱（完整） */
