@@ -15,6 +15,15 @@ const PARTS = {
   blades: [
     // ── BX ──
     { id: "bx-01", code: "BX-01", name: "蒼龍神劍", en: "DranSword", series: "BX", tier: "" },
+    {
+      id: "bx-00-dransword-v2",
+      code: "BX-00",
+      name: "蒼龍神劍 V2",
+      en: "DranSwordV2",
+      series: "BX",
+      tier: "",
+      staffCode: "BX00-V2",
+    },
     { id: "bx-02", code: "BX-02", name: "惡魔紅鐮", en: "HellsScythe", series: "BX", tier: "" },
     { id: "bx-03", code: "BX-03", name: "魔導幻箭", en: "WizardArrow", series: "BX", tier: "" },
     { id: "bx-04", code: "BX-04", name: "騎士重盾", en: "KnightShield", series: "BX", tier: "" },
@@ -113,6 +122,7 @@ const PARTS = {
    * bladeId 對應 blades[]；label 為畫面顯示
    */
   bladesHot: [
+    { bladeId: "bx-00-dransword-v2", label: "BX00-V2 蒼龍神劍 V2" },
     { bladeId: "bx-23", label: "BX23 鳳凰飛翼" },
     { bladeId: "bx-34", label: "BX34 蒼穹龍騎士" },
     { bladeId: "bx-49", label: "BX49 蒼龍突擊" },
