@@ -1409,6 +1409,8 @@ let deckEditBeyIndex = 0;
 let deckDraft = null;
 /** 三隻齊後顯示確認清單 */
 let deckConfirmPending = false;
+/** 切入 CX filter 前快照（未確認 CX 零件就切走可還原） */
+let deckCxSnapshot = null;
 /** Blade picker UI state：HOT | ALL | BX | UX | CX | OTHER */
 let bladeSeriesFilter = "HOT";
 let bladeSearchQuery = "";
@@ -1420,6 +1422,7 @@ function openDeckModal(playerId) {
   deckEditPlayerId = playerId;
   deckEditBeyIndex = 0;
   deckConfirmPending = false;
+  deckCxSnapshot = null;
   deckDraft = p.beys.map((b) => normalizeBey(JSON.parse(JSON.stringify(b))));
   bladeSeriesFilter = "HOT";
   bladeSearchQuery = "";
@@ -1433,6 +1436,54 @@ function closeDeckModal() {
   deckEditPlayerId = null;
   deckDraft = null;
   deckConfirmPending = false;
+  deckCxSnapshot = null;
+}
+
+function isCxBey(bey) {
+  return !!(bey && (bey.series === "CX" || bey.bladeId === "cx"));
+}
+
+/**
+ * 用戶真正開始揀 CX 零件時先轉成 CX（保留固鎖／軸心）
+ * 切 filter 本身唔應呼叫呢個
+ */
+function ensureCx(bey) {
+  if (!bey || isCxBey(bey)) return;
+  if (!deckCxSnapshot) {
+    deckCxSnapshot = JSON.parse(JSON.stringify(bey));
+  }
+  const keepRatchet = bey.ratchet || "";
+  const keepBit = bey.bit || "";
+  bey.bladeId = "cx";
+  bey.series = "CX";
+  bey.bladeCode = "";
+  bey.bladeName = "";
+  bey.bladeEn = "";
+  bey.bladeCustom = "";
+  Object.assign(bey, emptyCxParts());
+  bey.cxType = "standard";
+  bey.ratchet = keepRatchet;
+  bey.bit = keepBit;
+}
+
+/** 離開 CX filter：若未完成 CX 組裝且有快照 → 還原 */
+function restoreCxSnapshotIfNeeded(bey) {
+  if (!bey || !deckCxSnapshot) return false;
+  if (!isCxBey(bey)) {
+    deckCxSnapshot = null;
+    return false;
+  }
+  // 已完成 CX 上蓋組裝（未計固鎖軸心）→ 保留 CX，清快照
+  if (isCxBladeComplete(bey)) {
+    deckCxSnapshot = null;
+    return false;
+  }
+  // 未完成：還原切入 CX 前嘅上蓋
+  const snap = deckCxSnapshot;
+  deckCxSnapshot = null;
+  Object.keys(bey).forEach((k) => delete bey[k]);
+  Object.assign(bey, snap);
+  return true;
 }
 
 /**
@@ -1480,6 +1531,10 @@ function maybeAutoAdvanceDeckBey() {
 /** 零件變更後：必要時自動跳下一隻，再重繪 modal */
 function renderDeckModalAfterPartChange() {
   maybeAutoAdvanceDeckBey();
+  // 改到未齊 3 隻 → 唔好留住確認框狀態
+  if (deckDraft && !deckDraft.every(isBeyComplete)) {
+    deckConfirmPending = false;
+  }
   renderDeckModal();
 }
 
@@ -1820,28 +1875,20 @@ function renderBxUxBladePicker(bey) {
 }
 
 /**
- * CX 左欄組裝順序（邏輯）：
- * 1. 主要戰刃（先揀標準／Expand CX13+）
- * 2. 超越戰刃（只適用 Expand／CX13 後）
- * 3. 輔助戰刃
- * 4. 紋章
- * 固鎖／軸心欄不變
+ * CX 左欄組裝（純顯示，唔喺 render 寫 bey）
+ * 順序：主要戰刃 → 超越（CX13+）→ 輔助 → 紋章
  */
 function renderCxAssembler(bey) {
-  bey.series = "CX";
-  bey.bladeId = "cx";
-
-  // 產品編號可選；Expand 由 cxType 或 CX13+ 產品決定
-  const productType = bey.cxProduct ? resolveCxType(bey.cxProduct) : null;
-  if (productType) bey.cxType = productType;
-  if (!bey.cxType) bey.cxType = "standard";
-  const isExpand = bey.cxType === "expand";
-  if (!isExpand) bey.overBlade = "";
-
-  // Expand 時預設產品 CX13（若未選編號），方便顯示
-  if (isExpand && !bey.cxProduct) {
-    bey.cxProduct = "CX13";
-  }
+  const active = isCxBey(bey);
+  // 顯示用副本：未轉 CX 前用空表單，唔改 deckDraft
+  const cxType = active
+    ? bey.cxType || resolveCxType(bey.cxProduct) || "standard"
+    : "standard";
+  const isExpand = cxType === "expand";
+  const mainBlade = active ? bey.mainBlade || "" : "";
+  const overBlade = active && isExpand ? bey.overBlade || "" : "";
+  const assistBlade = active ? bey.assistBlade || "" : "";
+  const lockChip = active ? bey.lockChip || "" : "";
 
   const typeToggle = `
     <div class="cx-type-toggle">
@@ -1859,8 +1906,8 @@ function renderCxAssembler(bey) {
   const mainChips = mainList
     .map(
       (c) =>
-        `<button type="button" class="chip ${bey.mainBlade === c.name ? "selected" : ""}" data-cx-main="${escapeAttr(c.name)}">
-          <input type="checkbox" ${bey.mainBlade === c.name ? "checked" : ""} tabindex="-1" />
+        `<button type="button" class="chip ${mainBlade === c.name ? "selected" : ""}" data-cx-main="${escapeAttr(c.name)}">
+          <input type="checkbox" ${mainBlade === c.name ? "checked" : ""} tabindex="-1" />
           <span>${escapeHtml(c.name)}</span>
         </button>`
     )
@@ -1869,8 +1916,8 @@ function renderCxAssembler(bey) {
   const overChips = PARTS.cx.overBlades
     .map(
       (o) =>
-        `<button type="button" class="chip ${bey.overBlade === o.code ? "selected" : ""}" data-cx-over="${o.code}">
-          <input type="checkbox" ${bey.overBlade === o.code ? "checked" : ""} tabindex="-1" />
+        `<button type="button" class="chip ${overBlade === o.code ? "selected" : ""}" data-cx-over="${o.code}">
+          <input type="checkbox" ${overBlade === o.code ? "checked" : ""} tabindex="-1" />
           <span>${o.code}</span>
         </button>`
     )
@@ -1879,8 +1926,8 @@ function renderCxAssembler(bey) {
   const assistChips = PARTS.cx.assistBlades
     .map(
       (a) =>
-        `<button type="button" class="chip ${bey.assistBlade === a.code ? "selected" : ""}" data-cx-assist="${a.code}">
-          <input type="checkbox" ${bey.assistBlade === a.code ? "checked" : ""} tabindex="-1" />
+        `<button type="button" class="chip ${assistBlade === a.code ? "selected" : ""}" data-cx-assist="${a.code}">
+          <input type="checkbox" ${assistBlade === a.code ? "checked" : ""} tabindex="-1" />
           <span>${a.code}</span>
         </button>`
     )
@@ -1889,18 +1936,23 @@ function renderCxAssembler(bey) {
   const lockChips = PARTS.cx.lockChips
     .map(
       (c) =>
-        `<button type="button" class="chip ${bey.lockChip === c.name ? "selected" : ""}" data-cx-lock="${escapeAttr(c.name)}">
-          <input type="checkbox" ${bey.lockChip === c.name ? "checked" : ""} tabindex="-1" />
+        `<button type="button" class="chip ${lockChip === c.name ? "selected" : ""}" data-cx-lock="${escapeAttr(c.name)}">
+          <input type="checkbox" ${lockChip === c.name ? "checked" : ""} tabindex="-1" />
           <span>${escapeHtml(c.name)}</span>
         </button>`
     )
     .join("");
 
-  const preview = cxComboLabel(bey) || "（未完成）";
-  const complete = isCxBladeComplete(bey);
+  const preview = active ? cxComboLabel(bey) || "（未完成）" : "（尚未開始 CX 組裝）";
+  const complete = active && isCxBladeComplete(bey);
 
   return `
     <div class="cx-assembler cx-assembler-compact">
+      ${
+        !active
+          ? `<div class="hint" style="margin:0 0 8px">揀下面任一零件開始 CX 組裝；未揀前唔會改到而家嘅上蓋。</div>`
+          : ""
+      }
       <div class="cx-field">
         <label>主要戰刃 <span class="req">必選</span></label>
         ${typeToggle}
@@ -1953,9 +2005,10 @@ function selectBladeByStaffCode(query) {
     return true;
   }
 
+  deckCxSnapshot = null;
   applyBladeToBey(deckDraft[deckEditBeyIndex], blade);
   bladeSearchQuery = "";
-  if (bladeSeriesFilter === "CX") bladeSeriesFilter = blade.series || "ALL";
+  if (bladeSeriesFilter === "CX") bladeSeriesFilter = blade.series || "HOT";
   // 一體化固鎖 + 已有軸心時可能即齊 → 自動跳下一隻
   const label = bladeCompactCode(blade);
   if (isBeyComplete(deckDraft[deckEditBeyIndex])) {
@@ -1972,18 +2025,14 @@ function bindCxAssemblerEvents(body) {
   const bey = deckDraft[deckEditBeyIndex];
   if (!bey) return;
 
-  const ensureCx = () => {
-    bey.series = "CX";
-    bey.bladeId = "cx";
-  };
-
   // 標準 / Expand（CX13 後）→ 影響主刃列表同超越戰刃顯示
   body.querySelectorAll("[data-cx-type-set]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      ensureCx();
+      ensureCx(bey);
       const next = btn.dataset.cxTypeSet === "expand" ? "expand" : "standard";
       bey.cxType = next;
       if (next === "expand") {
+        // 只喺用戶揀 Expand 時先寫產品預設（唔喺 render 寫）
         if (!bey.cxProduct || resolveCxType(bey.cxProduct) !== "expand") {
           bey.cxProduct = "CX13";
         }
@@ -2006,7 +2055,7 @@ function bindCxAssemblerEvents(body) {
   // 1. 主要戰刃
   body.querySelectorAll("[data-cx-main]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      ensureCx();
+      ensureCx(bey);
       bey.mainBlade = btn.dataset.cxMain;
       bey.mainBladeCustom = "";
       syncCxDisplayFields(bey);
@@ -2017,7 +2066,7 @@ function bindCxAssemblerEvents(body) {
   // 2. 超越戰刃（Expand only）
   body.querySelectorAll("[data-cx-over]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      ensureCx();
+      ensureCx(bey);
       bey.cxType = "expand";
       if (!bey.cxProduct || resolveCxType(bey.cxProduct) !== "expand") bey.cxProduct = "CX13";
       const c = btn.dataset.cxOver;
@@ -2030,7 +2079,7 @@ function bindCxAssemblerEvents(body) {
   // 3. 輔助戰刃
   body.querySelectorAll("[data-cx-assist]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      ensureCx();
+      ensureCx(bey);
       const c = btn.dataset.cxAssist;
       bey.assistBlade = bey.assistBlade === c ? "" : c;
       syncCxDisplayFields(bey);
@@ -2041,7 +2090,7 @@ function bindCxAssemblerEvents(body) {
   // 4. 紋章
   body.querySelectorAll("[data-cx-lock]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      ensureCx();
+      ensureCx(bey);
       bey.lockChip = btn.dataset.cxLock;
       bey.lockChipCustom = "";
       syncCxDisplayFields(bey);
@@ -2198,32 +2247,35 @@ function bindDeckModalEvents(body) {
 
   body.querySelectorAll(".series-chip[data-series]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      bladeSeriesFilter = btn.dataset.series;
+      const next = btn.dataset.series;
+      const bey = deckDraft[deckEditBeyIndex];
+      const leavingCx = bladeSeriesFilter === "CX" && next !== "CX";
+      const enteringCx = next === "CX" && bladeSeriesFilter !== "CX";
+
+      // 離開 CX 且未完成組裝 → 還原切入前上蓋
+      if (leavingCx && bey) {
+        if (restoreCxSnapshotIfNeeded(bey)) {
+          toast("已還原切入 CX 前嘅上蓋（CX 組裝未完成）", "success");
+        }
+      }
+
+      bladeSeriesFilter = next;
       bladeSearchQuery = "";
-      if (bladeSeriesFilter === "CX") {
-        const bey = deckDraft[deckEditBeyIndex];
-        bey.series = "CX";
-        bey.bladeId = "cx";
-        Object.assign(bey, { ...emptyCxParts(), ...{
-          cxProduct: bey.cxProduct || "",
-          cxType: bey.cxType || resolveCxType(bey.cxProduct) || "standard",
-          lockChip: bey.lockChip || "",
-          lockChipCustom: bey.lockChipCustom || "",
-          mainBlade: bey.mainBlade || "",
-          mainBladeCustom: bey.mainBladeCustom || "",
-          assistBlade: bey.assistBlade || "",
-          overBlade: bey.overBlade || "",
-        }});
-        if (!bey.cxType) bey.cxType = "standard";
-        syncCxDisplayFields(bey);
-        toast("請選擇 CX 產品編號、紋章、主刃、輔助戰刃", "success");
+
+      // 切入 CX：只改 filter，唔改 bey；提示新流程
+      if (enteringCx) {
+        // 若而家唔係 CX，預先影相（真正轉 CX 喺揀零件時）
+        if (bey && !isCxBey(bey) && !deckCxSnapshot) {
+          deckCxSnapshot = JSON.parse(JSON.stringify(bey));
+        }
+        toast("請依序：主要戰刃 →（Expand 先選超越）→ 輔助戰刃 → 紋章", "success");
       }
       renderDeckModal();
     });
   });
 
-  // CX 組裝事件
-  if (bladeSeriesFilter === "CX" || deckDraft[deckEditBeyIndex]?.series === "CX") {
+  // CX 組裝事件（只喺 CX filter 綁定）
+  if (bladeSeriesFilter === "CX") {
     bindCxAssemblerEvents(body);
   }
 
@@ -2260,6 +2312,7 @@ function bindDeckModalEvents(body) {
 
   const pickBlade = (blade) => {
     if (!blade) return;
+    deckCxSnapshot = null; // 已揀非 CX 上蓋，取消還原快照
     applyBladeToBey(deckDraft[deckEditBeyIndex], blade);
     bladeSearchQuery = "";
     // 揀完上蓋後保持而家 filter（熱門／全部／系列），唔自動跳走
@@ -2309,17 +2362,19 @@ function bindDeckModalEvents(body) {
   });
 
   document.getElementById("btnGoCx")?.addEventListener("click", () => {
-    bladeSeriesFilter = "CX";
     const bey = deckDraft[deckEditBeyIndex];
-    bey.series = "CX";
-    bey.bladeId = "cx";
-    if (!bey.cxType) bey.cxType = resolveCxType(bey.cxProduct) || "standard";
-    syncCxDisplayFields(bey);
+    if (bey && !isCxBey(bey) && !deckCxSnapshot) {
+      deckCxSnapshot = JSON.parse(JSON.stringify(bey));
+    }
+    bladeSeriesFilter = "CX";
+    // 唔即刻轉 bey；等用戶揀 CX 零件
+    toast("請依序：主要戰刃 →（Expand 先選超越）→ 輔助戰刃 → 紋章", "success");
     renderDeckModal();
   });
 
   document.getElementById("btnBladeCustom")?.addEventListener("click", () => {
     const bey = deckDraft[deckEditBeyIndex];
+    deckCxSnapshot = null; // 人手改自訂上蓋，取消 CX 還原
     Object.assign(bey, emptyCxParts());
     bey.bladeId = "custom";
     bey.series = "OTHER";

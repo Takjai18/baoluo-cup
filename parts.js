@@ -922,7 +922,8 @@ function checkDeckRestrictions(player) {
 
 function filterBlades(series, query) {
   let list = PARTS.blades.slice();
-  if (series && series !== "ALL" && series !== "CX") {
+  // HOT 等同 ALL（熱門有獨立 UI；防誤傳 series=HOT）
+  if (series && series !== "ALL" && series !== "CX" && series !== "HOT") {
     list = list.filter((b) => b.series === series);
   }
   if (series === "CX") {

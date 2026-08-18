@@ -215,6 +215,138 @@ console.log("\n── resolveWinner scores edge ──");
 assert(autoWinnerFromScores("a", "b", 4, 4) === null, "4-4 不可自動");
 assert(autoWinnerFromScores("a", "b", 5, 5) === null, "5-5 不可自動");
 
+console.log("\n── CX filter must not mutate until ensureCx ──");
+function isCxBey(bey) {
+  return !!(bey && (bey.series === "CX" || bey.bladeId === "cx"));
+}
+function emptyCxParts() {
+  return {
+    cxProduct: "",
+    cxType: "standard",
+    lockChip: "",
+    lockChipCustom: "",
+    mainBlade: "",
+    mainBladeCustom: "",
+    assistBlade: "",
+    overBlade: "",
+  };
+}
+function ensureCx(bey, snapshotRef) {
+  if (!bey || isCxBey(bey)) return snapshotRef;
+  if (!snapshotRef.snap) snapshotRef.snap = JSON.parse(JSON.stringify(bey));
+  const keepRatchet = bey.ratchet || "";
+  const keepBit = bey.bit || "";
+  bey.bladeId = "cx";
+  bey.series = "CX";
+  bey.bladeCode = "";
+  bey.bladeName = "";
+  Object.assign(bey, emptyCxParts());
+  bey.cxType = "standard";
+  bey.ratchet = keepRatchet;
+  bey.bit = keepBit;
+  return snapshotRef;
+}
+function restoreIfNeeded(bey, snapshotRef) {
+  if (!bey || !snapshotRef.snap) return false;
+  if (!isCxBey(bey)) {
+    snapshotRef.snap = null;
+    return false;
+  }
+  // incomplete CX → restore
+  const complete = !!(bey.lockChip && bey.mainBlade && bey.assistBlade);
+  if (complete) {
+    snapshotRef.snap = null;
+    return false;
+  }
+  const snap = snapshotRef.snap;
+  snapshotRef.snap = null;
+  Object.keys(bey).forEach((k) => delete bey[k]);
+  Object.assign(bey, snap);
+  return true;
+}
+
+const beyUx = {
+  bladeId: "ux-15",
+  series: "UX",
+  bladeName: "鮫鯊狂鱗",
+  ratchet: "1-70",
+  bit: "LR",
+};
+const snapRef = { snap: JSON.parse(JSON.stringify(beyUx)) };
+// 只切 filter：唔 call ensureCx → bey 仍係 UX
+assert(beyUx.bladeId === "ux-15" && !isCxBey(beyUx), "切 CX filter 前 bey 仍係 UX");
+// 用戶揀零件 → ensureCx
+ensureCx(beyUx, snapRef);
+assert(isCxBey(beyUx) && beyUx.ratchet === "1-70" && beyUx.bit === "LR", "ensureCx 轉 CX 但保留固鎖軸心");
+assert(beyUx.bladeId === "cx" && !beyUx.mainBlade, "ensureCx 清上蓋改 cx");
+// 未完成就離開 → 還原
+assert(restoreIfNeeded(beyUx, snapRef) === true, "未完成 CX 離開可還原");
+assert(beyUx.bladeId === "ux-15" && beyUx.bit === "LR", "還原後返 UX15");
+
+console.log("\n── CX complete / expand over required ──");
+function isCxBladeComplete(bey) {
+  if (bey.series !== "CX" && bey.bladeId !== "cx") return false;
+  if (!bey.lockChip || !bey.mainBlade || !bey.assistBlade) return false;
+  if (bey.cxType === "expand" && !bey.overBlade) return false;
+  return true;
+}
+assert(
+  isCxBladeComplete({
+    series: "CX",
+    bladeId: "cx",
+    cxType: "standard",
+    lockChip: "蒼龍",
+    mainBlade: "勇氣",
+    assistBlade: "S",
+  }) === true,
+  "標準 CX 齊"
+);
+assert(
+  isCxBladeComplete({
+    series: "CX",
+    bladeId: "cx",
+    cxType: "expand",
+    lockChip: "蒼龍",
+    mainBlade: "閃擊",
+    assistBlade: "S",
+  }) === false,
+  "Expand 缺超越 → 未齊"
+);
+assert(
+  isCxBladeComplete({
+    series: "CX",
+    bladeId: "cx",
+    cxType: "expand",
+    lockChip: "蒼龍",
+    mainBlade: "閃擊",
+    assistBlade: "S",
+    overBlade: "B",
+  }) === true,
+  "Expand 有超越 → 齊"
+);
+
+console.log("\n── integrated ratchet complete ──");
+function beyHasIntegrated(id) {
+  return id === "ux-19" || id === "ux-20" || id === "ux-21";
+}
+function isBeyCompleteSimple(bey) {
+  if (!bey.bit) return false;
+  if (!beyHasIntegrated(bey.bladeId) && !bey.ratchet) return false;
+  if (bey.series === "CX" || bey.bladeId === "cx") return isCxBladeComplete(bey);
+  return !!bey.bladeId;
+}
+assert(isBeyCompleteSimple({ bladeId: "ux-20", bit: "H", ratchet: "" }) === true, "UX20 一體化免固鎖");
+assert(isBeyCompleteSimple({ bladeId: "ux-15", bit: "H", ratchet: "" }) === false, "UX15 要固鎖");
+assert(isBeyCompleteSimple({ bladeId: "ux-15", bit: "H", ratchet: "1-70" }) === true, "UX15 齊");
+
+console.log("\n── filterBlades HOT treated as ALL ──");
+function filterSeriesOk(series) {
+  // mirror parts.js guard
+  return !(series && series !== "ALL" && series !== "CX" && series !== "HOT");
+}
+assert(filterSeriesOk("HOT") === true, "HOT 唔會被當成 series 名 filter");
+assert(filterSeriesOk("BX") === false, "BX 會 filter");
+
 console.log("\n════════════════════════");
 console.log(`結果：${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);
