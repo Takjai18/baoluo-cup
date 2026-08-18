@@ -1663,7 +1663,7 @@ function renderDeckModal() {
 }
 
 function renderBladePicker(bey) {
-  const seriesBtns = ["HOT", "ALL", "BX", "UX", "CX", "OTHER"]
+  const seriesBtns = ["HOT", "ALL", "BX", "UX", "CX", "BXG", "OTHER"]
     .map((s) => {
       const label = SERIES_LABELS[s] || s;
       return `<button type="button" class="series-chip ${bladeSeriesFilter === s ? "active" : ""}" data-series="${s}">${label}</button>`;
@@ -1749,9 +1749,13 @@ function renderHotBladePicker(bey) {
   `;
 }
 
-/** BX／UX／其他：checklist；全部：搜尋 + 全列表 */
+/** BX／UX／BXG／其他：checklist；全部：搜尋 + 全列表 */
 function renderBxUxBladePicker(bey) {
-  const seriesMode = bladeSeriesFilter === "BX" || bladeSeriesFilter === "UX" || bladeSeriesFilter === "OTHER";
+  const seriesMode =
+    bladeSeriesFilter === "BX" ||
+    bladeSeriesFilter === "UX" ||
+    bladeSeriesFilter === "BXG" ||
+    bladeSeriesFilter === "OTHER";
   const list = filterBlades(
     bladeSeriesFilter === "ALL" ? "ALL" : bladeSeriesFilter,
     seriesMode ? "" : bladeSearchQuery
@@ -1799,7 +1803,9 @@ function renderBxUxBladePicker(bey) {
         ? "BX 系列"
         : bladeSeriesFilter === "UX"
           ? "UX 系列"
-          : "限制系（T0／活動）";
+          : bladeSeriesFilter === "BXG"
+            ? "BXG／聯名"
+            : "其他／限制系";
 
     return `
       <div class="blade-check-wrap">

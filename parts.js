@@ -1,6 +1,6 @@
 /**
  * 寶螺盃 · Beyblade X 零件清單
- * 上蓋：完整名 + 編號 + 系列（BX / UX / CX）
+ * 上蓋：完整名 + 編號 + 系列（BX / UX / CX / BXG / COLLAB）
  * 固鎖 / 軸心：完整官方代碼
  */
 
@@ -9,7 +9,7 @@ const PARTS = {
    * code: 產品編號
    * name: 中文名
    * en: 英文名
-   * series: BX | UX | CX | OTHER
+   * series: BX | UX | CX | BXG | COLLAB | OTHER
    * tier: T0 | T1 | ""  （本活動特別限制）
    */
   blades: [
@@ -38,6 +38,26 @@ const PARTS = {
     { id: "bx-45", code: "BX-45", name: "武士魂斬", en: "SamuraiCalibur", series: "BX", tier: "" },
     { id: "bx-49", code: "BX-49", name: "蒼龍突擊", en: "DranStrike", series: "BX", tier: "T1" },
     { id: "bx-50", code: "BX-50", name: "天界之環", en: "Heaven's Ring", series: "BX", tier: "" },
+
+    // ── BXG（X-Over／復刻聯名系）──
+    { id: "bxg-01", code: "BXG-01", name: "升龍螺旋", en: "DranzerSpiral", series: "BXG", tier: "", staffCode: "BXG01" },
+    { id: "bxg-04", code: "BXG-04", name: "白虎裂斬", en: "DrigerSlash", series: "BXG", tier: "", staffCode: "BXG04" },
+    { id: "bxg-07", code: "BXG-07", name: "閃電天龍", en: "LightningLDrago", series: "BXG", tier: "", staffCode: "BXG07" },
+    { id: "bxg-11", code: "BXG-11", name: "聖盾龜甲", en: "DracielShield", series: "BXG", tier: "", staffCode: "BXG11" },
+    { id: "bxg-20", code: "BXG-20", name: "岩石雄獅", en: "RockLeone", series: "BXG", tier: "", staffCode: "BXG20" },
+    { id: "bxg-21", code: "BXG-21", name: "風暴精靈", en: "StormSpriggan", series: "BXG", tier: "", staffCode: "BXG21" },
+    { id: "bxg-22", code: "BXG-22", name: "蒼龍風暴", en: "DragoonStorm", series: "BXG", tier: "", staffCode: "BXG22" },
+    { id: "bxg-pegasis", code: "BXG-00", name: "風暴飛馬", en: "StormPegasis", series: "BXG", tier: "", staffCode: "BXG-飛馬" },
+    { id: "bxg-valkyrie", code: "BXG-00", name: "勝利女武神", en: "VictoryValkyrie", series: "BXG", tier: "", staffCode: "BXG-戰神" },
+
+    // ── 其他聯名（品牌／IP collab；產品碼多為 BX-00）──
+    { id: "collab-optimus", code: "BX-00", name: "柯博文", en: "OptimusPrime", series: "COLLAB", tier: "", staffCode: "聯名-柯博文" },
+    { id: "collab-megatron", code: "BX-00", name: "威震天", en: "Megatron", series: "COLLAB", tier: "", staffCode: "聯名-威震天" },
+    { id: "collab-starscream", code: "BX-00", name: "紅蜘蛛", en: "Starscream", series: "COLLAB", tier: "", staffCode: "聯名-紅蜘蛛" },
+    { id: "collab-ironman", code: "BX-00", name: "鋼鐵俠", en: "IronMan", series: "COLLAB", tier: "", staffCode: "聯名-鋼鐵俠" },
+    { id: "collab-thanos", code: "BX-00", name: "滅霸", en: "Thanos", series: "COLLAB", tier: "", staffCode: "聯名-滅霸" },
+    { id: "collab-spiderman", code: "BX-00", name: "蜘蛛俠", en: "SpiderMan", series: "COLLAB", tier: "", staffCode: "聯名-蜘蛛俠" },
+    { id: "collab-venom", code: "BX-00", name: "毒液", en: "Venom", series: "COLLAB", tier: "", staffCode: "聯名-毒液" },
 
     // ── UX ──
     { id: "ux-01", code: "UX-01", name: "蒼龍爆刃", en: "DranBuster", series: "UX", tier: "" },
@@ -280,6 +300,7 @@ const SERIES_LABELS = {
   BX: "BX 系列",
   UX: "UX 系列",
   CX: "CX 系列",
+  BXG: "BXG／聯名",
   OTHER: "其他",
 };
 
@@ -974,7 +995,9 @@ function checkDeckRestrictions(player) {
 function filterBlades(series, query) {
   let list = PARTS.blades.slice();
   // HOT 等同 ALL（熱門有獨立 UI；防誤傳 series=HOT）
-  if (series && series !== "ALL" && series !== "CX" && series !== "HOT") {
+  if (series === "BXG") {
+    list = list.filter((b) => b.series === "BXG" || b.series === "COLLAB");
+  } else if (series && series !== "ALL" && series !== "CX" && series !== "HOT") {
     list = list.filter((b) => b.series === series);
   }
   if (series === "CX") {
