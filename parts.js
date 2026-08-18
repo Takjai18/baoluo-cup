@@ -89,32 +89,21 @@ const PARTS = {
     { id: "ux-19", code: "UX-19", name: "子彈獅鷲", en: "BulletGriffon", series: "UX", tier: "T1", integratedRatchet: true },
     { id: "ux-20", code: "UX-20", name: "榮耀戰神", en: "GloryValkyrie", series: "UX", tier: "T0", integratedRatchet: true },
     { id: "ux-21", code: "UX-21", name: "惡魔幽冥", en: "HellsNether", series: "UX", tier: "T1", integratedRatchet: true },
-    // UX-21-02／03：雖屬 UX21 系，但非一體化固鎖（exception · 必須選固鎖）
-    {
-      id: "ux-21-02",
-      code: "UX-21-02",
-      name: "飛龍颶風",
-      en: "DragonHurricane",
-      series: "UX",
-      tier: "",
-      integratedRatchet: false,
-      staffCode: "UX21-02",
-    },
+    // UX-21-03：雖屬 UX21 系，但非一體化固鎖（exception · 必須選固鎖）
     {
       id: "ux-21-03",
       code: "UX-21-03",
-      name: "翱翔飛龍",
-      en: "SoarDragon",
+      name: "薯片龍",
+      en: "ChipDragon",
       series: "UX",
       tier: "T0",
       integratedRatchet: false,
-      staffCode: "UX21-03",
+      staffCode: "UX-21-03",
     },
 
     // ── 活動限制但列表未列全者（OTHER，仍可選）──
     { id: "t0-pegasus-blast", code: "T0", name: "天馬爆擊", en: "PegasusBlast", series: "OTHER", tier: "T0" },
     { id: "t0-aero-pegasus", code: "T0", name: "空力天馬", en: "AeroPegasus", series: "OTHER", tier: "T0", staffCode: "UX00" },
-    { id: "t0-chip-dragon", code: "T0", name: "薯片龍", en: "ChipDragon", series: "OTHER", tier: "T0" },
     { id: "t0-emperor-crest", code: "T0", name: "帝王紋章", en: "EmperorCrest", series: "OTHER", tier: "T0" },
     { id: "t0-war-crest", code: "T0", name: "戰神紋章", en: "WarCrest", series: "OTHER", tier: "T0" },
   ],
@@ -135,8 +124,7 @@ const PARTS = {
     { bladeId: "ux-19", label: "UX19 子彈獅鷲" },
     { bladeId: "ux-20", label: "UX20 榮耀戰神" },
     { bladeId: "ux-21", label: "UX21 惡魔幽冥" },
-    { bladeId: "ux-21-02", label: "UX21-02 飛龍颶風" },
-    { bladeId: "ux-21-03", label: "UX21-03 翱翔飛龍" },
+    { bladeId: "ux-21-03", label: "UX-21-03 薯片龍" },
   ],
 
   /** 固鎖完整列表 */
@@ -760,7 +748,7 @@ const INTEGRATED_RATCHET_LABEL = "一體化";
 
 /**
  * 上蓋是否使用一體化固鎖（無需另選 Ratchet）
- * 注意：UX-21-02／UX-21-03 雖係 UX21 系，但 integratedRatchet=false（要選固鎖）
+ * 注意：UX-21-03 雖係 UX21 系，但 integratedRatchet=false（要選固鎖）
  */
 function bladeHasIntegratedRatchet(blade) {
   if (!blade) return false;
@@ -769,7 +757,7 @@ function bladeHasIntegratedRatchet(blade) {
   if (blade.integratedRatchet === true) return true;
   const id = String(blade.id || "").toLowerCase();
   const code = normalizeCodeQuery(blade.code || "");
-  // 只精確匹配 UX-19／20／21 本體，唔包 UX21-02／03
+  // 只精確匹配 UX-19／20／21 本體，唔包 UX-21-03
   return (
     id === "ux-19" ||
     id === "ux-20" ||
@@ -782,7 +770,7 @@ function bladeHasIntegratedRatchet(blade) {
 
 function beyHasIntegratedRatchet(bey) {
   if (!bey) return false;
-  // 先查零件庫旗標（處理 UX21-02／03 exception）
+  // 先查零件庫旗標（處理 UX-21-03 exception）
   if (bey.bladeId && bey.bladeId !== "custom" && bey.bladeId !== "cx") {
     const b = findBladeById(bey.bladeId);
     if (b) {
@@ -792,13 +780,13 @@ function beyHasIntegratedRatchet(bey) {
   }
   // 已存「一體化」但上蓋係 exception → 唔算一體化
   const code = normalizeCodeQuery(bey.bladeCode || bey.staffCode || "");
-  if (code === "UX2102" || code === "UX2103" || /^UX21\d/.test(code)) {
+  if (code === "UX2103" || /^UX21\d/.test(code)) {
     return false;
   }
   if (bey.ratchet === INTEGRATED_RATCHET_LABEL) {
     // 再確認唔係 exception 上蓋顯示名
     const short = normalizeCodeQuery(partDisplayBladeShort(bey) || "");
-    if (short === "UX2102" || short === "UX2103" || /^UX21\d/.test(short)) return false;
+    if (short === "UX2103" || /^UX21\d/.test(short)) return false;
     return true;
   }
   // 後備：自填／代碼 — 只精確 UX19／20／21
@@ -820,7 +808,7 @@ function applyCxProductToBey(bey, compactOrCode) {
   return bey;
 }
 
-/** 工作人員用短標籤：BX49／UX21-02 */
+/** 工作人員用短標籤：BX49／UX-21-03 */
 function bladeStaffLabel(blade) {
   if (!blade) return "";
   if (blade.staffCode) return blade.staffCode;
@@ -837,7 +825,7 @@ function bladeFullLabel(blade) {
     if (blade.staffCode) return `${blade.staffCode} ${blade.name}`;
     return `${blade.name} (${blade.en})`;
   }
-  // 顯示精簡碼為主：BX49 蒼龍突擊／UX21-03 翱翔飛龍
+  // 顯示精簡碼為主：BX49 蒼龍突擊／UX-21-03 薯片龍
   const code = blade.staffCode || bladeCompactCode(blade);
   return `${code} ${blade.name}`;
 }
@@ -950,7 +938,7 @@ function getBeyTier(bey) {
   const t0 = [
     "神仗", "魔導神杖", "鯊魚", "鮫鯊狂鱗", "SharkScale", "UX15",
     "天馬爆擊", "空力天馬", "左膠龍", "蒼穹龍騎士", "女武神", "榮耀戰神",
-    "薯片龍", "帝王紋章", "戰神紋章", "翱翔飛龍", "SoarDragon", "UX21-03", "UX2103",
+    "薯片龍", "帝王紋章", "戰神紋章", "ChipDragon", "UX-21-03", "UX21-03", "UX2103",
   ];
   const t1 = ["鳳凰飛翼", "鳳凰尾翼", "左龍", "隕星龍騎士", "突擊", "蒼龍突擊", "時鐘", "時鐘幻影", "子彈獅鷲", "惡魔幽冥"];
   if (t0.some((k) => name.includes(k))) return "T0";
