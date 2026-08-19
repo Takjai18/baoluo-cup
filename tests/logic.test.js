@@ -347,6 +347,27 @@ function filterSeriesOk(series) {
 assert(filterSeriesOk("HOT") === true, "HOT 唔會被當成 series 名 filter");
 assert(filterSeriesOk("BX") === false, "BX 會 filter");
 
+console.log("\n── cloud sync rev apply ──");
+function shouldApplyRemote(localRev, remoteRev, role, justPushedRev) {
+  const l = parseInt(localRev, 10) || 0;
+  const r = parseInt(remoteRev, 10) || 0;
+  if (role === "host" && r <= (justPushedRev || 0)) return false;
+  return r > l;
+}
+assert(shouldApplyRemote(1, 2, "viewer", 0) === true, "只讀遠端較新 → 套用");
+assert(shouldApplyRemote(2, 2, "viewer", 0) === false, "同 rev → 唔套用");
+assert(shouldApplyRemote(3, 2, "viewer", 0) === false, "本地較新 → 唔套用");
+assert(shouldApplyRemote(5, 5, "host", 5) === false, "主持自己啱推 → 唔套用");
+assert(shouldApplyRemote(5, 6, "host", 5) === true, "另一主持推高 → 套用");
+
+function normalizeRoomId(id) {
+  return String(id || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+assert(normalizeRoomId(" a3k-9p2 ") === "A3K9P2", "比賽 ID 正規化");
+
 console.log("\n════════════════════════");
 console.log(`結果：${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

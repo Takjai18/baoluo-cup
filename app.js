@@ -371,18 +371,95 @@ function loadState() {
 }
 
 function saveState(opts = {}) {
-  state.updatedAt = new Date().toISOString();
-  state._rev = (state._rev || 0) + 1;
+  // 雲端只讀：唔准本機寫入／推送（遠端套用走 fromRemote）
+  if (!opts.fromRemote && window.BaoluoSync?.isReadOnly?.()) {
+    toast("而家係只讀模式（未輸入主持碼），無法改資料", "error");
+    // 丟棄誤改，還原上次已同步／已存本機版本
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const st = { ...defaultState(), ...parsed };
+        st.settings = normalizeSettings(st.settings || {});
+        st.players = migratePlayers(st.players);
+        st.knockout = migrateKnockout(st.knockout);
+        state = st;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    render();
+    return false;
+  }
+
+  if (!opts.fromRemote) {
+    state.updatedAt = new Date().toISOString();
+    state._rev = (state._rev || 0) + 1;
+  } else if (opts.remoteRev != null) {
+    state._rev = parseInt(opts.remoteRev, 10) || state._rev || 0;
+    state.updatedAt = opts.remoteUpdatedAt || state.updatedAt || new Date().toISOString();
+  }
+
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     localStorage.setItem(STORAGE_KEY + "-rev", String(state._rev));
     const el = document.getElementById("saveTime");
-    if (el) el.textContent = "已儲存 " + new Date().toLocaleTimeString("zh-HK");
+    if (el) {
+      el.textContent =
+        (opts.fromRemote ? "已同步 " : "已儲存 ") + new Date().toLocaleTimeString("zh-HK");
+    }
     if (opts.backup) pushAutoBackup(opts.backup);
+    if (!opts.fromRemote && window.BaoluoSync?.isHost?.()) {
+      window.BaoluoSync.schedulePush(state);
+    }
+    return true;
   } catch (e) {
     console.error(e);
     toast("儲存失敗（本機空間或隱私模式？）：" + (e.message || e), "error");
+    return false;
   }
+}
+
+/** 雲端只讀時攔截寫入；回傳 true = 可以繼續 */
+function assertCanWrite() {
+  if (window.BaoluoSync?.isReadOnly?.()) {
+    toast("只讀模式：請用主持碼加入先可以改分", "error");
+    return false;
+  }
+  return true;
+}
+
+function applyRemoteTournamentState(payload, opts = {}) {
+  if (!payload || !payload.state) return;
+  const remoteRev = parseInt(payload.rev, 10) || 0;
+  const localRev = parseInt(state._rev, 10) || 0;
+  const role = window.BaoluoSync?.getStatus?.()?.role || "viewer";
+  const justPushed = window.BaoluoSync?.getStatus?.()?.lastPushedRev || 0;
+  const apply = opts.force
+    ? true
+    : window.BaoluoSync?.shouldApplyRemote
+      ? window.BaoluoSync.shouldApplyRemote(localRev, remoteRev, role, justPushed)
+      : remoteRev > localRev;
+  if (!apply) return;
+
+  // 主持本地有更新但未推完時，遠端突然更新 → 確認
+  if (role === "host" && remoteRev > localRev && remoteRev > justPushed) {
+    // 正常：另一部主持機寫入
+  }
+
+  const parsed = payload.state;
+  const st = { ...defaultState(), ...parsed };
+  st.settings = normalizeSettings(st.settings || {});
+  st.players = migratePlayers(st.players);
+  st.knockout = migrateKnockout(st.knockout);
+  state = st;
+  saveState({
+    fromRemote: true,
+    remoteRev,
+    remoteUpdatedAt: payload.updatedAt || null,
+  });
+  render();
+  updateSyncUi();
 }
 
 /** 滾動自動備份（最多 BACKUP_MAX 份） */
@@ -3193,6 +3270,7 @@ function render() {
   renderKnockout();
   renderBackupPanel();
   renderHeaderTime();
+  updateSyncUi();
 }
 
 function renderHeaderTime() {
@@ -4928,6 +5006,287 @@ function switchTab(name, opts = {}) {
 }
 
 // ─── Init ────────────────────────────────────────────────
+function updateSyncUi() {
+  const sync = window.BaoluoSync;
+  const st = sync?.getStatus?.() || {
+    configured: false,
+    roomId: null,
+    role: null,
+    connected: false,
+    isHost: false,
+    isReadOnly: false,
+    pendingPush: false,
+  };
+
+  const pill = document.getElementById("syncPill");
+  const banner = document.getElementById("syncBanner");
+  const bannerText = document.getElementById("syncBannerText");
+  const statusBox = document.getElementById("cloudSyncStatus");
+  const footer = document.getElementById("footerStorageHint");
+  const btnShow = document.getElementById("btnCloudShowId");
+  const btnLeave = document.getElementById("btnCloudLeave");
+  const btnCreate = document.getElementById("btnCloudCreate");
+  const btnJoin = document.getElementById("btnCloudJoin");
+
+  document.body.classList.toggle("sync-readonly", !!st.isReadOnly);
+
+  if (pill) {
+    pill.classList.remove("host", "viewer", "offline");
+    if (!st.configured) {
+      pill.textContent = "本機";
+      pill.title = "未設定 Firebase · 純本機模式";
+    } else if (!st.roomId) {
+      pill.textContent = "本機";
+      pill.title = "未加入雲端比賽";
+    } else if (!st.connected) {
+      pill.textContent = `${st.roomId} · 離線`;
+      pill.classList.add("offline");
+      pill.title = "雲端連線中斷，主持改動會暫存本機";
+    } else if (st.isHost) {
+      pill.textContent = `${st.roomId} · 主持${st.pendingPush ? "…" : ""}`;
+      pill.classList.add("host");
+      pill.title = "主持模式 · 可改分並同步";
+    } else {
+      pill.textContent = `${st.roomId} · 只讀`;
+      pill.classList.add("viewer");
+      pill.title = "只讀 · 即時同步中";
+    }
+  }
+
+  if (banner && bannerText) {
+    if (st.roomId) {
+      banner.classList.remove("hidden");
+      banner.classList.toggle("host", !!st.isHost);
+      bannerText.textContent = st.isHost
+        ? `☁ 比賽 ${st.roomId} · 主持模式（可改分）`
+        : `☁ 比賽 ${st.roomId} · 只讀（即時同步）`;
+    } else {
+      banner.classList.add("hidden");
+    }
+  }
+
+  if (statusBox) {
+    if (!st.configured) {
+      statusBox.textContent =
+        "未設定 Firebase。請複製 firebase-config.example.js → firebase-config.js 並填入專案設定（見 README）。而家仍可本機單機用。";
+    } else if (!st.roomId) {
+      statusBox.textContent = "Firebase 已就緒 · 尚未加入比賽（本機模式）";
+    } else {
+      statusBox.textContent = [
+        `比賽 ID：${st.roomId}`,
+        st.isHost ? "角色：主持（可寫）" : "角色：只讀",
+        st.connected ? "狀態：已連線" : "狀態：離線／重連中",
+        st.pendingPush ? "有變更等待上傳…" : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
+  }
+
+  const inRoom = !!st.roomId;
+  if (btnShow) btnShow.disabled = !inRoom;
+  if (btnLeave) btnLeave.disabled = !inRoom;
+  if (btnCreate) btnCreate.disabled = !!st.isReadOnly;
+  if (btnJoin) btnJoin.disabled = false;
+
+  if (footer) {
+    footer.textContent = inRoom
+      ? st.isHost
+        ? `雲端主持 · 比賽 ${st.roomId}（同時存本機）`
+        : `雲端只讀 · 比賽 ${st.roomId}`
+      : "資料自動儲存於本機瀏覽器（localStorage）";
+  }
+}
+
+function openModal(id) {
+  document.getElementById(id)?.classList.remove("hidden");
+}
+function closeModal(id) {
+  document.getElementById(id)?.classList.add("hidden");
+}
+
+function showCloudIdModal() {
+  const id = window.BaoluoSync?.getRoomId?.();
+  if (!id) {
+    toast("尚未加入雲端比賽", "error");
+    return;
+  }
+  const big = document.getElementById("cloudIdBig");
+  if (big) big.textContent = id;
+  openModal("cloudIdModal");
+}
+
+async function handleCloudCreate() {
+  if (!assertCanWrite()) return;
+  const sync = window.BaoluoSync;
+  if (!sync?.isConfigReady?.()) {
+    toast("請先設定 firebase-config.js", "error");
+    return;
+  }
+  const p1 = document.getElementById("cloudCreatePass")?.value || "";
+  const p2 = document.getElementById("cloudCreatePass2")?.value || "";
+  if (p1.length < 4) {
+    toast("主持碼至少 4 位", "error");
+    return;
+  }
+  if (p1 !== p2) {
+    toast("兩次主持碼唔一致", "error");
+    return;
+  }
+  try {
+    if (sync.getRoomId?.()) {
+      if (!confirm("而家已連住另一場雲端比賽。建立新場會先離開舊場，繼續？")) return;
+      sync.leaveRoom();
+    }
+    // 先確保有最新 rev 寫入本機
+    saveState();
+    const { roomId } = await sync.createRoom(p1, state);
+    const result = document.getElementById("cloudCreateResult");
+    if (result) {
+      result.classList.remove("hidden");
+      result.innerHTML = `
+        <p>已建立！請抄低／分享：</p>
+        <div class="sync-id-big">${roomId}</div>
+        <p class="hint">主持碼只得你知；其他人只輸入比賽 ID 就係只讀。</p>
+        <div class="btn-row wrap" style="justify-content:center">
+          <button type="button" class="btn btn-primary" id="btnCloudCreateCopy">複製比賽 ID</button>
+        </div>`;
+      document.getElementById("btnCloudCreateCopy")?.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(roomId);
+          toast("已複製比賽 ID", "success");
+        } catch {
+          toast("請手動複製：" + roomId, "error");
+        }
+      });
+    }
+    updateSyncUi();
+    toast("雲端比賽已建立：" + roomId, "success");
+  } catch (e) {
+    console.error(e);
+    toast(e.message || String(e), "error");
+  }
+}
+
+async function handleCloudJoin() {
+  const sync = window.BaoluoSync;
+  if (!sync?.isConfigReady?.()) {
+    toast("請先設定 firebase-config.js", "error");
+    return;
+  }
+  const roomId = document.getElementById("cloudJoinId")?.value || "";
+  const pass = document.getElementById("cloudJoinPass")?.value || "";
+  try {
+    const joined = await sync.joinRoom(roomId, pass);
+    if (joined.state) {
+      if (
+        state.players.length > 0 &&
+        !confirm("加入雲端會用遠端資料覆蓋本機畫面。本機而家有資料，確定繼續？")
+      ) {
+        sync.leaveRoom();
+        updateSyncUi();
+        return;
+      }
+      applyRemoteTournamentState(
+        {
+          rev: joined.rev,
+          state: joined.state,
+          updatedAt: null,
+        },
+        { force: true }
+      );
+    }
+    closeModal("cloudJoinModal");
+    updateSyncUi();
+    toast(
+      joined.role === "host" ? `已以主持加入 ${joined.roomId}` : `已只讀加入 ${joined.roomId}`,
+      "success"
+    );
+  } catch (e) {
+    console.error(e);
+    toast(e.message || String(e), "error");
+  }
+}
+
+function handleCloudLeave() {
+  if (!confirm("離開雲端比賽？本機資料會保留，但唔再即時同步。")) return;
+  window.BaoluoSync?.leaveRoom?.();
+  updateSyncUi();
+  toast("已離開雲端", "success");
+}
+
+function bindCloudSyncUi() {
+  const sync = window.BaoluoSync;
+  if (!sync) return;
+
+  document.getElementById("btnCloudCreate")?.addEventListener("click", () => {
+    if (!sync.isConfigReady()) {
+      toast("請先設定 firebase-config.js（見 README）", "error");
+      return;
+    }
+    document.getElementById("cloudCreatePass").value = "";
+    document.getElementById("cloudCreatePass2").value = "";
+    document.getElementById("cloudCreateResult")?.classList.add("hidden");
+    openModal("cloudCreateModal");
+  });
+  document.getElementById("btnCloudJoin")?.addEventListener("click", () => {
+    if (!sync.isConfigReady()) {
+      toast("請先設定 firebase-config.js（見 README）", "error");
+      return;
+    }
+    document.getElementById("cloudJoinId").value = "";
+    document.getElementById("cloudJoinPass").value = "";
+    openModal("cloudJoinModal");
+  });
+  document.getElementById("btnCloudShowId")?.addEventListener("click", showCloudIdModal);
+  document.getElementById("btnSyncShowId")?.addEventListener("click", showCloudIdModal);
+  document.getElementById("btnCloudLeave")?.addEventListener("click", handleCloudLeave);
+  document.getElementById("btnSyncLeave")?.addEventListener("click", handleCloudLeave);
+
+  document.getElementById("btnCloseCloudCreate")?.addEventListener("click", () => closeModal("cloudCreateModal"));
+  document.getElementById("btnCloseCloudJoin")?.addEventListener("click", () => closeModal("cloudJoinModal"));
+  document.getElementById("btnCloseCloudId")?.addEventListener("click", () => closeModal("cloudIdModal"));
+  document.getElementById("btnCloudCreateConfirm")?.addEventListener("click", () => handleCloudCreate());
+  document.getElementById("btnCloudJoinConfirm")?.addEventListener("click", () => handleCloudJoin());
+  document.getElementById("btnCloudCopyId")?.addEventListener("click", async () => {
+    const id = sync.getRoomId();
+    if (!id) return;
+    try {
+      await navigator.clipboard.writeText(id);
+      toast("已複製比賽 ID", "success");
+    } catch {
+      toast("請手動複製：" + id, "error");
+    }
+  });
+
+  sync.onStatus(() => updateSyncUi());
+  sync.onRemote((payload) => applyRemoteTournamentState(payload));
+
+  // 恢復上次 session
+  sync.resumeSession?.().then((resumed) => {
+    if (!resumed) {
+      updateSyncUi();
+      return;
+    }
+    if (resumed.state) {
+      applyRemoteTournamentState({
+        rev: resumed.rev,
+        state: resumed.state,
+        updatedAt: null,
+      });
+    }
+    updateSyncUi();
+    toast(
+      resumed.role === "host"
+        ? `已恢復主持連線 ${resumed.roomId}`
+        : `已恢復只讀連線 ${resumed.roomId}`,
+      "success"
+    );
+  });
+
+  updateSyncUi();
+}
+
 function init() {
   // Nav
   document.querySelectorAll(".nav-btn").forEach((btn) => {
@@ -4940,6 +5299,8 @@ function init() {
   });
   // 還原分頁：URL #pairings 優先，其次 localStorage（refresh 會留喺同一分頁）
   switchTab(getInitialTab());
+
+  bindCloudSyncUi();
 
 
   // 新增選手：教會二選一（radio，原生互斥）

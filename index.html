@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&family=Oswald:wght@600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260819a" />
+  <link rel="stylesheet" href="styles.css?v=20260819b" />
 </head>
 <body>
   <!-- 官方風格螢光黃綠 Banner：教會 | 寶螺盃 | BX Logo -->
@@ -48,10 +48,19 @@
         </div>
       </div>
       <div class="header-status">
+        <div class="status-pill sync" id="syncPill" title="雲端同步">本機</div>
         <div class="status-pill" id="phasePill">準備中</div>
         <div class="status-pill round" id="roundPill">—</div>
       </div>
     </header>
+
+    <div id="syncBanner" class="sync-banner hidden" role="status">
+      <span id="syncBannerText"></span>
+      <div class="btn-row wrap">
+        <button type="button" class="btn btn-ghost btn-sm" id="btnSyncShowId">顯示比賽 ID</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnSyncLeave">離開雲端</button>
+      </div>
+    </div>
 
     <!-- Nav -->
     <nav class="nav" id="mainNav">
@@ -153,6 +162,23 @@
           <div class="hint mt-16" style="margin-bottom:0">
             人數須為<strong>雙數</strong>；比賽開始後不可再改人數。
             瑞士輪數有建議計算器（可無視警告）。淘汰種子：第1 vs 第N、第2 vs 第N−1…
+          </div>
+        </div>
+
+        <div class="panel mt-16" id="cloudSyncPanel">
+          <div class="panel-header">
+            <h2>☁ 雲端同步（多裝置）</h2>
+          </div>
+          <div class="hint">
+            用<strong>比賽 ID</strong>讓多部電腦睇同一場；輸入<strong>主持碼</strong>先可以改分。
+            未設定 Firebase 時呢度會提示，App 仍可本機單機用。
+          </div>
+          <div id="cloudSyncStatus" class="sync-status-box mt-16">未連線 · 本機模式</div>
+          <div class="btn-row wrap mt-16">
+            <button type="button" class="btn btn-primary" id="btnCloudCreate">建立雲端比賽</button>
+            <button type="button" class="btn btn-ghost" id="btnCloudJoin">加入比賽</button>
+            <button type="button" class="btn btn-ghost" id="btnCloudShowId" disabled>顯示比賽 ID</button>
+            <button type="button" class="btn btn-ghost" id="btnCloudLeave" disabled>離開雲端</button>
           </div>
         </div>
       </section>
@@ -407,16 +433,86 @@
       </div>
     </div>
 
+    <!-- 雲端：建立比賽 -->
+    <div id="cloudCreateModal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>建立雲端比賽</h3>
+          <button class="btn-icon" id="btnCloseCloudCreate" type="button">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="hint">會將而家本機資料上傳，並產生比賽 ID。請設定主持碼（至少 4 位）畀可以改分嘅工作人員。</p>
+          <label class="settings-field">
+            <span class="section-label">主持碼</span>
+            <input type="password" id="cloudCreatePass" class="input" autocomplete="new-password" placeholder="至少 4 位" />
+          </label>
+          <label class="settings-field mt-16">
+            <span class="section-label">再輸入一次主持碼</span>
+            <input type="password" id="cloudCreatePass2" class="input" autocomplete="new-password" />
+          </label>
+          <div class="btn-row wrap mt-16">
+            <button type="button" class="btn btn-primary" id="btnCloudCreateConfirm">建立</button>
+          </div>
+          <div id="cloudCreateResult" class="sync-id-card hidden mt-16"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 雲端：加入比賽 -->
+    <div id="cloudJoinModal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>加入比賽</h3>
+          <button class="btn-icon" id="btnCloseCloudJoin" type="button">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="settings-field">
+            <span class="section-label">比賽 ID</span>
+            <input type="text" id="cloudJoinId" class="input" autocomplete="off" placeholder="例如 A3K9P2" style="text-transform:uppercase;letter-spacing:0.12em;font-weight:800" />
+          </label>
+          <label class="settings-field mt-16">
+            <span class="section-label">主持碼（可留空＝只讀）</span>
+            <input type="password" id="cloudJoinPass" class="input" autocomplete="current-password" placeholder="只睇賽況可留空" />
+          </label>
+          <div class="btn-row wrap mt-16">
+            <button type="button" class="btn btn-primary" id="btnCloudJoinConfirm">加入</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 雲端：大字比賽 ID -->
+    <div id="cloudIdModal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>比賽 ID</h3>
+          <button class="btn-icon" id="btnCloseCloudId" type="button">✕</button>
+        </div>
+        <div class="modal-body" style="text-align:center">
+          <div id="cloudIdBig" class="sync-id-big">————</div>
+          <p class="hint mt-16">其他裝置開啟本網站 → 加入比賽 → 輸入呢個 ID</p>
+          <div class="btn-row wrap" style="justify-content:center">
+            <button type="button" class="btn btn-primary" id="btnCloudCopyId">複製 ID</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <footer class="footer">
-      <span>資料自動儲存於本機瀏覽器（localStorage）· 建議單機操作</span>
+      <span id="footerStorageHint">資料自動儲存於本機瀏覽器（localStorage）</span>
       <span id="saveTime"></span>
       <span id="revPill" class="meta"></span>
     </footer>
   </div>
 
   <div id="toast" class="toast hidden"></div>
+  <!-- Firebase（未設定 config 時 sync 會安全停用） -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js?v=20260819b"></script>
+  <script src="sync.js?v=20260819b"></script>
   <!-- cache-bust：確保 GitHub Pages 載入最新 JS -->
-  <script src="parts.js?v=20260819a"></script>
-  <script src="app.js?v=20260819a"></script>
+  <script src="parts.js?v=20260819b"></script>
+  <script src="app.js?v=20260819b"></script>
 </body>
 </html>

@@ -3102,3 +3102,93 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   border: 1px solid rgba(148, 163, 184, 0.25);
   background: rgba(15, 23, 42, 0.55);
 }
+
+/* ── Cloud sync ── */
+.status-pill.sync {
+  font-size: 0.85rem;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-pill.sync.host {
+  background: rgba(200, 255, 0, 0.14);
+  border-color: rgba(200, 255, 0, 0.5);
+  color: var(--accent);
+}
+.status-pill.sync.viewer {
+  background: rgba(96, 165, 250, 0.14);
+  border-color: rgba(96, 165, 250, 0.45);
+  color: #93c5fd;
+}
+.status-pill.sync.offline {
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #fca5a5;
+}
+
+.sync-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  background: rgba(30, 58, 138, 0.35);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.sync-banner.host {
+  border-color: rgba(200, 255, 0, 0.4);
+  background: rgba(200, 255, 0, 0.08);
+}
+.sync-banner.hidden { display: none; }
+
+.sync-status-box {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.35);
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.sync-id-card {
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(200, 255, 0, 0.45);
+  background: rgba(200, 255, 0, 0.08);
+  text-align: center;
+}
+.sync-id-card .sync-id-big {
+  margin: 8px 0;
+}
+
+.sync-id-big {
+  font-family: Oswald, "Noto Sans TC", sans-serif;
+  font-size: clamp(2.4rem, 10vw, 3.6rem);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+  line-height: 1.2;
+}
+
+.btn-sm {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+body.sync-readonly .panel-header .btn-primary,
+body.sync-readonly #btnSaveSettings,
+body.sync-readonly #btnAddPlayer,
+body.sync-readonly #btnFillDemo,
+body.sync-readonly #btnClearPlayers,
+body.sync-readonly #btnStartTournament,
+body.sync-readonly #btnCloudCreate {
+  opacity: 0.45;
+  pointer-events: none;
+}

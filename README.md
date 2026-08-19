@@ -28,7 +28,58 @@ python3 -m http.server 8765
 
 然後開啟 http://localhost:8765
 
-**建議現場用法：** 用**同一部**平板或手提電腦開著此頁計分。資料存在瀏覽器 `localStorage`（本機），重整不會丟；換機請用 JSON 備份帶走。
+**現場用法：**
+
+1. **單機**：唔開雲端都得；資料在瀏覽器 `localStorage`。
+2. **多裝置即時同步**（推薦）：設定 Firebase 後，用**比賽 ID** 連同一場（見下節）。
+
+---
+
+## ☁ 雲端同步（多裝置）
+
+用 **Firebase Firestore** 把整場比賽同步到多部電腦／平板。
+
+| 角色 | 點樣加入 | 權限 |
+|------|----------|------|
+| **主持** | 比賽 ID + **主持碼** | 可改分、改選手、鎖定輪次 |
+| **只讀** | 只輸入比賽 ID | 即時睇賽況（投影／查對戰） |
+
+### 一次過：開通 Firebase
+
+1. 到 [Firebase Console](https://console.firebase.google.com/) 開專案 → 加 **Web App**
+2. 開 **Firestore Database**（生產模式）
+3. **Rules** 貼上：
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /rooms/{roomId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll(
+        ['roomId','hostPassHash','state','rev','createdAt','updatedAt']
+      );
+      allow update: if request.resource.data.hostPassHash
+                    == resource.data.hostPassHash;
+      allow delete: if false;
+    }
+  }
+}
+```
+
+4. 複製 `firebase-config.example.js` → `firebase-config.js`，填入專案 config  
+   （或直接改 repo 內嘅 `firebase-config.js`）
+5. 推上 GitHub Pages 後硬 refresh
+
+未設定 config 時，App **自動退回本機模式**，唔會壞。
+
+### 現場操作
+
+1. 主辦機：**⓪ 大會設定** → **建立雲端比賽** → 設主持碼 → 記下 **比賽 ID**
+2. 其他機：開同一網站 → **加入比賽** → 輸入 ID（要改分先填主持碼）
+3. 頂欄會顯示 `比賽ID · 主持／只讀`
+
+**注意：** 比賽 ID 唔好公開亂傳。主持碼主要鎖住介面；Firestore Rules 以「知 ID 可讀」為主，適合教會內部活動。
 
 ---
 
@@ -107,6 +158,9 @@ git push origin main
 |------|------|
 | `index.html` | 介面結構 |
 | `styles.css` | 樣式／投影 |
-| `app.js` | 狀態、配對、計分、淘汰賽 |
+| `app.js` | 狀態、配對、計分、淘汰賽、雲端 UI |
 | `parts.js` | 陀螺零件庫 |
+| `sync.js` | Firebase 比賽 ID 即時同步 |
+| `firebase-config.js` | Firebase 專案設定（未填則本機模式） |
+| `firebase-config.example.js` | 設定範例 |
 | `tests/logic.test.js` | 純邏輯單元測試 |
