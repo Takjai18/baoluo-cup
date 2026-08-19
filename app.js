@@ -20,7 +20,7 @@ const FINISH_TYPES = {
   over: { id: "over", label: "Over Finish", short: "Over", pts: 2 },
   burst: { id: "burst", label: "Burst Finish", short: "Burst", pts: 2 },
   spin: { id: "spin", label: "Spin Finish", short: "Spin", pts: 1 },
-  draw: { id: "draw", label: "無分（同時完場）", short: "無分", pts: 0 },
+  draw: { id: "draw", label: "平手", short: "平手", pts: 0 },
 };
 
 function finishPts(type) {
@@ -4787,16 +4787,16 @@ function renderBattleScoreModal(p1, p2, m, opts = {}) {
           <select id="battleWinner" class="input select">
             <option value="${p1.id}">${escapeHtml(p1.name)}</option>
             <option value="${p2.id}">${escapeHtml(p2.name)}</option>
-            <option value="">無分（同時完場）</option>
+            <option value="">平手（0分）</option>
           </select>
         </label>
         <label>Finish
           <select id="battleFinish" class="input select">
-            <option value="over">Over（2）</option>
-            <option value="burst">Burst（2）</option>
-            <option value="spin">Spin（1）</option>
-            <option value="extreme">Extreme（3）</option>
-            <option value="draw">無分（0）</option>
+            <option value="extreme">Extreme Finish（3分）</option>
+            <option value="over">Over Finish（2分）</option>
+            <option value="burst">Burst Finish（2分）</option>
+            <option value="spin">Spin Finish（1分）</option>
+            <option value="draw">平手（0分）</option>
           </select>
         </label>
         <label>${escapeHtml(p1.name)} 陀螺
