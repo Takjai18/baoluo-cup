@@ -137,6 +137,12 @@ function warnSwissRounds(playerCount, swissRounds) {
       text: `輪數合適（建議 ${a.optimal} 輪 · 合理範圍 ${a.minOk}–${a.maxOk}）。`,
     });
   }
+  if (a.n % 2 === 1) {
+    msgs.push({
+      level: "ok",
+      text: `單數（${a.n} 人）每輪有一人「自動獲勝（無對手）」：榜尾、未休息過者優先。只休息、唔加瑞士勝，入圍淘汰賽只計擊敗對手。`,
+    });
+  }
   return { advice: a, messages: msgs };
 }
 
@@ -650,7 +656,7 @@ function getPlayerStats(playerId) {
   for (const m of swissMatchesOnly()) {
     if (m.p1 !== playerId && m.p2 !== playerId) continue;
     if (isByeMatch(m)) {
-      if (m.winner === playerId) wins++;
+      // 自動獲勝＝無對手休息，唔加瑞士勝，以免靠休息入圍
       continue;
     }
     const isP1 = m.p1 === playerId;
@@ -865,7 +871,13 @@ function byeCount(playerId) {
   return n;
 }
 
-/** 單數人：優先未輪空、分數較低者 */
+/**
+ * 單數人「無對手」優先序（避免強者靠休息入圍）：
+ * 1. 未自動獲勝過嘅人優先（每人最多輪流一次）
+ * 2. 瑞士勝較少（榜尾）
+ * 3. BP 較低
+ * 4. 姓名
+ */
 function pickByePlayer(players) {
   const list = [...players];
   list.sort((a, b) => {
@@ -894,28 +906,27 @@ function generateSwissPairings() {
   const playedSet = buildPlayedSet();
   const lastOpp = buildLastOppMap();
 
-  // 只在真正第 1 輪（無任何已存在 round）用教會交叉配對
-  // 若已有 round 但全 0 分（異常／regen），仍走一般算法以避開 rematch
-  if (state.rounds.length === 0) {
-    return pairRoundOne(stats);
-  }
-
   let pool = stats;
   let bye = null;
   if (pool.length % 2 === 1) {
     bye = pickByePlayer(pool);
-    pool = pool.filter((p) => p.id !== bye.id);
+    if (bye) pool = pool.filter((p) => p.id !== bye.id);
   }
 
-  const n = pool.length;
+  // 第 1 輪：教會交叉；之後一般瑞士配對
   let pairs;
-  if (n >= 24) {
-    pairs = greedyPairPreferNoRematch(pool, playedSet, lastOpp);
+  if (state.rounds.length === 0) {
+    pairs = pairRoundOne(pool);
   } else {
-    pairs = bestPairingSearch(pool, playedSet, lastOpp, { timeMs: 250 });
-    if (!pairs) pairs = greedyPairPreferNoRematch(pool, playedSet, lastOpp);
+    const n = pool.length;
+    if (n >= 24) {
+      pairs = greedyPairPreferNoRematch(pool, playedSet, lastOpp);
+    } else {
+      pairs = bestPairingSearch(pool, playedSet, lastOpp, { timeMs: 250 });
+      if (!pairs) pairs = greedyPairPreferNoRematch(pool, playedSet, lastOpp);
+    }
+    pairs = pairs || [];
   }
-  pairs = pairs || [];
   if (bye) pairs.push([bye, null]);
 
   const rem = countRematches(pairs.filter((pr) => pr[0] && pr[1]), playedSet);
@@ -3568,8 +3579,8 @@ function renderMatchCardStaff(m, round, statsMap) {
   const same = !bye && p1 && p2 && p1.church === p2.church;
   const s1 = statsMap[m.p1] || { swissPoints: 0, battlePoints: 0 };
   const s2 = statsMap[m.p2] || { swissPoints: 0, battlePoints: 0 };
-  const pre1 = m.done ? s1.swissPoints - (m.winner === m.p1 ? 1 : 0) : s1.swissPoints;
-  const pre2 = m.done ? s2.swissPoints - (m.winner === m.p2 ? 1 : 0) : s2.swissPoints;
+  const pre1 = m.done && !isByeMatch(m) ? s1.swissPoints - (m.winner === m.p1 ? 1 : 0) : s1.swissPoints;
+  const pre2 = m.done && !isByeMatch(m) ? s2.swissPoints - (m.winner === m.p2 ? 1 : 0) : s2.swissPoints;
   const zLabel = m.zoneLabel || zoneLabel(m.zone ?? 0);
   const zCode = m.zoneCode || zoneCode(m.zone ?? 0);
   // 次序只作內部登記，畫面唔顯示具體陀螺（避免被人偷睇）
@@ -3593,7 +3604,7 @@ function renderMatchCardStaff(m, round, statsMap) {
         <div class="vs-center">VS</div>
         <div class="player-side">
           <div class="p-name">（無對手）</div>
-          <div class="p-meta">自動獲勝 · 計 1 勝</div>
+          <div class="p-meta">自動獲勝 · 唔計瑞士勝</div>
         </div>
       </div>
       <div class="match-actions">
@@ -4035,7 +4046,9 @@ function renderSettings() {
         <div class="swiss-calc-body">
           <p><strong>${s.playerCount} 人</strong>建議 <strong class="accent">${advice.optimal}</strong> 輪
           （合理範圍 ${advice.minOk}–${advice.maxOk}；理論上限 ${advice.maxHard} 輪）</p>
-          <p class="meta">經驗法則 ≈ ceil(log₂ N)＝${advice.optimal}。輪太少排名嘈；輪太多必重賽。</p>
+          <p class="meta">經驗法則 ≈ ceil(log₂ N)＝${advice.optimal}。輪太少排名嘈；輪太多必重賽。${
+            s.playerCount % 2 ? "單數人：無對手只休息，唔加勝場。" : ""
+          }</p>
           <button type="button" class="btn btn-secondary btn-sm" id="btnApplyOptimalSwiss">套用建議 ${advice.optimal} 輪</button>
         </div>
         <div class="swiss-calc-msgs">
@@ -5562,7 +5575,9 @@ function init() {
           <div class="swiss-calc-body">
             <p><strong>${tmp.playerCount} 人</strong>建議 <strong class="accent">${advice.optimal}</strong> 輪
             （合理範圍 ${advice.minOk}–${advice.maxOk}；理論上限 ${advice.maxHard} 輪）</p>
-            <p class="meta">經驗法則 ≈ ceil(log₂ N)＝${advice.optimal}。輪太少排名嘈；輪太多必重賽。</p>
+            <p class="meta">經驗法則 ≈ ceil(log₂ N)＝${advice.optimal}。輪太少排名嘈；輪太多必重賽。${
+              tmp.playerCount % 2 ? "單數人：無對手只休息，唔加勝場。" : ""
+            }</p>
             <button type="button" class="btn btn-secondary btn-sm" id="btnApplyOptimalSwiss">套用建議 ${advice.optimal} 輪</button>
           </div>
           <div class="swiss-calc-msgs">

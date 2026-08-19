@@ -414,6 +414,21 @@ function pairRoundOneOdd(players) {
 const oddPairs = pairRoundOneOdd(["a", "b", "c"]);
 assert(oddPairs.length === 2 && oddPairs[1][1] === null, "單數最後一人輪空");
 
+function pickByeOrder(players) {
+  return [...players].sort((a, b) => {
+    if (a.byes !== b.byes) return a.byes - b.byes;
+    if (a.swissPoints !== b.swissPoints) return a.swissPoints - b.swissPoints;
+    if (a.battlePoints !== b.battlePoints) return a.battlePoints - b.battlePoints;
+    return a.name.localeCompare(b.name, "zh-Hant");
+  })[0];
+}
+const byePick = pickByeOrder([
+  { name: "甲", swissPoints: 3, battlePoints: 8, byes: 0 },
+  { name: "乙", swissPoints: 0, battlePoints: 1, byes: 0 },
+  { name: "丙", swissPoints: 1, battlePoints: 2, byes: 1 },
+]);
+assert(byePick.name === "乙", "無對手優先：未休息過嘅榜尾");
+
 console.log("\n════════════════════════");
 console.log(`結果：${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);
