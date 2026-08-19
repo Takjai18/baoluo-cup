@@ -1,6 +1,6 @@
 /**
  * 寶螺盃 · 瑞士制管理系統
- * 可變人數（8–128，雙數）· 可調瑞士輪 · 先到 4 分 Match · localStorage
+ * 可變人數（8–128，可單數）· 可調瑞士輪 · 先到 4 分 Match · localStorage
  * 淘汰賽可設 4／8／16 強（1 vs N、2 vs N-1 …）
  */
 
@@ -842,7 +842,32 @@ function makePlayoffMatch(p1Id, p2Id, label) {
     p2BeyOrder: emptyBeyOrder(),
     battles: emptyBattles(),
     playoff: true,
+    creditBp: true,
+    role: "pair",
   };
+}
+
+function decorateCutoffGroup(group) {
+  return (group || []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    battlePoints: p.battlePoints,
+    swissPoints: p.swissPoints,
+    byeCount: byeCount(p.id),
+  }));
+}
+
+function analyzeLiveCutoff(ctx) {
+  if (!ctx?.needed) {
+    return {
+      resolved: true,
+      qualifierIds: (ctx?.group || []).map((p) => p.id),
+      lines: [],
+      needsMatches: false,
+      chain: null,
+    };
+  }
+  return BaoluoCutoff.analyzeCutoff(decorateCutoffGroup(ctx.group), ctx.spots, headToHead);
 }
 
 function sortCutoffPlayers(a, b) {
@@ -853,155 +878,71 @@ function sortCutoffPlayers(a, b) {
   return String(a.name || "").localeCompare(String(b.name || ""), "zh-Hant");
 }
 
-/**
- * 入圍加賽：先用總分分開清楚入圍／出局，剩餘同分再加賽。
- * 2 人 → 對賽；3 人 1 席 → 低分兩人先打再對最高；3 人 2 席／4 人 3 席 → 最低兩人打、負者出局；
- * 4 人 2 席 → 抽籤兩場；4 人 1 席 → 抽籤兩場再決勝。
- */
 function describeCutoffPlan(ctx) {
-  if (!ctx?.needed) return { lines: [], firstPairs: [], chain: null, highId: null };
-  const group = ctx.group;
-  const spots = ctx.spots;
-  const auto = group.filter((p) => hasAutoWin(p.id));
-  const lines = [];
-  const firstPairs = [];
-  let chain = null;
-  let highId = null;
-
-  lines.push(`瑞士 ${ctx.cutScore} 分有 ${group.length} 人，爭最後 ${spots} 個「${ctx.koN} 強」名額。`);
-  if (auto.length) {
-    lines.push(`其中 ${auto.length} 人有自動獲勝：${auto.map((p) => p.name).join("、")}。`);
-  }
-
-  const sorted = [...group].sort(sortCutoffPlayers);
-  const cutPlayer = sorted[spots - 1];
-  const cutBp = cutPlayer.battlePoints;
-  const clearIn = sorted.filter((p) => p.battlePoints > cutBp);
-  const tied = sorted.filter((p) => p.battlePoints === cutBp);
-  const spotsLeft = spots - clearIn.length;
-
-  if (clearIn.length) {
-    lines.push(`比賽總分已可先入圍：${clearIn.map((p) => `${p.name}（${p.battlePoints}）`).join("、")}。`);
-  }
-
-  if (tied.length <= spotsLeft) {
-    const h2hBreaks = [];
-    for (let i = 0; i < tied.length; i++) {
-      for (let j = i + 1; j < tied.length; j++) {
-        const w = headToHead(tied[i].id, tied[j].id);
-        if (w) h2hBreaks.push(`${playerById(w)?.name} 曾勝 ${playerById(w === tied[i].id ? tied[j].id : tied[i].id)?.name}`);
-      }
-    }
-    if (h2hBreaks.length) lines.push(`對賽已分：${h2hBreaks.join("；")}。`);
-    lines.push("用總分／對賽已可分清入圍，無需加賽。");
-    return { lines, firstPairs, chain, highId };
-  }
-
-  const n = tied.length;
-  const s = spotsLeft;
-  const low = [...tied].sort(sortCutoffPlayers).reverse(); // lowest BP last in sortCutoff is actually highest first; reverse for lowest
-  const byBpAsc = [...tied].sort((a, b) => {
-    if (a.battlePoints !== b.battlePoints) return a.battlePoints - b.battlePoints;
-    return sortCutoffPlayers(b, a);
-  });
-  const twoLow = [byBpAsc[0], byBpAsc[1]];
-  const high = [...tied].sort(sortCutoffPlayers)[0];
-
-  if (n === 2 && s === 1) {
-    const a = tied[0];
-    const b = tied[1];
-    const h = headToHead(a.id, b.id);
-    if (h) {
-      lines.push(`兩人總分相同，對賽已分 → ${playerById(h)?.name} 入圍。`);
-    } else {
-      lines.push(auto.length === 2 ? "兩位都有自動獲勝 → 互相對賽。" : "兩人總分相同且未對賽 → 加賽（先到 4 分）。");
-      firstPairs.push([a.id, b.id]);
-      chain = "pair";
-    }
-  } else if (n === 3 && s === 1) {
-    highId = high.id;
-    lines.push(
-      `三人爭 1 席：總分 ${tied.map((p) => `${p.name} ${p.battlePoints}`).join("、")}。較低嘅 ${twoLow[0].name} vs ${twoLow[1].name} 先打，勝者再對 ${high.name}。`
-    );
-    firstPairs.push([twoLow[0].id, twoLow[1].id]);
-    chain = "odd3";
-  } else if (n === 3 && s === 2) {
-    lines.push(
-      `三人爭 2 席：總分最高 ${high.name}（${high.battlePoints}）先占一席；${twoLow[0].name} vs ${twoLow[1].name} 爭最後一席。`
-    );
-    firstPairs.push([twoLow[0].id, twoLow[1].id]);
-    chain = "elim1";
-    highId = high.id;
-  } else if (n === 4 && s === 3) {
-    lines.push(`四人爭 3 席：總分較低嘅 ${twoLow[0].name} vs ${twoLow[1].name}，負者出局。`);
-    firstPairs.push([twoLow[0].id, twoLow[1].id]);
-    chain = "elim1";
-  } else if (n === 4 && s === 2) {
-    lines.push(auto.length === 4
-      ? "四位都有自動獲勝 → 抽籤分成兩場，兩場勝者入圍。"
-      : "四人爭 2 席 → 抽籤分成兩場，兩場勝者入圍。");
-    chain = "draw4";
-  } else if (n === 4 && s === 1) {
-    lines.push("四人爭 1 席 → 抽籤兩場，勝者再打決勝。");
-    chain = "draw4final";
-  } else if (n >= 5 && n - s === 1) {
-    lines.push(`${n} 人只淘汰 1 人：總分最低兩人 ${twoLow[0].name} vs ${twoLow[1].name}，負者出局。`);
-    firstPairs.push([twoLow[0].id, twoLow[1].id]);
-    chain = "elim1";
-  } else {
-    lines.push(`${n} 人爭 ${s} 席：總分最低兩人先打，再按結果繼續。`);
-    firstPairs.push([twoLow[0].id, twoLow[1].id]);
-    chain = "elim1";
-  }
-
+  const a = analyzeLiveCutoff(ctx);
   return {
-    lines,
-    firstPairs,
-    chain,
-    highId,
-    preQualifyIds: clearIn.map((p) => p.id),
-    tiedIds: tied.map((p) => p.id),
+    lines: a.lines || [],
+    firstPairs: (a.firstMatches || []).map((m) => [m.p1, m.p2]),
+    chain: a.chain || null,
+    highId: null,
+    preQualifyIds: a.preQualifyIds || [],
+    tiedIds: a.tiedIds || [],
+    resolved: !!a.resolved,
+    needsMatches: !!a.needsMatches,
+    qualifierIds: a.qualifierIds || [],
   };
 }
 
-function cutPlayoffComplete() {
+function playoffDescriptorKey(d) {
+  return `${d.wave || 1}|${[d.p1, d.p2].sort().join("|")}|${d.role || ""}`;
+}
+
+function appendPlayoffMatches(po, descriptors) {
+  if (!po || !descriptors?.length) return;
+  const existing = new Set((po.matches || []).map((m) => playoffDescriptorKey(m)));
+  descriptors.forEach((d) => {
+    const key = playoffDescriptorKey(d);
+    if (existing.has(key)) return;
+    existing.add(key);
+    const m = makePlayoffMatch(d.p1, d.p2, d.label);
+    m.wave = d.wave || 1;
+    m.table = po.matches.length + 1;
+    m.creditBp = d.creditBp !== false;
+    m.role = d.role || po.chain || "pair";
+    po.matches.push(m);
+  });
+}
+
+function resolveLivePlayoff(ctx) {
+  ctx = ctx || getCutoffContext();
+  if (!ctx?.needed) return { resolved: true, qualifierIds: (ctx?.group || []).map((p) => p.id), nextMatches: [] };
+  const analysis = analyzeLiveCutoff(ctx);
+  if (analysis.resolved && !analysis.needsMatches) {
+    return { resolved: true, qualifierIds: analysis.qualifierIds || [], nextMatches: [] };
+  }
   const po = state.cutPlayoff;
-  if (!po || !po.matches?.length) return false;
-  if (!po.matches.every((m) => m.done && m.winner)) return false;
-  if (po.chain === "odd3") {
-    const second = po.matches.find((m) => m.wave === 2);
-    return !!(second && second.done && second.winner);
-  }
-  if (po.chain === "draw4final") {
-    const fin = po.matches.find((m) => m.wave === 2);
-    return !!(fin && fin.done && fin.winner);
-  }
-  return true;
+  if (!po || !po.chain) return { resolved: false, qualifierIds: null, nextMatches: [] };
+  return BaoluoCutoff.resolvePlayoff(decorateCutoffGroup(ctx.group), ctx.spots, headToHead, po);
+}
+
+function cutPlayoffComplete() {
+  const ctx = getCutoffContext();
+  if (!ctx.needed) return true;
+  const r = resolveLivePlayoff(ctx);
+  return !!r.resolved;
 }
 
 function maybeAdvanceCutPlayoff() {
   const po = state.cutPlayoff;
   if (!po?.matches?.length) return;
-  if (po.chain === "odd3") {
-    const first = po.matches.find((m) => (m.wave || 1) === 1);
-    const second = po.matches.find((m) => m.wave === 2);
-    if (first?.done && first.winner && !second && po.highId) {
-      const m = makePlayoffMatch(first.winner, po.highId, "入圍加賽 · 決勝");
-      m.wave = 2;
-      m.table = po.matches.length + 1;
-      po.matches.push(m);
-    }
-  }
-  if (po.chain === "draw4final") {
-    const w1 = po.matches.filter((m) => (m.wave || 1) === 1 && m.done && m.winner);
-    const fin = po.matches.find((m) => m.wave === 2);
-    if (w1.length === 2 && !fin) {
-      const m = makePlayoffMatch(w1[0].winner, w1[1].winner, "入圍加賽 · 決勝");
-      m.wave = 2;
-      m.table = po.matches.length + 1;
-      po.matches.push(m);
-    }
-  }
+  const ctx = getCutoffContext();
+  if (!ctx.needed) return;
+  const r = BaoluoCutoff.resolvePlayoff(decorateCutoffGroup(ctx.group), ctx.spots, headToHead, po);
+  if (r.phase) po.phase = r.phase;
+  if (r.byeId) po.byeId = r.byeId;
+  if (r.challengerId) po.challengerId = r.challengerId;
+  if (r.preQualifyIds) po.preQualifyIds = r.preQualifyIds;
+  appendPlayoffMatches(po, r.nextMatches);
 }
 
 function generateCutoffPlayoff() {
@@ -1010,69 +951,79 @@ function generateCutoffPlayoff() {
     toast("入圍名額已可分清，唔使加賽", "success");
     return;
   }
-  const plan = describeCutoffPlan(ctx);
-  let pairs = plan.firstPairs;
-  if (plan.chain === "draw4" || plan.chain === "draw4final") {
-    const pool = shuffleList(plan.tiedIds || ctx.group.map((p) => p.id));
-    if (pool.length < 4) {
-      toast("抽籤需要 4 位同分選手", "error");
-      return;
-    }
-    pairs = [
-      [pool[0], pool[1]],
-      [pool[2], pool[3]],
-    ];
-  }
-  if (!pairs.length) {
+  const analysis = analyzeLiveCutoff(ctx);
+  if (analysis.resolved && !analysis.needsMatches) {
     toast("依家用總分／對賽已可分高下，無需產生加賽", "success");
     return;
   }
-  const matches = pairs.map((pr, i) => {
-    const m = makePlayoffMatch(pr[0], pr[1], `入圍加賽 · 場 ${i + 1}`);
-    m.wave = 1;
-    m.table = i + 1;
-    return m;
-  });
+  const nameOf = (id) => playerById(id)?.name || id;
+  const built = BaoluoCutoff.materializeCutoff(analysis, Math.random, nameOf);
+  if (!built.firstMatches?.length) {
+    toast("依家用總分／對賽已可分高下，無需產生加賽", "success");
+    return;
+  }
+  const matches = [];
+  const po = { matches, chain: built.chain };
+  appendPlayoffMatches(po, built.firstMatches);
   state.cutPlayoff = {
     spots: ctx.spots,
     cutScore: ctx.cutScore,
     koN: ctx.koN,
     playerIds: ctx.group.map((p) => p.id),
-    tiedIds: plan.tiedIds || [],
-    preQualifyIds: plan.preQualifyIds || [],
+    tiedIds: built.tiedIds || analysis.tiedIds || [],
+    preQualifyIds: built.preQualifyIds || analysis.preQualifyIds || [],
     matches,
-    chain: plan.chain,
-    highId: plan.highId,
+    chain: built.chain,
+    ko: built.ko || null,
+    byeId: built.byeId || null,
+    challengerId: built.challengerId || null,
+    autoOpen: built.autoOpen,
+    phase: built.phase || null,
+    inner: built.inner || null,
+    multiBye: !!built.multiBye,
+    take: built.take,
   };
   saveState({ backup: "產生入圍加賽" });
   render();
   switchTab("pairings");
-  toast("已產生入圍加賽，請先完成再產生淘汰賽", "success");
+  const hint =
+    built.chain === "seedKo" || built.chain === "elim1" || built.chain === "crossDraw"
+      ? "小型淘汰：打贏出線（唔計 BP）"
+      : "先到 4，打完加本場 BP 再比（打贏唔等於入圍）";
+  toast(`已產生入圍加賽。${hint}`, "success");
 }
 
 function playoffQualifiers(ctx) {
-  const po = state.cutPlayoff;
-  if (!po || !cutPlayoffComplete()) return null;
-  const pre = po.preQualifyIds || [];
-  const tied = po.tiedIds || [];
-  let fromPlayoff = [];
-  if (po.chain === "elim1") {
-    const m = po.matches.find((x) => (x.wave || 1) === 1);
-    if (!m?.winner) return null;
-    const loser = m.winner === m.p1 ? m.p2 : m.p1;
-    fromPlayoff = (tied.length ? tied : po.playerIds || []).filter((id) => id !== loser);
-  } else if (po.chain === "odd3" || po.chain === "draw4final") {
-    const last = [...po.matches].reverse().find((x) => x.wave === 2) || po.matches[po.matches.length - 1];
-    if (last?.winner) fromPlayoff.push(last.winner);
-    if (po.chain === "odd3" && ctx.spots > 1 && po.highId && !fromPlayoff.includes(po.highId)) {
-      fromPlayoff.unshift(po.highId);
-    }
-  } else {
-    po.matches
-      .filter((m) => (m.wave || 1) === 1 && m.winner)
-      .forEach((m) => fromPlayoff.push(m.winner));
-  }
-  return [...pre, ...fromPlayoff];
+  ctx = ctx || getCutoffContext();
+  const r = resolveLivePlayoff(ctx);
+  if (!r.resolved) return null;
+  return r.qualifierIds || [];
+}
+
+function cutoffSeedList() {
+  const ctx = getCutoffContext();
+  const ranked = rankedPlayers();
+  const koN = ctx.koN || getKoBracketSize();
+  if (!ctx.needed) return ranked.slice(0, koN);
+  const qids = playoffQualifiers(ctx);
+  if (!qids) return null;
+  const locked = (ctx.lockedIn || []).map((p) => p.id);
+  const extra = qids.filter((id) => !locked.includes(id));
+  const idSet = new Set([...locked, ...extra]);
+  return ranked.filter((p) => idSet.has(p.id)).slice(0, koN);
+}
+
+function isSwissFinishedForKo() {
+  const completed = state.rounds.filter((r) => r.locked).length;
+  return completed >= getSwissRounds() || state.phase === "knockout" || state.phase === "done";
+}
+
+function isKoQualified(playerId) {
+  if (!isSwissFinishedForKo()) return false;
+  const seeds = cutoffSeedList();
+  if (seeds) return seeds.some((p) => p.id === playerId);
+  const ctx = getCutoffContext();
+  return !!(ctx.lockedIn && ctx.lockedIn.some((p) => p.id === playerId));
 }
 
 // ─── Swiss Pairing Algorithm ─────────────────────────────
@@ -3057,6 +3008,12 @@ function saveMatchResult(matchId, winnerId, p1Bp, p2Bp) {
       toast(`尚未有一方達到 ${MATCH_TARGET} 分，請用 Battle 紀錄完場（或強制完場）`, "error");
       return false;
     }
+    if (playoff && !m.winner) {
+      m.done = false;
+      m.draw = false;
+      toast("入圍加賽必須分出勝方：繼續打到一方先到 4 分（唔可以無分完場）", "error");
+      return false;
+    }
     if (playoff) maybeAdvanceCutPlayoff();
     saveState();
     render();
@@ -3070,6 +3027,10 @@ function saveMatchResult(matchId, winnerId, p1Bp, p2Bp) {
   if (auto) winnerId = auto;
   const isDraw = p1Bp === p2Bp;
   if (isDraw) {
+    if (playoff) {
+      toast("入圍加賽必須分出勝方：繼續打到一方先到 4 分（唔可以無分完場）", "error");
+      return false;
+    }
     if (p1Bp < MATCH_TARGET) {
       if (!confirm(`雙方均未達 ${MATCH_TARGET} 分（${p1Bp}:${p2Bp}）。記作無分完場？`)) return false;
     }
@@ -3078,7 +3039,6 @@ function saveMatchResult(matchId, winnerId, p1Bp, p2Bp) {
     m.p1Bp = p1Bp;
     m.p2Bp = p2Bp;
     m.done = true;
-    if (playoff) maybeAdvanceCutPlayoff();
     saveState();
     render();
     toast("已記無分（兩邊都唔計瑞士勝）", "success");
@@ -3152,6 +3112,12 @@ async function commitMatchBattles(matchId, battles, forceComplete) {
     toast(`已儲存 Battle 紀錄（目前 ${m.p1Bp} : ${m.p2Bp}，未完場）`, "success");
     return true;
   }
+  if (playoff && !m.winner) {
+    m.done = false;
+    m.draw = false;
+    toast("入圍加賽必須分出勝方：繼續打到一方先到 4 分（唔可以無分完場）", "error");
+    return false;
+  }
   if (playoff) maybeAdvanceCutPlayoff();
   saveState();
   render();
@@ -3207,23 +3173,29 @@ function applyManualPairings(pairIds) {
   const all = pairIds.flat().filter(Boolean);
   const need = getPairingPlayerCount();
   if (new Set(all).size !== need || all.length !== need) {
-    toast(`請確保 ${need} 位選手恰好各出現一次（單數可一人輪空）`, "error");
+    toast(`請確保 ${need} 位選手恰好各出現一次（單數可一人自動獲勝）`, "error");
     return;
   }
   round.matches = assignMatchZones(
-    pairIds.map((pair, i) => ({
-      id: uid("m"),
-      table: i + 1,
-      p1: pair[0],
-      p2: pair[1],
-      winner: null,
-      p1Bp: 0,
-      p2Bp: 0,
-      done: false,
-      p1BeyOrder: emptyBeyOrder(),
-      p2BeyOrder: emptyBeyOrder(),
-      battles: emptyBattles(),
-    }))
+    pairIds.map((pair, i) => {
+      const p1 = pair[0];
+      const p2 = pair[1] || null;
+      const bye = !p2;
+      return {
+        id: uid("m"),
+        table: i + 1,
+        p1,
+        p2,
+        bye,
+        winner: bye ? p1 : null,
+        p1Bp: 0,
+        p2Bp: 0,
+        done: bye,
+        p1BeyOrder: emptyBeyOrder(),
+        p2BeyOrder: emptyBeyOrder(),
+        battles: emptyBattles(),
+      };
+    })
   );
   saveState();
   closeManualModal();
@@ -3314,32 +3286,18 @@ function startKnockout() {
   }
 
   const ctx = getCutoffContext();
-  const plan = ctx.needed ? describeCutoffPlan(ctx) : { firstPairs: [], chain: null, lines: [] };
-  const needsMatches = !!(plan.chain || plan.firstPairs?.length);
-  if (ctx.needed && needsMatches && !cutPlayoffComplete()) {
+  const plan = describeCutoffPlan(ctx);
+  if (ctx.needed && plan.needsMatches && !cutPlayoffComplete()) {
     toast("入圍邊界同分，請先完成加賽（同分頁）", "error");
-    if (
-      !confirm(
-        `${plan.lines.join("\n")}\n\n去「同分」頁產生入圍加賽？\n按「取消」仍用而家排名硬產生淘汰賽。`
-      )
-    ) {
-      /* user cancelled = force generate with current ranking */
-    } else {
-      switchTab("ties");
-      return;
-    }
+    switchTab("ties");
+    return;
   }
 
-  let seedList = ranked;
-  if (ctx.needed && cutPlayoffComplete()) {
-    const winIds = playoffQualifiers(ctx) || [];
-    const locked = ctx.lockedIn || [];
-    const extra = ranked.filter((p) => winIds.includes(p.id) && !locked.some((x) => x.id === p.id));
-    seedList = [...locked, ...extra].slice(0, koN);
-    if (seedList.length < koN) {
-      toast("加賽入圍人數未齊，請完成所有加賽場", "error");
-      return;
-    }
+  const seedList = cutoffSeedList();
+  if (!seedList || seedList.length < koN) {
+    toast("入圍名單未齊，請完成加賽或檢查排名", "error");
+    switchTab("ties");
+    return;
   }
 
   const order = seededBracketOrder(koN);
@@ -3510,7 +3468,7 @@ function exportStandingsCsv() {
   ];
   for (const p of ranked) {
     normalizePlayer(p);
-    const status = p.rank <= getKoBracketSize() ? "晉級" : "";
+    const status = isKoQualified(p.id) ? "晉級" : "";
     const parts = [];
     for (let i = 0; i < 3; i++) {
       const b = p.beys[i];
@@ -3617,7 +3575,7 @@ function exportTextReport() {
   t += `階段：${phaseLabel()}\n\n`;
   t += "【排名】\n";
   ranked.forEach((p) => {
-    t += `${p.rank}. ${p.name}（${churchLabel(p.church)}） 勝${p.wins}  總分${p.battlePoints}${p.rank <= getKoBracketSize() ? " ★晉級" : ""}${p.tied ? " ＝同分" : ""}\n`;
+    t += `${p.rank}. ${p.name}（${churchLabel(p.church)}） 勝${p.wins}  總分${p.battlePoints}${isKoQualified(p.id) ? " ★晉級" : ""}${p.tied ? " ＝同分" : ""}\n`;
   });
   t += "\n【陀螺登記】\n";
   state.players.forEach((p, i) => {
@@ -4226,7 +4184,11 @@ function renderPairings() {
       <div class="zone-block" style="margin-top:18px">
         <div class="zone-block-head">
           <span class="zone-badge">入圍加賽</span>
-          <span class="meta">${po.matches.filter((m) => m.done).length} / ${po.matches.length} 場 · 爭 ${po.koN || ""} 強餘額</span>
+          <span class="meta">${po.matches.filter((m) => m.done).length} / ${po.matches.length} 場 · 爭 ${po.koN || ""} 強餘額 · ${
+            po.chain === "seedKo" || po.chain === "elim1" || po.chain === "crossDraw"
+              ? "打贏出線"
+              : "打完加本場 BP 再比（打贏唔等於入圍）"
+          }</span>
         </div>
         <div class="match-grid zone-matches">
           ${po.matches.map((m) => renderMatchCardStaff(m, poRound, statsMap)).join("")}
@@ -4549,17 +4511,16 @@ function renderStandings() {
                 return `<span class="rec-item ${wlClass}" title="第${entry.round}輪 vs ${escapeAttr(opp?.name || "?")}">${escapeHtml(opp?.name || "?")} <b>${wl}</b> <span class="rec-score">${entry.myBp}-${entry.oppBp}</span></span>`;
               })
               .join("");
-      const status =
-        p.rank <= getKoBracketSize() && state.phase !== "setup"
-          ? completedRounds >= getSwissRounds() ||
-            state.phase === "knockout" ||
-            state.phase === "done"
-            ? '<span class="qualify-badge">晉級</span>'
-            : "前段"
+      const qualified = isKoQualified(p.id);
+      const front = !isSwissFinishedForKo() && p.rank <= getKoBracketSize() && state.phase !== "setup";
+      const status = qualified
+        ? '<span class="qualify-badge">晉級</span>'
+        : front
+          ? "前段"
           : "";
       return `
-      <tr class="${p.rank <= getKoBracketSize() ? "top4-row" : ""}">
-        <td><span class="rank-num ${p.rank <= getKoBracketSize() ? "top4" : ""}">${p.rank}${p.tied ? "=" : ""}</span></td>
+      <tr class="${qualified || front ? "top4-row" : ""}">
+        <td><span class="rank-num ${qualified || front ? "top4" : ""}">${p.rank}${p.tied ? "=" : ""}</span></td>
         <td class="name-cell">${escapeHtml(p.name)}</td>
         <td><span class="church-tag ${p.church}">${churchLabel(p.church)}</span></td>
         <td>${p.wins}</td>
@@ -4585,12 +4546,13 @@ function renderStandingsProjection(ranked, completedRounds) {
     state.phase === "done";
 
   const makeRow = (p) => {
-    const top = p.rank <= koN;
-    const status = top
-      ? showQualify
-        ? '<span class="sp-badge qualify">晉級</span>'
-        : `<span class="sp-badge front">前${koN}</span>`
-      : "";
+    const qualified = isKoQualified(p.id);
+    const top = qualified || (!showQualify && p.rank <= koN);
+    const status = qualified
+      ? '<span class="sp-badge qualify">晉級</span>'
+      : !showQualify && p.rank <= koN
+        ? `<span class="sp-badge front">前${koN}</span>`
+        : "";
     return `
       <div class="sp-row ${top ? "is-top4" : ""}">
         <div class="sp-rank ${top ? "top4" : ""}">${p.rank}${p.tied ? "=" : ""}</div>
@@ -4822,14 +4784,16 @@ function renderTies() {
   let cutoffHtml = "";
   if (ctx.needed) {
     const poDone = cutPlayoffComplete();
+    const ready = poDone || (plan.resolved && !plan.needsMatches);
     cutoffHtml = `
       <div class="tie-group" style="border-color:rgba(200,255,0,0.45)">
         <h3>入圍加賽 · 最後 ${ctx.spots} 席「${ctx.koN} 強」</h3>
         <div class="tie-result">${plan.lines.map((t) => `• ${escapeHtml(t)}`).join("<br>")}</div>
+        <p class="hint" style="margin-top:10px">入圍同種子分開。不同自動獲勝次數唔直接用瑞士總 BP 比。加賽多數情況：先到 4（最多 6），打完加本場 BP 再比，<strong>打贏唔等於入圍</strong>。5 人以上真同分先至抽籤小型淘汰（打贏出線）。</p>
         <div class="btn-row wrap mt-16">
           ${
-            poDone
-              ? `<span class="meta">加賽已完成，可去淘汰賽頁產生 bracket。</span>`
+            ready
+              ? `<span class="meta">${plan.needsMatches ? "加賽已完成" : "無需加賽"}，可去淘汰賽頁產生 bracket。</span>`
               : `<button type="button" class="btn btn-primary" id="btnGenCutoffPlayoff">${
                   state.cutPlayoff?.matches?.length ? "重新產生入圍加賽" : "產生入圍加賽"
                 }</button>`
@@ -5464,8 +5428,8 @@ function openManualModal() {
 
   let rows = "";
   const pairCount = getMatchesPerRound();
+  const odd = getPairingPlayerCount() % 2 === 1;
   for (let i = 0; i < pairCount; i++) {
-    const m = round.matches[i];
     rows += `
       <div class="manual-pair-row">
         <select class="input select man-p1" data-i="${i}">${options}</select>
@@ -5474,30 +5438,47 @@ function openManualModal() {
         <span class="match-num">桌 ${i + 1}</span>
       </div>`;
   }
+  if (odd) {
+    rows += `
+      <div class="manual-pair-row">
+        <select class="input select man-bye">${options}</select>
+        <span style="font-weight:900;color:var(--muted)">→</span>
+        <span class="meta">自動獲勝（計 1 勝）</span>
+      </div>`;
+  }
   body.innerHTML = `
-    <div class="hint">每位選手只能出現一次。儲存後會覆蓋本輪配對。</div>
+    <div class="hint">每位選手只能出現一次。儲存後會覆蓋本輪配對。${odd ? "單數請指定自動獲勝者。" : ""}</div>
     <div class="manual-list">${rows}</div>
     <div class="btn-row mt-16">
       <button class="btn btn-primary" id="btnSaveManual">儲存配對</button>
     </div>
   `;
 
-  // Set current values
+  const duals = round.matches.filter((m) => !isByeMatch(m));
   body.querySelectorAll(".manual-pair-row").forEach((row, i) => {
-    const m = round.matches[i];
-    if (m) {
+    const m = duals[i];
+    if (m && row.querySelector(".man-p1")) {
       row.querySelector(".man-p1").value = m.p1;
       row.querySelector(".man-p2").value = m.p2;
     }
   });
+  const byeMatch = round.matches.find((m) => isByeMatch(m));
+  if (odd && byeMatch) {
+    const sel = body.querySelector(".man-bye");
+    if (sel) sel.value = byeMatch.p1;
+  }
 
   document.getElementById("btnSaveManual").addEventListener("click", () => {
     const pairs = [];
-    body.querySelectorAll(".manual-pair-row").forEach((row) => {
-      pairs.push([row.querySelector(".man-p1").value, row.querySelector(".man-p2").value]);
+    body.querySelectorAll(".man-p1").forEach((sel) => {
+      const row = sel.closest(".manual-pair-row");
+      pairs.push([sel.value, row.querySelector(".man-p2").value]);
     });
-    // validate no self-pair
-    if (pairs.some(([a, b]) => a === b)) {
+    if (odd) {
+      const byeId = body.querySelector(".man-bye")?.value;
+      if (byeId) pairs.push([byeId, null]);
+    }
+    if (pairs.some(([a, b]) => b && a === b)) {
       toast("同一場不能選同一人", "error");
       return;
     }
