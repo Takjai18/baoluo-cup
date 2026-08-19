@@ -2679,7 +2679,7 @@ function saveMatchResult(matchId, winnerId, p1Bp, p2Bp) {
   const m = round.matches.find((x) => x.id === matchId);
   if (!m) return false;
   if (isByeMatch(m)) {
-    toast("輪空場無需輸入結果", "error");
+    toast("自動獲勝場無需輸入結果", "error");
     return false;
   }
 
@@ -3582,7 +3582,7 @@ function renderMatchCardStaff(m, round, statsMap) {
       <div class="match-top">
         <span class="match-num">場次 ${m.table}</span>
         <span class="zone-badge zone-${zCode}">報到：${escapeHtml(zLabel)}</span>
-        <span class="vs-tag diff">輪空</span>
+        <span class="vs-tag diff">自動獲勝</span>
       </div>
       <div class="match-players">
         <div class="player-side winner">
@@ -3590,14 +3590,14 @@ function renderMatchCardStaff(m, round, statsMap) {
           <div class="p-meta"><span class="church-tag ${p1?.church}">${churchLabel(p1?.church)}</span></div>
           <div class="p-meta">本輪前 ${pre1} 勝</div>
         </div>
-        <div class="vs-center">BYE</div>
+        <div class="vs-center">VS</div>
         <div class="player-side">
-          <div class="p-name">輪空</div>
-          <div class="p-meta">自動記 1 勝</div>
+          <div class="p-name">（無對手）</div>
+          <div class="p-meta">自動獲勝 · 計 1 勝</div>
         </div>
       </div>
       <div class="match-actions">
-        <button class="btn btn-ghost btn-sm" disabled>輪空已計勝</button>
+        <button class="btn btn-ghost btn-sm" disabled>自動獲勝</button>
       </div>
     </div>`;
   }
@@ -3679,10 +3679,10 @@ function renderProjectionBoard(round) {
             <div class="zg-match is-done">
               <div class="zg-pair">
                 <span class="zg-p is-win">${escapeHtml(p1?.name || "?")}</span>
-                <span class="zg-vs">BYE</span>
-                <span class="zg-p">輪空</span>
+                <span class="zg-vs">VS</span>
+                <span class="zg-p">（無對手）</span>
               </div>
-              <span class="zg-score">輪空勝</span>
+              <span class="zg-score">自動獲勝</span>
             </div>`;
           }
           const p2 = playerById(m.p2);
