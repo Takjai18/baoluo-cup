@@ -140,7 +140,7 @@ function warnSwissRounds(playerCount, swissRounds) {
   if (a.n % 2 === 1) {
     msgs.push({
       level: "ok",
-      text: `單數（${a.n} 人）每輪一人自動獲勝（計瑞士 1 勝）。優先：未曾休息 → 勝場最高 → 曾打過更高名次 → BP 高 → 已穩入圍。每人最多一次（人人都休息過先第二圈）。`,
+      text: `單數（${a.n} 人）每輪一人自動獲勝（計瑞士 1 勝）。優先：未曾休息 → 已穩入圍 → 已無希望入圍 → 勝場高 → 曾打過更高名次 → BP。爭席位者最後先休息，避免靠坐贏入圍。`,
     });
   }
   return { advice: a, messages: msgs };
@@ -845,12 +845,18 @@ function makePlayoffMatch(p1Id, p2Id, label) {
   };
 }
 
+function sortCutoffPlayers(a, b) {
+  if (b.battlePoints !== a.battlePoints) return b.battlePoints - a.battlePoints;
+  const h = headToHead(a.id, b.id);
+  if (h === a.id) return -1;
+  if (h === b.id) return 1;
+  return String(a.name || "").localeCompare(String(b.name || ""), "zh-Hant");
+}
+
 /**
- * 入圍加賽計劃：
- * 2 人有自動獲勝 → 互相對賽
- * 4 人皆因自動獲勝入圍分 → 抽籤兩場
- * 3 人 → 總分（BP，自動獲勝 0 分）較低兩人先打，勝者再對較高者
- * 其餘 → 總分＞對賽＞未對賽則加賽
+ * 入圍加賽：先用總分分開清楚入圍／出局，剩餘同分再加賽。
+ * 2 人 → 對賽；3 人 1 席 → 低分兩人先打再對最高；3 人 2 席／4 人 3 席 → 最低兩人打、負者出局；
+ * 4 人 2 席 → 抽籤兩場；4 人 1 席 → 抽籤兩場再決勝。
  */
 function describeCutoffPlan(ctx) {
   if (!ctx?.needed) return { lines: [], firstPairs: [], chain: null, highId: null };
@@ -867,63 +873,95 @@ function describeCutoffPlan(ctx) {
     lines.push(`其中 ${auto.length} 人有自動獲勝：${auto.map((p) => p.name).join("、")}。`);
   }
 
-  if (auto.length === 2 && (group.length === 2 || auto.length === group.length)) {
-    lines.push("兩位都有自動獲勝 → 互相對賽，勝者入圍。");
-    firstPairs.push([auto[0].id, auto[1].id]);
-  } else if (auto.length === 4 && auto.length === group.length) {
-    lines.push("四位都因自動獲勝取得入圍分 → 抽籤分成兩場對賽。");
-    chain = spots === 1 ? "draw4final" : "draw4";
-  } else if (group.length === 3) {
-    const sorted = [...group].sort((a, b) => {
-      if (b.battlePoints !== a.battlePoints) return b.battlePoints - a.battlePoints;
-      return String(a.name).localeCompare(String(b.name), "zh-Hant");
-    });
-    const high = sorted[0];
-    const low = sorted.slice(1);
-    highId = high.id;
-    if (spots === 1) {
-      lines.push(
-        `三人：比賽總分 ${sorted.map((p) => `${p.name} ${p.battlePoints}`).join("、")}。總分較低嘅 ${low[0].name} vs ${low[1].name} 先打，勝者再對 ${high.name}。`
-      );
-      chain = "odd3";
-      firstPairs.push([low[0].id, low[1].id]);
-    } else {
-      lines.push(
-        `三人爭 ${spots} 席：總分最高 ${high.name}（${high.battlePoints}）先占一席；${low[0].name} vs ${low[1].name} 爭餘下名額。`
-      );
-      firstPairs.push([low[0].id, low[1].id]);
-    }
-  } else if (group.length === 2) {
-    const a = group[0];
-    const b = group[1];
-    if (a.battlePoints !== b.battlePoints) {
-      const better = a.battlePoints > b.battlePoints ? a : b;
-      lines.push(`兩人總分不同（${a.battlePoints} vs ${b.battlePoints}）→ ${better.name} 較高，無需加賽。`);
-    } else {
-      const h2h = headToHead(a.id, b.id);
-      if (h2h) {
-        lines.push(`兩人總分相同，對賽已分高下 → ${playerById(h2h)?.name || h2h} 入圍。`);
-      } else {
-        lines.push("兩人總分相同且未對賽 → 加賽（先到 4 分）。");
-        firstPairs.push([a.id, b.id]);
-      }
-    }
-  } else {
-    lines.push("多人同分：先比比賽總分，再睇對賽；總分相同又未對賽就要加賽。");
-    const unresolved = [];
-    for (let i = 0; i < group.length; i++) {
-      for (let j = i + 1; j < group.length; j++) {
-        const a = group[i];
-        const b = group[j];
-        if (a.battlePoints === b.battlePoints && !headToHead(a.id, b.id)) {
-          unresolved.push([a.id, b.id]);
-        }
-      }
-    }
-    if (unresolved.length === 1) firstPairs.push(unresolved[0]);
+  const sorted = [...group].sort(sortCutoffPlayers);
+  const cutPlayer = sorted[spots - 1];
+  const cutBp = cutPlayer.battlePoints;
+  const clearIn = sorted.filter((p) => p.battlePoints > cutBp);
+  const tied = sorted.filter((p) => p.battlePoints === cutBp);
+  const spotsLeft = spots - clearIn.length;
+
+  if (clearIn.length) {
+    lines.push(`比賽總分已可先入圍：${clearIn.map((p) => `${p.name}（${p.battlePoints}）`).join("、")}。`);
   }
 
-  return { lines, firstPairs, chain, highId };
+  if (tied.length <= spotsLeft) {
+    const h2hBreaks = [];
+    for (let i = 0; i < tied.length; i++) {
+      for (let j = i + 1; j < tied.length; j++) {
+        const w = headToHead(tied[i].id, tied[j].id);
+        if (w) h2hBreaks.push(`${playerById(w)?.name} 曾勝 ${playerById(w === tied[i].id ? tied[j].id : tied[i].id)?.name}`);
+      }
+    }
+    if (h2hBreaks.length) lines.push(`對賽已分：${h2hBreaks.join("；")}。`);
+    lines.push("用總分／對賽已可分清入圍，無需加賽。");
+    return { lines, firstPairs, chain, highId };
+  }
+
+  const n = tied.length;
+  const s = spotsLeft;
+  const low = [...tied].sort(sortCutoffPlayers).reverse(); // lowest BP last in sortCutoff is actually highest first; reverse for lowest
+  const byBpAsc = [...tied].sort((a, b) => {
+    if (a.battlePoints !== b.battlePoints) return a.battlePoints - b.battlePoints;
+    return sortCutoffPlayers(b, a);
+  });
+  const twoLow = [byBpAsc[0], byBpAsc[1]];
+  const high = [...tied].sort(sortCutoffPlayers)[0];
+
+  if (n === 2 && s === 1) {
+    const a = tied[0];
+    const b = tied[1];
+    const h = headToHead(a.id, b.id);
+    if (h) {
+      lines.push(`兩人總分相同，對賽已分 → ${playerById(h)?.name} 入圍。`);
+    } else {
+      lines.push(auto.length === 2 ? "兩位都有自動獲勝 → 互相對賽。" : "兩人總分相同且未對賽 → 加賽（先到 4 分）。");
+      firstPairs.push([a.id, b.id]);
+      chain = "pair";
+    }
+  } else if (n === 3 && s === 1) {
+    highId = high.id;
+    lines.push(
+      `三人爭 1 席：總分 ${tied.map((p) => `${p.name} ${p.battlePoints}`).join("、")}。較低嘅 ${twoLow[0].name} vs ${twoLow[1].name} 先打，勝者再對 ${high.name}。`
+    );
+    firstPairs.push([twoLow[0].id, twoLow[1].id]);
+    chain = "odd3";
+  } else if (n === 3 && s === 2) {
+    lines.push(
+      `三人爭 2 席：總分最高 ${high.name}（${high.battlePoints}）先占一席；${twoLow[0].name} vs ${twoLow[1].name} 爭最後一席。`
+    );
+    firstPairs.push([twoLow[0].id, twoLow[1].id]);
+    chain = "elim1";
+    highId = high.id;
+  } else if (n === 4 && s === 3) {
+    lines.push(`四人爭 3 席：總分較低嘅 ${twoLow[0].name} vs ${twoLow[1].name}，負者出局。`);
+    firstPairs.push([twoLow[0].id, twoLow[1].id]);
+    chain = "elim1";
+  } else if (n === 4 && s === 2) {
+    lines.push(auto.length === 4
+      ? "四位都有自動獲勝 → 抽籤分成兩場，兩場勝者入圍。"
+      : "四人爭 2 席 → 抽籤分成兩場，兩場勝者入圍。");
+    chain = "draw4";
+  } else if (n === 4 && s === 1) {
+    lines.push("四人爭 1 席 → 抽籤兩場，勝者再打決勝。");
+    chain = "draw4final";
+  } else if (n >= 5 && n - s === 1) {
+    lines.push(`${n} 人只淘汰 1 人：總分最低兩人 ${twoLow[0].name} vs ${twoLow[1].name}，負者出局。`);
+    firstPairs.push([twoLow[0].id, twoLow[1].id]);
+    chain = "elim1";
+  } else {
+    lines.push(`${n} 人爭 ${s} 席：總分最低兩人先打，再按結果繼續。`);
+    firstPairs.push([twoLow[0].id, twoLow[1].id]);
+    chain = "elim1";
+  }
+
+  return {
+    lines,
+    firstPairs,
+    chain,
+    highId,
+    preQualifyIds: clearIn.map((p) => p.id),
+    tiedIds: tied.map((p) => p.id),
+  };
 }
 
 function cutPlayoffComplete() {
@@ -975,14 +1013,14 @@ function generateCutoffPlayoff() {
   const plan = describeCutoffPlan(ctx);
   let pairs = plan.firstPairs;
   if (plan.chain === "draw4" || plan.chain === "draw4final") {
-    const auto = shuffleList(ctx.group.filter((p) => hasAutoWin(p.id)));
-    if (auto.length < 4) {
-      toast("抽籤需要 4 位有自動獲勝嘅選手", "error");
+    const pool = shuffleList(plan.tiedIds || ctx.group.map((p) => p.id));
+    if (pool.length < 4) {
+      toast("抽籤需要 4 位同分選手", "error");
       return;
     }
     pairs = [
-      [auto[0].id, auto[1].id],
-      [auto[2].id, auto[3].id],
+      [pool[0], pool[1]],
+      [pool[2], pool[3]],
     ];
   }
   if (!pairs.length) {
@@ -1000,6 +1038,8 @@ function generateCutoffPlayoff() {
     cutScore: ctx.cutScore,
     koN: ctx.koN,
     playerIds: ctx.group.map((p) => p.id),
+    tiedIds: plan.tiedIds || [],
+    preQualifyIds: plan.preQualifyIds || [],
     matches,
     chain: plan.chain,
     highId: plan.highId,
@@ -1013,20 +1053,26 @@ function generateCutoffPlayoff() {
 function playoffQualifiers(ctx) {
   const po = state.cutPlayoff;
   if (!po || !cutPlayoffComplete()) return null;
-  const winners = [];
-  if (po.chain === "odd3" || po.chain === "draw4final") {
-    const last = [...po.matches].reverse().find((m) => m.wave === 2) || po.matches[po.matches.length - 1];
-    if (last?.winner) winners.push(last.winner);
-    if (ctx.spots > 1 && po.chain === "odd3" && po.highId) {
-      // 3 人 2 席：高分已占一席，加賽勝者占另一席
-      if (!winners.includes(po.highId)) winners.unshift(po.highId);
+  const pre = po.preQualifyIds || [];
+  const tied = po.tiedIds || [];
+  let fromPlayoff = [];
+  if (po.chain === "elim1") {
+    const m = po.matches.find((x) => (x.wave || 1) === 1);
+    if (!m?.winner) return null;
+    const loser = m.winner === m.p1 ? m.p2 : m.p1;
+    fromPlayoff = (tied.length ? tied : po.playerIds || []).filter((id) => id !== loser);
+  } else if (po.chain === "odd3" || po.chain === "draw4final") {
+    const last = [...po.matches].reverse().find((x) => x.wave === 2) || po.matches[po.matches.length - 1];
+    if (last?.winner) fromPlayoff.push(last.winner);
+    if (po.chain === "odd3" && ctx.spots > 1 && po.highId && !fromPlayoff.includes(po.highId)) {
+      fromPlayoff.unshift(po.highId);
     }
   } else {
     po.matches
       .filter((m) => (m.wave || 1) === 1 && m.winner)
-      .forEach((m) => winners.push(m.winner));
+      .forEach((m) => fromPlayoff.push(m.winner));
   }
-  return winners;
+  return [...pre, ...fromPlayoff];
 }
 
 // ─── Swiss Pairing Algorithm ─────────────────────────────
@@ -1140,13 +1186,42 @@ function isLockedForKo(player) {
   return above < koN && above + same <= koN;
 }
 
+function remainingRoundsAfterThis() {
+  const thisRound = (state.rounds || []).length + 1;
+  return Math.max(0, getSwissRounds() - thisRound);
+}
+
+/** 即使今輪自動獲勝＋之後全勝，都追唔上已有 koN 個更高勝場 */
+function noHopeWithBye(player) {
+  const koN = getKoBracketSize();
+  const maxSwiss = (player.swissPoints || 0) + 1 + remainingRoundsAfterThis();
+  const others = rankedPlayers().filter((p) => p.id !== player.id);
+  return others.filter((p) => p.swissPoints > maxSwiss).length >= koN;
+}
+
+function projectedInKo(player) {
+  const ranked = rankedPlayers();
+  const row = ranked.find((p) => p.id === player.id);
+  return !!(row && row.rank <= getKoBracketSize());
+}
+
+/**
+ * 0 穩入圍  1 無希望  2 而家排入圍但未穩  3 爭席／線外（休息可能靠坐贏入圍）
+ */
+function byeImpactBucket(player) {
+  if (isLockedForKo(player)) return 0;
+  if (noHopeWithBye(player)) return 1;
+  if (projectedInKo(player)) return 2;
+  return 3;
+}
+
 /**
  * 單數人「無對手」優先序：
  * 1. 未曾自動獲勝者（人人都有過先第二圈）
- * 2. 瑞士勝場最多
- * 3. 曾同名次較高者對賽（例如輸過比現時第一）
- * 4. BP 較高
- * 5. 已穩入圍淘汰賽
+ * 2. 已穩入圍 → 已無希望入圍 → 線內未穩 → 線外爭席（最後）
+ * 3. 瑞士勝場最多
+ * 4. 曾同名次較高者對賽
+ * 5. BP 較高
  */
 function pickByePlayer(players) {
   const list = [...players];
@@ -1154,20 +1229,18 @@ function pickByePlayer(players) {
   const minBye = Math.min(...list.map((p) => byeCount(p.id)));
   const rankOf = currentRankMap();
   list.sort((a, b) => {
-    const ba = byeCount(a.id);
-    const bb = byeCount(b.id);
-    const aOk = ba === minBye ? 0 : 1;
-    const bOk = bb === minBye ? 0 : 1;
+    const aOk = byeCount(a.id) === minBye ? 0 : 1;
+    const bOk = byeCount(b.id) === minBye ? 0 : 1;
     if (aOk !== bOk) return aOk - bOk;
+    const ia = byeImpactBucket(a);
+    const ib = byeImpactBucket(b);
+    if (ia !== ib) return ia - ib;
     if (b.swissPoints !== a.swissPoints) return b.swissPoints - a.swissPoints;
     const fa = facedHigherRankInfo(a.id, rankOf);
     const fb = facedHigherRankInfo(b.id, rankOf);
     if (fa.faced !== fb.faced) return fa.faced ? -1 : 1;
     if (fa.faced && fb.faced && fa.bestFaced !== fb.bestFaced) return fa.bestFaced - fb.bestFaced;
     if (b.battlePoints !== a.battlePoints) return b.battlePoints - a.battlePoints;
-    const aq = isLockedForKo(a) ? 0 : 1;
-    const bq = isLockedForKo(b) ? 0 : 1;
-    if (aq !== bq) return aq - bq;
     return String(a.name || "").localeCompare(String(b.name || ""), "zh-Hant");
   });
   return list[0] || null;
@@ -3249,8 +3322,9 @@ function startKnockout() {
   }
 
   const ctx = getCutoffContext();
-  if (ctx.needed && !cutPlayoffComplete()) {
-    const plan = describeCutoffPlan(ctx);
+  const plan = ctx.needed ? describeCutoffPlan(ctx) : { firstPairs: [], chain: null, lines: [] };
+  const needsMatches = !!(plan.chain || plan.firstPairs?.length);
+  if (ctx.needed && needsMatches && !cutPlayoffComplete()) {
     toast("入圍邊界同分，請先完成加賽（同分頁）", "error");
     if (
       !confirm(
@@ -4372,7 +4446,7 @@ function renderSettings() {
           （合理範圍 ${advice.minOk}–${advice.maxOk}；理論上限 ${advice.maxHard} 輪）</p>
           <p class="meta">經驗法則 ≈ ceil(log₂ N)＝${advice.optimal}。輪太少排名嘈；輪太多必重賽。${
             s.playerCount % 2
-              ? "單數人：未曾休息→勝場最高→曾打過更高名次→BP→已穩入圍。"
+              ? "單數人：未曾休息→已穩入圍／無希望先休息，避免爭席者坐贏入圍。"
               : ""
           }</p>
           <button type="button" class="btn btn-secondary btn-sm" id="btnApplyOptimalSwiss">套用建議 ${advice.optimal} 輪</button>
@@ -5931,7 +6005,7 @@ function init() {
             （合理範圍 ${advice.minOk}–${advice.maxOk}；理論上限 ${advice.maxHard} 輪）</p>
             <p class="meta">經驗法則 ≈ ceil(log₂ N)＝${advice.optimal}。輪太少排名嘈；輪太多必重賽。${
               tmp.playerCount % 2
-                ? "單數人：未曾休息→勝場最高→曾打過更高名次→BP→已穩入圍。"
+                ? "單數人：未曾休息→已穩入圍／無希望先休息，避免爭席者坐贏入圍。"
                 : ""
             }</p>
             <button type="button" class="btn btn-secondary btn-sm" id="btnApplyOptimalSwiss">套用建議 ${advice.optimal} 輪</button>

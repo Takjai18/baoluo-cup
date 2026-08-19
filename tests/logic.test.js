@@ -427,12 +427,23 @@ function pickByeOrder(players) {
     return a.name.localeCompare(b.name, "zh-Hant");
   })[0];
 }
-const byePick = pickByeOrder([
-  { name: "第一", swissPoints: 3, battlePoints: 8, byes: 1, facedHigher: false, lockedKo: true },
-  { name: "第二", swissPoints: 2, battlePoints: 4, byes: 0, facedHigher: true, lockedKo: false },
-  { name: "第三", swissPoints: 2, battlePoints: 5, byes: 0, facedHigher: false, lockedKo: false },
+function pickByeOrder2(players) {
+  const minBye = Math.min(...players.map((p) => p.byes));
+  return [...players].sort((a, b) => {
+    const aOk = a.byes === minBye ? 0 : 1;
+    const bOk = b.byes === minBye ? 0 : 1;
+    if (aOk !== bOk) return aOk - bOk;
+    if (a.bucket !== b.bucket) return a.bucket - b.bucket;
+    if (b.swissPoints !== a.swissPoints) return b.swissPoints - a.swissPoints;
+    return a.name.localeCompare(b.name, "zh-Hant");
+  })[0];
+}
+const byePick = pickByeOrder2([
+  { name: "線外", swissPoints: 2, byes: 0, bucket: 3 },
+  { name: "穩入圍", swissPoints: 4, byes: 0, bucket: 0 },
+  { name: "無希望", swissPoints: 0, byes: 0, bucket: 1 },
 ]);
-assert(byePick.name === "第二", "未休息＋同勝場時：曾打過更高名次者休息");
+assert(byePick.name === "穩入圍", "未休息時：已穩入圍者優先休息");
 
 console.log("\n════════════════════════");
 console.log(`結果：${passed} passed, ${failed} failed`);
