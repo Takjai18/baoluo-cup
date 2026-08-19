@@ -415,19 +415,24 @@ const oddPairs = pairRoundOneOdd(["a", "b", "c"]);
 assert(oddPairs.length === 2 && oddPairs[1][1] === null, "單數最後一人輪空");
 
 function pickByeOrder(players) {
+  const minBye = Math.min(...players.map((p) => p.byes));
   return [...players].sort((a, b) => {
-    if (a.byes !== b.byes) return a.byes - b.byes;
-    if (a.swissPoints !== b.swissPoints) return a.swissPoints - b.swissPoints;
-    if (a.battlePoints !== b.battlePoints) return a.battlePoints - b.battlePoints;
+    const aOk = a.byes === minBye ? 0 : 1;
+    const bOk = b.byes === minBye ? 0 : 1;
+    if (aOk !== bOk) return aOk - bOk;
+    if (b.swissPoints !== a.swissPoints) return b.swissPoints - a.swissPoints;
+    if (a.facedHigher !== b.facedHigher) return a.facedHigher ? -1 : 1;
+    if (b.battlePoints !== a.battlePoints) return b.battlePoints - a.battlePoints;
+    if (a.lockedKo !== b.lockedKo) return a.lockedKo ? -1 : 1;
     return a.name.localeCompare(b.name, "zh-Hant");
   })[0];
 }
 const byePick = pickByeOrder([
-  { name: "甲", swissPoints: 3, battlePoints: 8, byes: 0 },
-  { name: "乙", swissPoints: 0, battlePoints: 1, byes: 0 },
-  { name: "丙", swissPoints: 1, battlePoints: 2, byes: 1 },
+  { name: "第一", swissPoints: 3, battlePoints: 8, byes: 1, facedHigher: false, lockedKo: true },
+  { name: "第二", swissPoints: 2, battlePoints: 4, byes: 0, facedHigher: true, lockedKo: false },
+  { name: "第三", swissPoints: 2, battlePoints: 5, byes: 0, facedHigher: false, lockedKo: false },
 ]);
-assert(byePick.name === "乙", "無對手優先：未休息過嘅榜尾");
+assert(byePick.name === "第二", "未休息＋同勝場時：曾打過更高名次者休息");
 
 console.log("\n════════════════════════");
 console.log(`結果：${passed} passed, ${failed} failed`);

@@ -140,7 +140,7 @@ function warnSwissRounds(playerCount, swissRounds) {
   if (a.n % 2 === 1) {
     msgs.push({
       level: "ok",
-      text: `單數（${a.n} 人）每輪有一人「自動獲勝（無對手）」：榜尾、未休息過者優先，計瑞士 1 勝。入圍邊界同分時，有自動獲勝嘅選手要加賽。`,
+      text: `單數（${a.n} 人）每輪一人自動獲勝（計瑞士 1 勝）。優先：未曾休息 → 勝場最高 → 曾打過更高名次 → BP 高 → 已穩入圍。每人最多一次（人人都休息過先第二圈）。`,
     });
   }
   return { advice: a, messages: msgs };
@@ -1105,21 +1105,69 @@ function byeCount(playerId) {
   return n;
 }
 
+function currentRankMap() {
+  const map = {};
+  for (const p of rankedPlayers()) map[p.id] = p.rank;
+  return map;
+}
+
+/** 曾否打過而家名次更高嘅人；bestFaced = 對手入面最好（最細）名次 */
+function facedHigherRankInfo(playerId, rankOf) {
+  const myRank = rankOf[playerId] ?? 9999;
+  let faced = false;
+  let bestFaced = Infinity;
+  for (const r of state.rounds || []) {
+    for (const m of r.matches || []) {
+      if (isByeMatch(m) || !m.p1 || !m.p2) continue;
+      let opp = null;
+      if (m.p1 === playerId) opp = m.p2;
+      else if (m.p2 === playerId) opp = m.p1;
+      if (!opp) continue;
+      const or = rankOf[opp] ?? 9999;
+      if (or < myRank) faced = true;
+      if (or < bestFaced) bestFaced = or;
+    }
+  }
+  return { faced, bestFaced };
+}
+
+/** 以而家排名計，成組都入到淘汰賽名額（穩入圍） */
+function isLockedForKo(player) {
+  const koN = getKoBracketSize();
+  const ranked = rankedPlayers();
+  const above = ranked.filter((p) => p.swissPoints > player.swissPoints).length;
+  const same = ranked.filter((p) => p.swissPoints === player.swissPoints).length;
+  return above < koN && above + same <= koN;
+}
+
 /**
- * 單數人「無對手」優先序（避免強者靠休息入圍）：
- * 1. 未自動獲勝過嘅人優先（每人最多輪流一次）
- * 2. 瑞士勝較少（榜尾）
- * 3. BP 較低
- * 4. 姓名
+ * 單數人「無對手」優先序：
+ * 1. 未曾自動獲勝者（人人都有過先第二圈）
+ * 2. 瑞士勝場最多
+ * 3. 曾同名次較高者對賽（例如輸過比現時第一）
+ * 4. BP 較高
+ * 5. 已穩入圍淘汰賽
  */
 function pickByePlayer(players) {
   const list = [...players];
+  if (!list.length) return null;
+  const minBye = Math.min(...list.map((p) => byeCount(p.id)));
+  const rankOf = currentRankMap();
   list.sort((a, b) => {
     const ba = byeCount(a.id);
     const bb = byeCount(b.id);
-    if (ba !== bb) return ba - bb;
-    if (a.swissPoints !== b.swissPoints) return a.swissPoints - b.swissPoints;
-    if (a.battlePoints !== b.battlePoints) return a.battlePoints - b.battlePoints;
+    const aOk = ba === minBye ? 0 : 1;
+    const bOk = bb === minBye ? 0 : 1;
+    if (aOk !== bOk) return aOk - bOk;
+    if (b.swissPoints !== a.swissPoints) return b.swissPoints - a.swissPoints;
+    const fa = facedHigherRankInfo(a.id, rankOf);
+    const fb = facedHigherRankInfo(b.id, rankOf);
+    if (fa.faced !== fb.faced) return fa.faced ? -1 : 1;
+    if (fa.faced && fb.faced && fa.bestFaced !== fb.bestFaced) return fa.bestFaced - fb.bestFaced;
+    if (b.battlePoints !== a.battlePoints) return b.battlePoints - a.battlePoints;
+    const aq = isLockedForKo(a) ? 0 : 1;
+    const bq = isLockedForKo(b) ? 0 : 1;
+    if (aq !== bq) return aq - bq;
     return String(a.name || "").localeCompare(String(b.name || ""), "zh-Hant");
   });
   return list[0] || null;
@@ -4323,7 +4371,9 @@ function renderSettings() {
           <p><strong>${s.playerCount} 人</strong>建議 <strong class="accent">${advice.optimal}</strong> 輪
           （合理範圍 ${advice.minOk}–${advice.maxOk}；理論上限 ${advice.maxHard} 輪）</p>
           <p class="meta">經驗法則 ≈ ceil(log₂ N)＝${advice.optimal}。輪太少排名嘈；輪太多必重賽。${
-            s.playerCount % 2 ? "單數人：無對手計瑞士 1 勝；入圍同分要加賽。" : ""
+            s.playerCount % 2
+              ? "單數人：未曾休息→勝場最高→曾打過更高名次→BP→已穩入圍。"
+              : ""
           }</p>
           <button type="button" class="btn btn-secondary btn-sm" id="btnApplyOptimalSwiss">套用建議 ${advice.optimal} 輪</button>
         </div>
@@ -5880,7 +5930,9 @@ function init() {
             <p><strong>${tmp.playerCount} 人</strong>建議 <strong class="accent">${advice.optimal}</strong> 輪
             （合理範圍 ${advice.minOk}–${advice.maxOk}；理論上限 ${advice.maxHard} 輪）</p>
             <p class="meta">經驗法則 ≈ ceil(log₂ N)＝${advice.optimal}。輪太少排名嘈；輪太多必重賽。${
-              tmp.playerCount % 2 ? "單數人：無對手計瑞士 1 勝；入圍同分要加賽。" : ""
+              tmp.playerCount % 2
+                ? "單數人：未曾休息→勝場最高→曾打過更高名次→BP→已穩入圍。"
+                : ""
             }</p>
             <button type="button" class="btn btn-secondary btn-sm" id="btnApplyOptimalSwiss">套用建議 ${advice.optimal} 輪</button>
           </div>
