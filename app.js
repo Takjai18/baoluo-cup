@@ -20,6 +20,7 @@ const FINISH_TYPES = {
   over: { id: "over", label: "Over Finish", short: "Over", pts: 2 },
   burst: { id: "burst", label: "Burst Finish", short: "Burst", pts: 2 },
   spin: { id: "spin", label: "Spin Finish", short: "Spin", pts: 1 },
+  draw: { id: "draw", label: "無分（同時完場）", short: "無分", pts: 0 },
 };
 
 function finishPts(type) {
@@ -40,9 +41,14 @@ function normalizeBattles(list) {
     id: b.id || uid("b"),
     p1BeyIndex: b.p1BeyIndex === null || b.p1BeyIndex === undefined ? null : Number(b.p1BeyIndex),
     p2BeyIndex: b.p2BeyIndex === null || b.p2BeyIndex === undefined ? null : Number(b.p2BeyIndex),
-    winnerId: b.winnerId || null,
+    winnerId: b.finishType === "draw" ? null : b.winnerId || null,
     finishType: b.finishType || "spin",
-    points: Number.isFinite(Number(b.points)) ? Number(b.points) : finishPts(b.finishType),
+    points:
+      b.finishType === "draw"
+        ? 0
+        : Number.isFinite(Number(b.points))
+          ? Number(b.points)
+          : finishPts(b.finishType),
   }));
 }
 
@@ -51,13 +57,16 @@ function totalsFromBattles(p1Id, p2Id, battles) {
   let p1Bp = 0;
   let p2Bp = 0;
   for (const b of battles || []) {
-    if (!b.winnerId) continue;
+    if (b.finishType === "draw" || !b.winnerId) continue;
     const pts = b.points || finishPts(b.finishType);
     if (b.winnerId === p1Id) p1Bp += pts;
     else if (b.winnerId === p2Id) p2Bp += pts;
   }
   const winnerId = autoWinnerFromScores(p1Id, p2Id, p1Bp, p2Bp);
-  return { p1Bp, p2Bp, winnerId, done: !!winnerId };
+  const a = Math.max(0, p1Bp);
+  const b = Math.max(0, p2Bp);
+  const draw = a >= MATCH_TARGET && b >= MATCH_TARGET && a === b;
+  return { p1Bp, p2Bp, winnerId, done: !!winnerId || draw, draw };
 }
 
 function applyBattleTotals(m) {
@@ -68,11 +77,12 @@ function applyBattleTotals(m) {
   m.p1Bp = t.p1Bp;
   m.p2Bp = t.p2Bp;
   if (t.done) {
-    m.winner = t.winnerId;
+    m.winner = t.winnerId || null;
+    m.draw = !!t.draw && !t.winnerId;
     m.done = true;
   } else {
-    // 有 battles 未到 4，或 battles 為空：都唔保留舊 done／winner（避免 BP=0 但仍 done）
     m.winner = null;
+    m.draw = false;
     m.done = false;
   }
   return m;
@@ -626,7 +636,7 @@ function swissMatchesOnly() {
   const list = [];
   for (const r of state.rounds) {
     for (const m of r.matches) {
-      if (m.done && m.winner) list.push({ ...m, round: r.round });
+      if (m.done) list.push({ ...m, round: r.round });
     }
   }
   return list;
@@ -648,17 +658,19 @@ function getPlayerStats(playerId) {
     const oppBp = isP1 ? m.p2Bp : m.p1Bp;
     const oppId = isP1 ? m.p2 : m.p1;
     const won = m.winner === playerId;
+    const draw = !m.winner || !!m.draw;
     battlePoints += myBp || 0;
     opponents.push(oppId);
     matchLog.push({
       round: m.round,
       oppId,
       won,
+      draw,
       myBp: myBp || 0,
       oppBp: oppBp || 0,
     });
     if (won) wins++;
-    else losses++;
+    else if (m.winner) losses++;
   }
   return { wins, losses, battlePoints, opponents, matchLog, swissPoints: wins };
 }
@@ -1035,20 +1047,13 @@ function resolveForceWinner(p1Id, p2Id, p1Bp, p2Bp) {
   const b = Math.max(0, parseInt(p2Bp, 10) || 0);
   if (a > b) return Promise.resolve(p1Id);
   if (b > a) return Promise.resolve(p2Id);
-  return pickWinnerByModal(p1Id, p2Id, a, b, "雙方同分，必須指定勝方");
+  // 平手：無分（唔揀勝方）
+  return Promise.resolve(null);
 }
 
-/** 簡單表單 4–4 等同分：強制 modal 揀勝方（唔沿用舊 winner） */
+/** 先到 4 自動勝；總分相同＝無分 */
 function resolveWinnerForScores(p1Id, p2Id, p1Bp, p2Bp) {
-  const auto = autoWinnerFromScores(p1Id, p2Id, p1Bp, p2Bp);
-  if (auto) return Promise.resolve(auto);
-  const a = Math.max(0, parseInt(p1Bp, 10) || 0);
-  const b = Math.max(0, parseInt(p2Bp, 10) || 0);
-  if (a >= MATCH_TARGET || b >= MATCH_TARGET) {
-    // 至少一方達標但仍無法自動判（典型 4–4）→ 人手
-    return pickWinnerByModal(p1Id, p2Id, a, b, "雙方已達標但同分，請指定勝方");
-  }
-  return Promise.resolve(null);
+  return Promise.resolve(autoWinnerFromScores(p1Id, p2Id, p1Bp, p2Bp));
 }
 
 let _tieWinnerResolve = null;
@@ -2693,23 +2698,33 @@ function saveMatchResult(matchId, winnerId, p1Bp, p2Bp) {
 
   p1Bp = Math.max(0, parseInt(p1Bp, 10) || 0);
   p2Bp = Math.max(0, parseInt(p2Bp, 10) || 0);
-  // 同步路徑：caller 應已 resolve 勝方；此處再校驗
   const auto = autoWinnerFromScores(m.p1, m.p2, p1Bp, p2Bp);
   if (auto) winnerId = auto;
+  const isDraw = p1Bp === p2Bp;
+  if (isDraw) {
+    if (p1Bp < MATCH_TARGET) {
+      if (!confirm(`雙方均未達 ${MATCH_TARGET} 分（${p1Bp}:${p2Bp}）。記作無分完場？`)) return false;
+    }
+    m.winner = null;
+    m.draw = true;
+    m.p1Bp = p1Bp;
+    m.p2Bp = p2Bp;
+    m.done = true;
+    saveState();
+    render();
+    toast("已記無分（兩邊都唔計瑞士勝）", "success");
+    return true;
+  }
   if (winnerId !== m.p1 && winnerId !== m.p2) {
-    toast("請選擇勝方", "error");
+    toast(`請輸入先到 ${MATCH_TARGET} 分嘅結果`, "error");
     return false;
   }
-  // 同分但傳入勝方：允許（已由 modal 揀）；雙方未達標則 confirm
-  if (p1Bp === p2Bp && p1Bp < MATCH_TARGET) {
-    if (!confirm(`雙方均未達 ${MATCH_TARGET} 分（${p1Bp}:${p2Bp}）。仍要儲存？`)) return false;
-  } else {
-    const winBp = winnerId === m.p1 ? p1Bp : p2Bp;
-    if (winBp < MATCH_TARGET) {
-      if (!confirm(`勝方比賽分（${winBp}）未達 ${MATCH_TARGET}，仍要儲存？`)) return false;
-    }
+  const winBp = winnerId === m.p1 ? p1Bp : p2Bp;
+  if (winBp < MATCH_TARGET) {
+    if (!confirm(`勝方比賽分（${winBp}）未達 ${MATCH_TARGET}，仍要儲存？`)) return false;
   }
   m.winner = winnerId;
+  m.draw = false;
   m.p1Bp = p1Bp;
   m.p2Bp = p2Bp;
   m.done = true;
@@ -2728,6 +2743,7 @@ function clearMatchResult(matchId) {
   m.p1Bp = 0;
   m.p2Bp = 0;
   m.done = false;
+  m.draw = false;
   m.battles = emptyBattles();
   saveState();
   render();
@@ -2746,18 +2762,18 @@ async function commitMatchBattles(matchId, battles, forceComplete) {
   applyBattleTotals(m);
   if (!m.done && forceComplete) {
     const t = totalsFromBattles(m.p1, m.p2, m.battles);
-    if (t.p1Bp === 0 && t.p2Bp === 0) {
+    if (t.p1Bp === 0 && t.p2Bp === 0 && !(m.battles || []).length) {
       toast("請至少記錄一場 Battle", "error");
       return false;
     }
-    if (!confirm(`尚未有一方 ≥ ${MATCH_TARGET} 分（${t.p1Bp}:${t.p2Bp}）。強制結束？`)) {
+    if (!confirm(`尚未有一方 ≥ ${MATCH_TARGET} 分（${t.p1Bp}:${t.p2Bp}）。強制結束？平手會記無分。`)) {
       return false;
     }
     m.p1Bp = t.p1Bp;
     m.p2Bp = t.p2Bp;
     const w = await resolveForceWinner(m.p1, m.p2, t.p1Bp, t.p2Bp);
-    if (!w) return false;
     m.winner = w;
+    m.draw = !w;
     m.done = true;
   }
   if (!m.done) {
@@ -4584,23 +4600,14 @@ let scoreModalP2Id = null;
 let koModalRef = null;
 
 /**
- * 根據分數自動判定勝方：
- * - 一方 ≥ 4 分、另一方 < 4 → 該方勝
- * - 雙方都 ≥ 4 → 分數較高者勝；同分則無法自動判定
- * - 雙方都 < 4 → 未完結，無勝方
+ * 官方：先到 4 分即勝。每場 Battle 只有一方得分（同時完場＝該場無分）。
+ * 正常記錄唔會出現 4–4；若總分相同則 Match 無分（兩邊都唔記瑞士勝）。
  */
 function autoWinnerFromScores(p1Id, p2Id, p1Bp, p2Bp) {
   const a = Math.max(0, parseInt(p1Bp, 10) || 0);
   const b = Math.max(0, parseInt(p2Bp, 10) || 0);
-  const aWin = a >= MATCH_TARGET;
-  const bWin = b >= MATCH_TARGET;
-  if (aWin && !bWin) return p1Id;
-  if (bWin && !aWin) return p2Id;
-  if (aWin && bWin) {
-    if (a > b) return p1Id;
-    if (b > a) return p2Id;
-    return null;
-  }
+  if (a >= MATCH_TARGET && a > b) return p1Id;
+  if (b >= MATCH_TARGET && b > a) return p2Id;
   return null;
 }
 
@@ -4631,10 +4638,6 @@ function openScoreModal(matchId) {
       const p2Bp = document.getElementById("scoreP2").value;
       // 唔沿用舊 scoreModalWinner：每次按分數重新判定（4–4 開 modal）
       let winner = await resolveWinnerForScores(scoreModalP1Id, scoreModalP2Id, p1Bp, p2Bp);
-      if (!winner) {
-        toast(`請輸入分數：先到 ${MATCH_TARGET} 分（同分請指定勝方）`, "error");
-        return;
-      }
       scoreModalWinner = winner;
       m.battles = [];
       if (saveMatchResult(scoreModalMatchId, scoreModalWinner, p1Bp, p2Bp)) closeScoreModal();
@@ -4698,10 +4701,6 @@ function openKoScoreModal(type, index, roundIndex) {
     const p1Bp = document.getElementById("scoreP1").value;
     const p2Bp = document.getElementById("scoreP2").value;
     let winner = await resolveWinnerForScores(scoreModalP1Id, scoreModalP2Id, p1Bp, p2Bp);
-    if (!winner) {
-      toast(`請輸入分數：先到 ${MATCH_TARGET} 分（同分請指定勝方）`, "error");
-      return;
-    }
     scoreModalWinner = winner;
     if (saveKoResult(koModalRef, scoreModalWinner, p1Bp, p2Bp)) closeScoreModal();
   });
@@ -4765,9 +4764,11 @@ function renderBattleScoreModal(p1, p2, m, opts = {}) {
     </div>
     <div class="winner-banner ${totals.done ? "ok" : ""}" id="winnerBanner">
       ${
-        totals.done
-          ? `Match 完場 · 勝方：${escapeHtml(totals.winnerId === p1.id ? p1.name : p2.name)}（${totals.p1Bp}:${totals.p2Bp}）`
-          : `累計 ${totals.p1Bp} : ${totals.p2Bp} · 先到 ${MATCH_TARGET} 分`
+        totals.draw
+          ? `Match 完場 · 無分（${totals.p1Bp}:${totals.p2Bp}，兩邊唔計瑞士勝）`
+          : totals.done
+            ? `Match 完場 · 勝方：${escapeHtml(totals.winnerId === p1.id ? p1.name : p2.name)}（${totals.p1Bp}:${totals.p2Bp}）`
+            : `累計 ${totals.p1Bp} : ${totals.p2Bp} · 先到 ${MATCH_TARGET} 分即勝`
       }
     </div>
 
@@ -4786,6 +4787,7 @@ function renderBattleScoreModal(p1, p2, m, opts = {}) {
           <select id="battleWinner" class="input select">
             <option value="${p1.id}">${escapeHtml(p1.name)}</option>
             <option value="${p2.id}">${escapeHtml(p2.name)}</option>
+            <option value="">無分（同時完場）</option>
           </select>
         </label>
         <label>Finish
@@ -4794,6 +4796,7 @@ function renderBattleScoreModal(p1, p2, m, opts = {}) {
             <option value="burst">Burst（2）</option>
             <option value="spin">Spin（1）</option>
             <option value="extreme">Extreme（3）</option>
+            <option value="draw">無分（0）</option>
           </select>
         </label>
         <label>${escapeHtml(p1.name)} 陀螺
@@ -4828,8 +4831,12 @@ function renderBattleScoreModal(p1, p2, m, opts = {}) {
     });
   });
   document.getElementById("btnAddBattle")?.addEventListener("click", () => {
-    const winnerId = document.getElementById("battleWinner").value;
-    const finishType = document.getElementById("battleFinish").value;
+    let winnerId = document.getElementById("battleWinner").value;
+    let finishType = document.getElementById("battleFinish").value;
+    if (!winnerId || finishType === "draw") {
+      winnerId = null;
+      finishType = "draw";
+    }
     const p1b = document.getElementById("battleP1Bey").value;
     const p2b = document.getElementById("battleP2Bey").value;
     const points = finishPts(finishType);
@@ -4882,9 +4889,8 @@ async function saveKoBattles(requireDone) {
       toast("請至少記錄一場 Battle", "error");
       return;
     }
-    if (!confirm(`尚未達 ${MATCH_TARGET} 分。強制完場？`)) return;
+    if (!confirm(`尚未達 ${MATCH_TARGET} 分。強制完場？平手會記無分。`)) return;
     winnerId = await resolveForceWinner(m.p1, m.p2, t.p1Bp, t.p2Bp);
-    if (!winnerId) return;
     willDone = true;
   }
 
@@ -4900,11 +4906,17 @@ async function saveKoBattles(requireDone) {
   m.p1Bp = t.p1Bp;
   m.p2Bp = t.p2Bp;
   if (willDone) {
+    if (!winnerId) {
+      toast("淘汰賽必須分出勝方：繼續打到一方先到 4 分（唔可以無分晉級）", "error");
+      return;
+    }
     m.winner = winnerId;
+    m.draw = false;
     m.done = true;
     saveKoResult(koModalRef, m.winner, m.p1Bp, m.p2Bp);
   } else {
     m.winner = null;
+    m.draw = false;
     m.done = false;
     saveState();
     render();
@@ -4915,7 +4927,7 @@ async function saveKoBattles(requireDone) {
 
 function buildScoreFormSimple(p1, p2, p1Bp, p2Bp) {
   return `
-    <div class="score-note">輸入雙方比賽分（BP）。<strong>≥ ${MATCH_TARGET} 分</strong> 自動判定勝方。</div>
+    <div class="score-note">先到 <strong>${MATCH_TARGET} 分</strong>即勝。平手記無分。</div>
     <div class="score-vs">
       <div class="score-side" id="scoreSide1" data-id="${p1.id}">
         <div class="name">${escapeHtml(p1.name)}</div>
@@ -4981,12 +4993,12 @@ function updateScoreHintSimple() {
     }
     hint.textContent = "可儲存結果。";
     hint.className = "score-note";
-  } else if (a === b && a >= MATCH_TARGET) {
+  } else if (a === b && a > 0) {
     if (banner) {
-      banner.textContent = `同分 ${a}:${b} · 儲存時須指定勝方`;
+      banner.textContent = `平手 ${a}:${b} · 記無分（兩邊唔計瑞士勝）`;
       banner.className = "winner-banner";
     }
-    hint.textContent = "雙方達標但同分：按儲存後會彈出選擇勝方（唔會沿用舊勝方）。";
+    hint.textContent = "官方先到 4 即勝；總分相同＝無分。";
     hint.className = "score-note";
   } else {
     if (banner) {

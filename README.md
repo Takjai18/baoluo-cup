@@ -91,7 +91,7 @@ service cloud.firestore {
 | 教會 | 九龍城基督徒會（城基）／宣道會基蔭堂（基蔭） |
 | 瑞士制 | 輪數可調；設定頁有**輪數計算器**與警告（可無視） |
 | 淘汰賽 | **4／8／16 強**；種子 1vsN、2vsN−1… |
-| Match | 先到 4 分（Extreme 3／Over·Burst 2／Spin 1） |
+| Match | 先到 4 分即勝（Extreme 3／Over·Burst 2／Spin 1）；同時完場該 Battle 無分 |
 | 瑞士積分 | 勝 1、負 0 |
 
 ### 建議瑞士輪數（計算器）

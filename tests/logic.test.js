@@ -46,15 +46,8 @@ const MATCH_TARGET = 4;
 function autoWinnerFromScores(p1Id, p2Id, p1Bp, p2Bp) {
   const a = Math.max(0, parseInt(p1Bp, 10) || 0);
   const b = Math.max(0, parseInt(p2Bp, 10) || 0);
-  const aWin = a >= MATCH_TARGET;
-  const bWin = b >= MATCH_TARGET;
-  if (aWin && !bWin) return p1Id;
-  if (bWin && !aWin) return p2Id;
-  if (aWin && bWin) {
-    if (a > b) return p1Id;
-    if (b > a) return p2Id;
-    return null;
-  }
+  if (a >= MATCH_TARGET && a > b) return p1Id;
+  if (b >= MATCH_TARGET && b > a) return p2Id;
   return null;
 }
 
@@ -98,9 +91,9 @@ assert(swissRoundsAdvice(64).optimal === 6, "64 人 → 6 輪");
 console.log("\n── autoWinnerFromScores ──");
 assert(autoWinnerFromScores("a", "b", 4, 2) === "a", "4-2 → a");
 assert(autoWinnerFromScores("a", "b", 3, 4) === "b", "3-4 → b");
-assert(autoWinnerFromScores("a", "b", 4, 4) === null, "4-4 → null（須人手）");
+assert(autoWinnerFromScores("a", "b", 4, 4) === null, "4-4 → 無分");
 assert(autoWinnerFromScores("a", "b", 5, 4) === "a", "5-4 → a");
-assert(autoWinnerFromScores("a", "b", 2, 2) === null, "2-2 → null");
+assert(autoWinnerFromScores("a", "b", 2, 2) === null, "2-2 未到 4 → 未完場");
 
 console.log("\n── multi-way ranking ──");
 // 三角：A 勝 B，但 BP 不同 — 三人同分瑞士分時應按 BP 唔跟 H2H
@@ -212,8 +205,8 @@ ko.rounds[0].matches[1].done = true;
 assert(tryAdvance(ko) === true && ko.final.p1 === "d" && ko.final.p2 === "b", "重建決賽 d vs b");
 
 console.log("\n── resolveWinner scores edge ──");
-assert(autoWinnerFromScores("a", "b", 4, 4) === null, "4-4 不可自動");
-assert(autoWinnerFromScores("a", "b", 5, 5) === null, "5-5 不可自動");
+assert(autoWinnerFromScores("a", "b", 4, 4) === null, "4-4 無分");
+assert(autoWinnerFromScores("a", "b", 5, 5) === null, "5-5 無分");
 
 console.log("\n── CX filter must not mutate until ensureCx ──");
 function isCxBey(bey) {
