@@ -155,7 +155,7 @@ function defaultSettings() {
     referees: 4, // 裁判人數
     stadiums: 4, // 對戰盤數量（建議 2–4）
     swissRounds: 4, // 瑞士制輪次
-    playerCount: 16, // 參賽人數（必須雙數）
+    playerCount: 16, // 參賽人數（可單數；單數則輪空）
     playerPreset: "16", // '8' | '16' | '32' | '64' | 'other'
     koSize: 4, // 淘汰賽名額：4 | 8 | 16
   };
@@ -179,9 +179,8 @@ function normalizeSettings(s) {
   referees = Math.min(16, Math.max(1, referees));
   stadiums = Math.min(16, Math.max(1, stadiums));
   swissRounds = Math.min(12, Math.max(1, swissRounds));
-  // 必須雙數（瑞士制配對）
-  playerCount = Math.min(128, Math.max(2, playerCount));
-  if (playerCount % 2 !== 0) playerCount += 1;
+  // 人數可單可雙；單數瑞士制該輪一人輪空
+  playerCount = Math.min(128, Math.max(2, Math.round(playerCount)));
 
   if (PLAYER_PRESETS.includes(playerCount) && (!playerPreset || playerPreset === "other")) {
     playerPreset = String(playerCount);
@@ -211,9 +210,15 @@ function getSwissRounds() {
   return normalizeSettings(state.settings).swissRounds;
 }
 
-/** 參賽人數（雙數） */
+/** 設定中嘅目標人數（可單數） */
 function getTotalPlayers() {
   return normalizeSettings(state.settings).playerCount;
+}
+
+/** 實際配對用人數：開賽後跟名單 */
+function getPairingPlayerCount() {
+  if (state.phase !== "setup" && state.players.length >= 2) return state.players.length;
+  return getTotalPlayers();
 }
 
 /** 淘汰賽名額（4／8／16） */
@@ -223,7 +228,7 @@ function getKoBracketSize() {
 }
 
 function getMatchesPerRound() {
-  return getTotalPlayers() / 2;
+  return Math.floor(getPairingPlayerCount() / 2);
 }
 
 function zoneCode(zoneIndex) {
@@ -435,7 +440,7 @@ function applyRemoteTournamentState(payload, opts = {}) {
   const localRev = parseInt(state._rev, 10) || 0;
   const role = window.BaoluoSync?.getStatus?.()?.role || "viewer";
   const justPushed = window.BaoluoSync?.getStatus?.()?.lastPushedRev || 0;
-  const apply = opts.force
+  const apply = opts.force || payload.merged
     ? true
     : window.BaoluoSync?.shouldApplyRemote
       ? window.BaoluoSync.shouldApplyRemote(localRev, remoteRev, role, justPushed)
@@ -634,6 +639,10 @@ function getPlayerStats(playerId) {
   const matchLog = [];
   for (const m of swissMatchesOnly()) {
     if (m.p1 !== playerId && m.p2 !== playerId) continue;
+    if (isByeMatch(m)) {
+      if (m.winner === playerId) wins++;
+      continue;
+    }
     const isP1 = m.p1 === playerId;
     const myBp = isP1 ? m.p1Bp : m.p2Bp;
     const oppBp = isP1 ? m.p2Bp : m.p1Bp;
@@ -654,13 +663,19 @@ function getPlayerStats(playerId) {
   return { wins, losses, battlePoints, opponents, matchLog, swissPoints: wins };
 }
 
+function isByeMatch(m) {
+  return !!(m && (m.bye || !m.p2));
+}
+
 function headToHead(aId, bId) {
+  let last = null;
   for (const m of swissMatchesOnly()) {
+    if (isByeMatch(m)) continue;
     if ((m.p1 === aId && m.p2 === bId) || (m.p1 === bId && m.p2 === aId)) {
-      return m.winner; // id of winner, or null
+      last = m.winner || null;
     }
   }
-  return null;
+  return last;
 }
 
 function havePlayed(aId, bId) {
@@ -799,6 +814,7 @@ function buildPlayedSet() {
   const set = new Set();
   for (const r of state.rounds) {
     for (const m of r.matches) {
+      if (isByeMatch(m) || !m.p1 || !m.p2) continue;
       set.add(pairKey(m.p1, m.p2));
     }
   }
@@ -811,6 +827,7 @@ function buildLastOppMap() {
   const prev = locked[locked.length - 1];
   if (!prev) return map;
   for (const m of prev.matches) {
+    if (isByeMatch(m) || !m.p1 || !m.p2) continue;
     map[m.p1] = m.p2;
     map[m.p2] = m.p1;
   }
@@ -820,9 +837,34 @@ function buildLastOppMap() {
 function countRematches(pairs, playedSet) {
   let n = 0;
   for (const [a, b] of pairs) {
+    if (!a || !b) continue;
     if (playedSet.has(pairKey(a.id, b.id))) n++;
   }
   return n;
+}
+
+function byeCount(playerId) {
+  let n = 0;
+  for (const r of state.rounds || []) {
+    for (const m of r.matches || []) {
+      if (isByeMatch(m) && m.p1 === playerId) n++;
+    }
+  }
+  return n;
+}
+
+/** 單數人：優先未輪空、分數較低者 */
+function pickByePlayer(players) {
+  const list = [...players];
+  list.sort((a, b) => {
+    const ba = byeCount(a.id);
+    const bb = byeCount(b.id);
+    if (ba !== bb) return ba - bb;
+    if (a.swissPoints !== b.swissPoints) return a.swissPoints - b.swissPoints;
+    if (a.battlePoints !== b.battlePoints) return a.battlePoints - b.battlePoints;
+    return String(a.name || "").localeCompare(String(b.name || ""), "zh-Hant");
+  });
+  return list[0] || null;
 }
 
 function generateSwissPairings() {
@@ -846,16 +888,25 @@ function generateSwissPairings() {
     return pairRoundOne(stats);
   }
 
-  const n = stats.length;
-  let pairs;
-  if (n >= 24) {
-    pairs = greedyPairPreferNoRematch(stats, playedSet, lastOpp);
-  } else {
-    pairs = bestPairingSearch(stats, playedSet, lastOpp, { timeMs: 250 });
-    if (!pairs) pairs = greedyPairPreferNoRematch(stats, playedSet, lastOpp);
+  let pool = stats;
+  let bye = null;
+  if (pool.length % 2 === 1) {
+    bye = pickByePlayer(pool);
+    pool = pool.filter((p) => p.id !== bye.id);
   }
 
-  const rem = countRematches(pairs, playedSet);
+  const n = pool.length;
+  let pairs;
+  if (n >= 24) {
+    pairs = greedyPairPreferNoRematch(pool, playedSet, lastOpp);
+  } else {
+    pairs = bestPairingSearch(pool, playedSet, lastOpp, { timeMs: 250 });
+    if (!pairs) pairs = greedyPairPreferNoRematch(pool, playedSet, lastOpp);
+  }
+  pairs = pairs || [];
+  if (bye) pairs.push([bye, null]);
+
+  const rem = countRematches(pairs.filter((pr) => pr[0] && pr[1]), playedSet);
   if (rem > 0) {
     setTimeout(() => toast(`注意：本輪有 ${rem} 對重賽（無法完全避免時會允許）`, "error"), 0);
   }
@@ -880,6 +931,7 @@ function pairRoundOne(players) {
   const left = players.filter((p) => !used.has(p.id));
   for (let i = 0; i < left.length; i += 2) {
     if (left[i + 1]) pairs.push([left[i], left[i + 1]]);
+    else pairs.push([left[i], null]);
   }
   return pairs;
 }
@@ -1144,19 +1196,25 @@ function formatBeyOrderCompact(player, order) {
 }
 
 function createRoundFromPairs(pairs, roundNum) {
-  const raw = pairs.map((pair, i) => ({
-    id: uid("m"),
-    table: i + 1,
-    p1: pair[0].id,
-    p2: pair[1].id,
-    winner: null,
-    p1Bp: 0,
-    p2Bp: 0,
-    done: false,
-    p1BeyOrder: emptyBeyOrder(),
-    p2BeyOrder: emptyBeyOrder(),
-    battles: emptyBattles(),
-  }));
+  const raw = pairs.map((pair, i) => {
+    const p1 = pair[0];
+    const p2 = pair[1];
+    const bye = !p2;
+    return {
+      id: uid("m"),
+      table: i + 1,
+      p1: p1.id,
+      p2: p2 ? p2.id : null,
+      bye,
+      winner: bye ? p1.id : null,
+      p1Bp: 0,
+      p2Bp: 0,
+      done: bye,
+      p1BeyOrder: emptyBeyOrder(),
+      p2BeyOrder: emptyBeyOrder(),
+      battles: emptyBattles(),
+    };
+  });
   return {
     round: roundNum,
     locked: false,
@@ -1441,14 +1499,22 @@ function fillDemo() {
 }
 
 function startTournament() {
-  const need = getTotalPlayers();
-  if (state.players.length !== need) {
-    toast(`需要剛好 ${need} 人（目前 ${state.players.length}）`, "error");
+  const n = state.players.length;
+  if (n < 2) {
+    toast("至少要 2 位選手先可以開始", "error");
     return;
   }
-  if (need % 2 !== 0) {
-    toast("參賽人數必須為雙數", "error");
-    return;
+  const target = getTotalPlayers();
+  if (n !== target) {
+    if (
+      !confirm(
+        `設定目標係 ${target} 人，而家名單有 ${n} 人。\n以現有 ${n} 人開始？（單數該輪會有一人輪空）`
+      )
+    ) {
+      return;
+    }
+    state.settings.playerCount = n;
+    state.settings.playerPreset = PLAYER_PRESETS.includes(n) ? String(n) : "other";
   }
   const incomplete = state.players.filter((p) => !isDeckComplete(p));
   if (incomplete.length) {
@@ -2607,6 +2673,10 @@ function saveMatchResult(matchId, winnerId, p1Bp, p2Bp) {
   }
   const m = round.matches.find((x) => x.id === matchId);
   if (!m) return false;
+  if (isByeMatch(m)) {
+    toast("輪空場無需輸入結果", "error");
+    return false;
+  }
 
   // 若有 battle 明細，以 battles 為準（強制完場必須經 resolveForceWinner，同分唔靜默）
   if (Array.isArray(m.battles) && m.battles.length > 0) {
@@ -2747,10 +2817,10 @@ function applyManualPairings(pairIds) {
   if (round.matches.some((m) => m.done)) {
     if (!confirm("本輪已有結果，手動調整會清除。確定？")) return;
   }
-  const all = pairIds.flat();
-  const need = getTotalPlayers();
+  const all = pairIds.flat().filter(Boolean);
+  const need = getPairingPlayerCount();
   if (new Set(all).size !== need || all.length !== need) {
-    toast(`請確保 ${need} 位選手恰好各出現一次`, "error");
+    toast(`請確保 ${need} 位選手恰好各出現一次（單數可一人輪空）`, "error");
     return;
   }
   round.matches = assignMatchZones(
@@ -3429,7 +3499,7 @@ function renderPlayers() {
   });
 
   const startBtn = document.getElementById("btnStartTournament");
-  startBtn.disabled = !(state.phase === "setup" && state.players.length === getTotalPlayers());
+  startBtn.disabled = !(state.phase === "setup" && state.players.length >= 2);
   document.getElementById("btnFillDemo").disabled = state.phase !== "setup";
   document.getElementById("btnClearPlayers").disabled = state.phase !== "setup";
 }
@@ -3478,7 +3548,8 @@ function renderMatchCardStaff(m, round, statsMap) {
   ensureMatchBeyOrders(m);
   const p1 = playerById(m.p1);
   const p2 = playerById(m.p2);
-  const same = p1 && p2 && p1.church === p2.church;
+  const bye = isByeMatch(m);
+  const same = !bye && p1 && p2 && p1.church === p2.church;
   const s1 = statsMap[m.p1] || { swissPoints: 0, battlePoints: 0 };
   const s2 = statsMap[m.p2] || { swissPoints: 0, battlePoints: 0 };
   const pre1 = m.done ? s1.swissPoints - (m.winner === m.p1 ? 1 : 0) : s1.swissPoints;
@@ -3488,6 +3559,32 @@ function renderMatchCardStaff(m, round, statsMap) {
   // 次序只作內部登記，畫面唔顯示具體陀螺（避免被人偷睇）
   const orderReady =
     isBeyOrderComplete(m.p1BeyOrder) && isBeyOrderComplete(m.p2BeyOrder);
+
+  if (bye) {
+    return `
+    <div class="match-card done" data-zone="${zCode}">
+      <div class="match-top">
+        <span class="match-num">場次 ${m.table}</span>
+        <span class="zone-badge zone-${zCode}">報到：${escapeHtml(zLabel)}</span>
+        <span class="vs-tag diff">輪空</span>
+      </div>
+      <div class="match-players">
+        <div class="player-side winner">
+          <div class="p-name">${escapeHtml(p1?.name || "?")}</div>
+          <div class="p-meta"><span class="church-tag ${p1?.church}">${churchLabel(p1?.church)}</span></div>
+          <div class="p-meta">本輪前 ${pre1} 勝</div>
+        </div>
+        <div class="vs-center">BYE</div>
+        <div class="player-side">
+          <div class="p-name">輪空</div>
+          <div class="p-meta">自動記 1 勝</div>
+        </div>
+      </div>
+      <div class="match-actions">
+        <button class="btn btn-ghost btn-sm" disabled>輪空已計勝</button>
+      </div>
+    </div>`;
+  }
 
   return `
     <div class="match-card ${m.done ? "done" : ""} ${same ? "same-church" : "diff-church"}" data-zone="${zCode}">
@@ -3561,6 +3658,17 @@ function renderProjectionBoard(round) {
       const matchCells = list
         .map((m) => {
           const p1 = playerById(m.p1);
+          if (isByeMatch(m)) {
+            return `
+            <div class="zg-match is-done">
+              <div class="zg-pair">
+                <span class="zg-p is-win">${escapeHtml(p1?.name || "?")}</span>
+                <span class="zg-vs">BYE</span>
+                <span class="zg-p">輪空</span>
+              </div>
+              <span class="zg-score">輪空勝</span>
+            </div>`;
+          }
           const p2 = playerById(m.p2);
           const w1 = m.done && m.winner === m.p1 ? "is-win" : m.done ? "is-lose" : "";
           const w2 = m.done && m.winner === m.p2 ? "is-win" : m.done ? "is-lose" : "";
@@ -5136,6 +5244,7 @@ async function handleCloudCreate() {
   try {
     if (sync.getRoomId?.()) {
       if (!confirm("而家已連住另一場雲端比賽。建立新場會先離開舊場，繼續？")) return;
+      await sync.flush?.(state);
       sync.leaveRoom();
     }
     // 先確保有最新 rev 寫入本機
@@ -5177,6 +5286,10 @@ async function handleCloudJoin() {
   const roomId = document.getElementById("cloudJoinId")?.value || "";
   const pass = document.getElementById("cloudJoinPass")?.value || "";
   try {
+    if (sync.getRoomId?.()) {
+      await sync.flush?.(state);
+      sync.leaveRoom();
+    }
     const joined = await sync.joinRoom(roomId, pass);
     if (joined.state) {
       if (
@@ -5208,8 +5321,9 @@ async function handleCloudJoin() {
   }
 }
 
-function handleCloudLeave() {
+async function handleCloudLeave() {
   if (!confirm("離開雲端比賽？本機資料會保留，但唔再即時同步。")) return;
+  await window.BaoluoSync?.flush?.(state);
   window.BaoluoSync?.leaveRoom?.();
   updateSyncUi();
   toast("已離開雲端", "success");
@@ -5263,12 +5377,16 @@ function bindCloudSyncUi() {
   sync.onRemote((payload) => applyRemoteTournamentState(payload));
 
   // 恢復上次 session
-  sync.resumeSession?.().then((resumed) => {
+  sync.resumeSession?.().then(async (resumed) => {
     if (!resumed) {
       updateSyncUi();
       return;
     }
-    if (resumed.state) {
+    const localRev = parseInt(state._rev, 10) || 0;
+    const remoteRev = parseInt(resumed.rev, 10) || 0;
+    if (resumed.role === "host" && localRev > remoteRev) {
+      await sync.flush?.(state);
+    } else if (resumed.state) {
       applyRemoteTournamentState({
         rev: resumed.rev,
         state: resumed.state,
@@ -5282,6 +5400,14 @@ function bindCloudSyncUi() {
         : `已恢復只讀連線 ${resumed.roomId}`,
       "success"
     );
+  });
+
+  const flushCloud = () => {
+    if (sync.isHost?.()) sync.flush?.(state);
+  };
+  window.addEventListener("pagehide", flushCloud);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushCloud();
   });
 
   updateSyncUi();
@@ -5450,7 +5576,7 @@ function init() {
       const zones = Array.from({ length: stations }, (_, i) => zoneLabel(i)).join("、");
       preview.innerHTML = `
           <div class="hint" style="margin:0">
-            <strong>預覽 · ${tmp.playerCount} 人</strong>（每輪 ${tmp.playerCount / 2} 場）
+            <strong>預覽 · ${tmp.playerCount} 人</strong>（每輪 ${Math.floor(tmp.playerCount / 2)} 場${tmp.playerCount % 2 ? "＋1 輪空" : ""}）
             · 站 ${stations} · 瑞士 ${tmp.swissRounds} 輪 · 淘汰 ${tmp.koSize} 強<br>
             分派：<strong>${zones}</strong>
             <br><span class="meta">按「儲存設定」後生效</span>

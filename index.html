@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&family=Oswald:wght@600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260819c" />
+  <link rel="stylesheet" href="styles.css?v=20260819d" />
 </head>
 <body>
   <!-- 官方風格螢光黃綠 Banner：教會 | 寶螺盃 | BX Logo -->
@@ -85,7 +85,7 @@
             </div>
           </div>
           <div class="hint">
-            可設定<strong>參賽人數</strong>（8／16／32／64／自訂，須為雙數）、裁判、對戰盤、瑞士制輪次、淘汰賽規模。
+            可設定<strong>參賽人數</strong>（8／16／32／64／自訂，單雙數都得）、裁判、對戰盤、瑞士制輪次、淘汰賽規模。
             可用報到站 = <strong>min(裁判, 對戰盤)</strong>，對戰會分派到 A／B／C… 區。
           </div>
           <div class="settings-grid">
@@ -100,8 +100,8 @@
               </select>
             </label>
             <label class="settings-field" id="playerCountCustomWrap" style="display:none">
-              <span class="section-label">自訂人數（雙數）</span>
-              <input type="number" id="setPlayerCountCustom" class="input" min="2" max="128" step="2" value="16" inputmode="numeric" />
+              <span class="section-label">自訂人數</span>
+              <input type="number" id="setPlayerCountCustom" class="input" min="2" max="128" step="1" value="16" inputmode="numeric" />
             </label>
             <label class="settings-field">
               <span class="section-label">裁判人數</span>
@@ -160,7 +160,7 @@
           <div id="swissCalcPanel" class="mt-16"></div>
           <div id="settingsPreview" class="mt-16"></div>
           <div class="hint mt-16" style="margin-bottom:0">
-            人數須為<strong>雙數</strong>；比賽開始後不可再改人數。
+            人數可單可雙（單數該輪一人輪空）；比賽開始後不可再改人數。開賽時亦可用現有名單人數。
             瑞士輪數有建議計算器（可無視警告）。淘汰種子：第1 vs 第N、第2 vs 第N−1…
           </div>
         </div>
@@ -509,10 +509,10 @@
   <!-- Firebase（未設定 config 時 sync 會安全停用） -->
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=20260819c"></script>
-  <script src="sync.js?v=20260819c"></script>
+  <script src="firebase-config.js?v=20260819d"></script>
+  <script src="sync.js?v=20260819d"></script>
   <!-- cache-bust：確保 GitHub Pages 載入最新 JS -->
-  <script src="parts.js?v=20260819c"></script>
-  <script src="app.js?v=20260819c"></script>
+  <script src="parts.js?v=20260819d"></script>
+  <script src="app.js?v=20260819d"></script>
 </body>
 </html>

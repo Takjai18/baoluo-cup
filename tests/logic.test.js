@@ -368,6 +368,59 @@ function normalizeRoomId(id) {
 }
 assert(normalizeRoomId(" a3k-9p2 ") === "A3K9P2", "比賽 ID 正規化");
 
+console.log("\n── getBeyTier custom / catalog ──");
+function getBeyTierAudit(bey, catalog) {
+  if (!bey) return "";
+  if (bey.bladeId === "custom") return "";
+  if (bey.bladeId && bey.bladeId !== "cx") {
+    const b = catalog.find((x) => x.id === bey.bladeId);
+    if (b) return b.tier || "";
+  }
+  return "";
+}
+const catalog = [
+  { id: "bx-14", tier: "" },
+  { id: "ux-15", tier: "T0" },
+  { id: "bx-34", tier: "T1" },
+];
+assert(getBeyTierAudit({ bladeId: "bx-14" }, catalog) === "", "BX14 唔係 T0");
+assert(getBeyTierAudit({ bladeId: "ux-15" }, catalog) === "T0", "UX15 係 T0");
+assert(getBeyTierAudit({ bladeId: "bx-34" }, catalog) === "T1", "BX34 係 T1");
+assert(getBeyTierAudit({ bladeId: "custom", bladeCustom: "鯊魚神劍" }, catalog) === "", "自訂永不 T0/T1");
+
+console.log("\n── H2H uses last match ──");
+function headToHeadLast(matches, aId, bId) {
+  let last = null;
+  for (const m of matches) {
+    if (m.bye || !m.p2) continue;
+    if ((m.p1 === aId && m.p2 === bId) || (m.p1 === bId && m.p2 === aId)) last = m.winner || null;
+  }
+  return last;
+}
+assert(
+  headToHeadLast(
+    [
+      { p1: "a", p2: "b", winner: "a" },
+      { p1: "b", p2: "a", winner: "b" },
+    ],
+    "a",
+    "b"
+  ) === "b",
+  "重賽用最近一場"
+);
+
+console.log("\n── odd pairing bye ──");
+function pairRoundOneOdd(players) {
+  const pairs = [];
+  for (let i = 0; i < players.length; i += 2) {
+    if (players[i + 1]) pairs.push([players[i], players[i + 1]]);
+    else pairs.push([players[i], null]);
+  }
+  return pairs;
+}
+const oddPairs = pairRoundOneOdd(["a", "b", "c"]);
+assert(oddPairs.length === 2 && oddPairs[1][1] === null, "單數最後一人輪空");
+
 console.log("\n════════════════════════");
 console.log(`結果：${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

@@ -937,26 +937,13 @@ function deckProgress(player) {
 }
 
 function getBeyTier(bey) {
-  if (bey.bladeId && bey.bladeId !== "custom") {
+  if (!bey) return "";
+  // 自訂上蓋永不計 T0／T1
+  if (bey.bladeId === "custom") return "";
+  if (bey.bladeId && bey.bladeId !== "cx") {
     const b = findBladeById(bey.bladeId);
-    if (b?.tier) return b.tier;
+    if (b) return b.tier || "";
   }
-  // custom text match activity keywords
-  const name = partDisplayBladeShort(bey) || partDisplayBlade(bey);
-  // 活動 T0／T1 關鍵字（以零件 tier 為準；此處作自填／別名後備）
-  // T0：含 UX15 鮫鯊狂鱗；BX14 鮫鯊鋒鰭 不在限制內
-  const t0 = [
-    "神仗", "魔導神杖", "鯊魚", "鮫鯊狂鱗", "SharkScale", "UX15",
-    "天馬爆擊", "空力天馬", "左龍", "隕星龍騎士", "MeteorDragoon", "UX17",
-    "女武神", "榮耀戰神",
-    "薯片龍", "帝王紋章", "戰神紋章", "ChipDragon", "UX-21-03", "UX21-03", "UX2103",
-  ];
-  const t1 = [
-    "鳳凰飛翼", "鳳凰尾翼", "左膠龍", "蒼穹龍騎士", "CobaltDragoon", "BX34",
-    "突擊", "蒼龍突擊", "時鐘", "時鐘幻影", "子彈獅鷲", "惡魔幽冥",
-  ];
-  if (t0.some((k) => name.includes(k))) return "T0";
-  if (t1.some((k) => name.includes(k))) return "T1";
   return "";
 }
 

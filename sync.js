@@ -307,27 +307,181 @@
     emitStatus();
   }
 
+  function cloneForFirestore(obj) {
+    return JSON.parse(JSON.stringify(obj));
+  }
+
+  function phaseRank(phase) {
+    return { setup: 0, swiss: 1, knockout: 2, done: 3 }[phase] || 0;
+  }
+
+  function matchProgress(m) {
+    if (!m) return 0;
+    const battles = Array.isArray(m.battles) ? m.battles.filter((b) => b && b.winnerId).length : 0;
+    const bp = (Number(m.p1Bp) || 0) + (Number(m.p2Bp) || 0);
+    return (m.done ? 1000 : 0) + battles * 10 + bp;
+  }
+
+  function richerMatch(a, b) {
+    if (!a) return b;
+    if (!b) return a;
+    return matchProgress(a) >= matchProgress(b) ? a : b;
+  }
+
+  function pairKeyOf(m) {
+    if (!m || !m.p1) return "";
+    if (!m.p2) return "bye:" + m.p1;
+    return m.p1 < m.p2 ? m.p1 + "|" + m.p2 : m.p2 + "|" + m.p1;
+  }
+
+  function mergeMatchLists(localList, remoteList) {
+    const out = [];
+    const usedRemote = new Set();
+    const remote = remoteList || [];
+    const local = localList || [];
+    for (const lm of local) {
+      const byId = remote.find((rm) => rm.id && lm.id && rm.id === lm.id);
+      const byPair = !byId ? remote.find((rm) => pairKeyOf(rm) && pairKeyOf(rm) === pairKeyOf(lm)) : null;
+      const rm = byId || byPair;
+      if (rm) {
+        usedRemote.add(rm);
+        out.push(richerMatch(lm, rm));
+      } else {
+        out.push(lm);
+      }
+    }
+    for (const rm of remote) {
+      if (!usedRemote.has(rm)) out.push(rm);
+    }
+    return out;
+  }
+
+  function mergeRounds(localRounds, remoteRounds) {
+    const map = new Map();
+    for (const r of remoteRounds || []) {
+      map.set(r.round, cloneForFirestore(r));
+    }
+    for (const r of localRounds || []) {
+      if (!map.has(r.round)) {
+        map.set(r.round, cloneForFirestore(r));
+        continue;
+      }
+      const dest = map.get(r.round);
+      dest.locked = !!(dest.locked || r.locked);
+      dest.matches = mergeMatchLists(r.matches, dest.matches);
+    }
+    return [...map.values()].sort((a, b) => (a.round || 0) - (b.round || 0));
+  }
+
+  function mergePlayers(localPlayers, remotePlayers) {
+    const map = new Map();
+    for (const p of remotePlayers || []) if (p && p.id) map.set(p.id, p);
+    for (const p of localPlayers || []) {
+      if (!p || !p.id) continue;
+      const other = map.get(p.id);
+      if (!other) {
+        map.set(p.id, p);
+        continue;
+      }
+      const localDone = !!p.deckChecked;
+      const remoteDone = !!other.deckChecked;
+      map.set(p.id, localDone && !remoteDone ? p : remoteDone && !localDone ? other : p);
+    }
+    return [...map.values()];
+  }
+
+  function mergeKnockout(localKo, remoteKo) {
+    if (!localKo) return remoteKo || null;
+    if (!remoteKo) return localKo;
+    const out = cloneForFirestore(localKo);
+    const rem = remoteKo;
+    if (Array.isArray(out.rounds) && Array.isArray(rem.rounds)) {
+      const n = Math.max(out.rounds.length, rem.rounds.length);
+      const rounds = [];
+      for (let i = 0; i < n; i++) {
+        const a = out.rounds[i];
+        const b = rem.rounds[i];
+        if (!a) rounds.push(b);
+        else if (!b) rounds.push(a);
+        else rounds.push({ ...a, matches: mergeMatchLists(a.matches, b.matches) });
+      }
+      out.rounds = rounds;
+    }
+    if (rem.third || out.third) out.third = richerMatch(out.third, rem.third);
+    if (rem.final || out.final) out.final = richerMatch(out.final, rem.final);
+    return out;
+  }
+
+  function mergeTournamentStates(localState, remoteState) {
+    const local = localState || {};
+    const remote = remoteState || {};
+    const out = cloneForFirestore(local);
+    out.players = mergePlayers(local.players, remote.players);
+    out.rounds = mergeRounds(local.rounds, remote.rounds);
+    out.knockout = mergeKnockout(local.knockout, remote.knockout);
+    out.settings = { ...(remote.settings || {}), ...(local.settings || {}) };
+    out.phase = phaseRank(local.phase) >= phaseRank(remote.phase) ? local.phase : remote.phase;
+    out.currentRound = Math.max(local.currentRound || 0, remote.currentRound || 0);
+    return out;
+  }
+
   async function pushNow(tournamentState) {
-    if (!session || session.role !== "host" || !db) return;
-    const rev = parseInt(tournamentState?._rev, 10) || 0;
+    if (!session || session.role !== "host" || !db) return null;
     const now = new Date().toISOString();
     applyingRemote = true;
+    let result = null;
     try {
-      await roomRef(session.roomId).update({
-        state: tournamentState,
-        rev,
-        updatedAt: now,
-        hostPassHash: session.hostPassHash,
-        schemaVersion: SCHEMA_VERSION,
+      result = await db.runTransaction(async (tx) => {
+        const ref = roomRef(session.roomId);
+        const snap = await tx.get(ref);
+        if (!snap.exists) throw new Error("比賽房間已不存在");
+        const remote = snap.data() || {};
+        const remoteRev = parseInt(remote.rev, 10) || 0;
+        let next = cloneForFirestore(tournamentState || {});
+        let nextRev = parseInt(next._rev, 10) || 0;
+        let merged = false;
+        if (remote.state && remoteRev > lastPushedRev) {
+          next = mergeTournamentStates(next, remote.state);
+          nextRev = Math.max(nextRev, remoteRev) + 1;
+          next._rev = nextRev;
+          merged = true;
+        }
+        tx.update(ref, {
+          state: next,
+          rev: nextRev,
+          updatedAt: now,
+          hostPassHash: session.hostPassHash,
+          schemaVersion: SCHEMA_VERSION,
+        });
+        return { state: next, rev: nextRev, merged };
       });
-      lastPushedRev = rev;
+      lastPushedRev = result.rev;
       pendingPush = false;
       emitStatus();
+      if (result.merged && result.state) {
+        remoteListeners.forEach((fn) => {
+          try {
+            fn({
+              rev: result.rev,
+              state: result.state,
+              hostPassHash: session.hostPassHash,
+              updatedAt: now,
+              merged: true,
+            });
+          } catch (e) {
+            console.error(e);
+          }
+        });
+      }
+      return result;
+    } catch (e) {
+      pendingPush = true;
+      emitStatus();
+      throw e;
     } finally {
-      // 短暫忽略自己寫入引發嘅 snapshot
       setTimeout(() => {
         applyingRemote = false;
-      }, 50);
+      }, 80);
     }
   }
 
@@ -345,6 +499,22 @@
         emitStatus();
       });
     }, PUSH_DEBOUNCE_MS);
+  }
+
+  /** 離開／關頁前先推走未上載改動 */
+  async function flush(tournamentState) {
+    if (pushTimer) {
+      clearTimeout(pushTimer);
+      pushTimer = null;
+    }
+    if (!session || session.role !== "host") return null;
+    if (!initFirebase()) return null;
+    try {
+      return await pushNow(tournamentState);
+    } catch (e) {
+      console.error("[BaoluoSync] flush failed", e);
+      return null;
+    }
   }
 
   function onStatus(fn) {
@@ -394,6 +564,8 @@
     leaveRoom,
     schedulePush,
     pushNow,
+    flush,
+    mergeTournamentStates,
     onStatus,
     onRemote,
     getStatus,
