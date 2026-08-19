@@ -942,6 +942,10 @@ function maybeAdvanceCutPlayoff() {
   if (r.byeId) po.byeId = r.byeId;
   if (r.challengerId) po.challengerId = r.challengerId;
   if (r.preQualifyIds) po.preQualifyIds = r.preQualifyIds;
+  if (r.chain) po.chain = r.chain;
+  if (r.ko) po.ko = r.ko;
+  if (r.tiedIds) po.tiedIds = r.tiedIds;
+  if (r.take != null) po.take = r.take;
   appendPlayoffMatches(po, r.nextMatches);
 }
 

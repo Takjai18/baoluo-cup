@@ -398,40 +398,78 @@
 
     const chosen = (inner.qualifierIds || []).map((id) => open.find((p) => p.id === id)).filter(Boolean);
     const ordered = sortBpName(chosen.length ? chosen : sortBpName(open));
-    const autoIds = ordered.slice(0, autoOpen).map((p) => p.id);
-    const challengers = ordered.slice(autoOpen, autoOpen + byes.length);
-    if (!challengers.length) {
-      return { resolved: true, qualifierIds: autoIds.concat(byes.map((p) => p.id)).slice(0, spots), chain: null, lines };
+    return planMixedPlayIn(byes, ordered, autoOpen, spots, h2h, lines);
+  }
+
+  function planMixedPlayIn(byes, orderedOpen, autoOpen, spots, h2h, lines) {
+    lines = lines || [];
+    const autoIds = orderedOpen.slice(0, autoOpen).map((p) => p.id);
+    const remainingSpots = spots - autoOpen;
+    const challengers = orderedOpen.slice(autoOpen);
+    const playIn = byes.concat(challengers);
+    if (playIn.length <= remainingSpots) {
+      const ids = [];
+      const seen = new Set();
+      for (const id of autoIds.concat(playIn.map((p) => p.id))) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        ids.push(id);
+      }
+      return {
+        resolved: true,
+        qualifierIds: ids,
+        needsMatches: false,
+        chain: null,
+        lines,
+      };
     }
-    if (byes.length === 1 && challengers.length === 1) {
+    if (byes.length === 1 && remainingSpots === 1 && challengers[0]) {
       return byeVsChallenger(byes[0], challengers[0], autoIds, h2h, lines);
     }
-
-    const playIn = byes.concat(challengers);
-    lines.push(`餘下 ${playIn.length} 人爭 ${spots - autoOpen} 席：抽籤對賽，打贏出線（跨自動獲勝組唔用瑞士 BP）。`);
+    const n = playIn.length;
+    const s = remainingSpots;
+    const tiedIds = playIn.map((p) => p.id);
+    if (n === 2 && s === 1) {
+      const bye = byes[0] || playIn[0];
+      const ch = playIn.find((p) => p.id !== bye.id) || playIn[1];
+      if ((bye.byeCount || 0) > 0 && (ch.byeCount || 0) <= 0) return byeVsChallenger(bye, ch, autoIds, h2h, lines);
+      return byeVsChallenger(playIn[0], playIn[1], autoIds, h2h, lines);
+    }
+    if (n - s === 1) {
+      lines.push(`${n} 人只淘汰 1 人：抽兩人打一場，負者出局（打贏留隊）。`);
+      return {
+        resolved: false,
+        needsMatches: true,
+        chain: "elim1",
+        tiedIds,
+        take: s,
+        preQualifyIds: autoIds,
+        needsDraw: true,
+        lines,
+      };
+    }
+    if (n === 4 && s === 2) {
+      lines.push("四人爭 2 席：抽籤兩場，勝者出線。");
+      return {
+        resolved: false,
+        needsMatches: true,
+        chain: "crossDraw",
+        tiedIds,
+        take: 2,
+        preQualifyIds: autoIds,
+        needsDraw: true,
+        lines,
+      };
+    }
+    lines.push(`${n} 人爭 ${s} 席：抽籤小型淘汰，打贏出線（跨自動獲勝組唔用瑞士 BP）。`);
     return {
       resolved: false,
       needsMatches: true,
-      chain: playIn.length >= 5 ? "seedKo" : playIn.length === 4 ? "crossDraw" : "byeChallenge",
-      tiedIds: playIn.map((p) => p.id),
-      take: spots - autoOpen,
+      chain: "seedKo",
+      tiedIds,
+      take: s,
       preQualifyIds: autoIds,
-      needsDraw: playIn.length >= 4,
-      firstMatches:
-        playIn.length === 2
-          ? [
-              {
-                p1: playIn[0].id,
-                p2: playIn[1].id,
-                wave: 1,
-                creditBp: true,
-                role: "byeChallenge",
-                label: "入圍加賽 · 跨組挑戰",
-              },
-            ]
-          : [],
-      byeId: playIn.length === 2 ? playIn[0].id : null,
-      challengerId: playIn.length === 2 ? playIn[1].id : null,
+      needsDraw: true,
       lines,
     };
   }
@@ -458,6 +496,18 @@
     const n = ids.length;
     const sh = shuffleList(ids, rng);
     const s = Math.max(1, spots | 0);
+    if (n === 4) {
+      return {
+        template: "4",
+        spots: s,
+        seedId: null,
+        wave1: [
+          [sh[0], sh[1]],
+          [sh[2], sh[3]],
+        ],
+        seedLinePair: [sh[2], sh[3]],
+      };
+    }
     if (n === 5) {
       return {
         template: "5",
@@ -586,6 +636,7 @@
       const innerMat = materializeCutoff(analysis.inner, rng, nm);
       out.firstMatches = innerMat.firstMatches || [];
       out.ko = innerMat.ko;
+      out.inner = { ...analysis.inner, ...innerMat, ko: innerMat.ko, firstMatches: innerMat.firstMatches };
     }
     return out;
   }
@@ -617,7 +668,9 @@
 
   function advanceSeedKo(po, nameOf) {
     const ko = po.ko;
-    const matches = po.matches || [];
+    const matches = (po.matches || []).filter(
+      (m) => m.role === "ko" || m.role === "seedLine" || m.role === "seedVsLine"
+    );
     const nm = nameOf || ((id) => id);
     const maxWave = matches.reduce((n, m) => Math.max(n, m.wave || 1), 0);
     const w = waveDone(matches, maxWave);
@@ -627,8 +680,15 @@
     const t = ko.template;
     const spots = ko.spots || 1;
 
+    if (t === "4") {
+      if (maxWave === 1 && w.length === 2) {
+        if (spots >= 2) return [];
+        return [{ p1: w[0].winner, p2: w[1].winner, wave: 2, creditBp: false, role: "ko", label: "入圍加賽 · 決勝" }];
+      }
+    }
     if (t === "5") {
       if (maxWave === 1 && w.length === 2) {
+        if (spots >= 3) return [];
         if (spots >= 2) {
           return [{ p1: w[0].winner, p2: w[1].winner, wave: 2, creditBp: false, role: "ko", label: "入圍加賽 · 爭第 2 席" }];
         }
@@ -642,6 +702,7 @@
     }
     if (t === "6") {
       if (maxWave === 1 && w.length === 3) {
+        if (spots >= 3) return [];
         return [
           {
             p1: non[0].winner,
@@ -661,6 +722,12 @@
     }
     if (t === "7") {
       if (maxWave === 1 && w.length === 3) {
+        if (spots >= 4) return [];
+        if (spots === 3) {
+          return [
+            { p1: non[0].winner, p2: non[1].winner, wave: 2, creditBp: false, role: "ko", label: "入圍加賽 · 爭第 3 席" },
+          ];
+        }
         return [
           { p1: non[0].winner, p2: non[1].winner, wave: 2, creditBp: false, role: "ko", label: "入圍加賽 · 準決賽" },
           {
@@ -679,6 +746,7 @@
     }
     if (t === "10") {
       if (maxWave === 1 && w.length === 5) {
+        if (spots >= 5) return [];
         return [
           { p1: non[0].winner, p2: non[1].winner, wave: 2, creditBp: false, role: "ko", label: "入圍加賽 · 準決賽 1" },
           { p1: non[2].winner, p2: non[3].winner, wave: 2, creditBp: false, role: "ko", label: "入圍加賽 · 準決賽 2" },
@@ -783,7 +851,9 @@
 
   function seedKoQualifiers(po) {
     const ko = po.ko;
-    const matches = po.matches || [];
+    const matches = (po.matches || []).filter(
+      (m) => m.role === "ko" || m.role === "seedLine" || m.role === "seedVsLine"
+    );
     const spots = ko.spots || 1;
     const lastWave = matches.reduce((n, m) => Math.max(n, m.wave || 1), 0);
     const last = matches.filter((m) => (m.wave || 1) === lastWave && m.done && m.winner);
@@ -793,23 +863,56 @@
       return [last[0].winner];
     }
     const t = ko.template;
-    if (t === "5" && spots >= 2) {
-      if (lastWave < 2) return null;
-      return [ko.seedId, last[0].winner].filter(Boolean);
+    const sl = matches.find((m) => m.role === "seedLine");
+    if (t === "4") {
+      if (spots >= 2) {
+        if (lastWave !== 1 || last.length !== 2) return null;
+        return last.map((m) => m.winner);
+      }
     }
-    if (t === "6" && spots >= 2) {
-      const sl = matches.find((m) => m.role === "seedLine");
-      if (lastWave < 2 || !sl?.winner) return null;
-      return [sl.winner, last[0].winner];
+    if (t === "5") {
+      if (spots >= 3) {
+        if (lastWave !== 1 || last.length !== 2) return null;
+        return [ko.seedId, last[0].winner, last[1].winner].filter(Boolean);
+      }
+      if (spots === 2) {
+        if (lastWave < 2) return null;
+        return [ko.seedId, last[0].winner].filter(Boolean);
+      }
     }
-    if (t === "7" && spots >= 2) {
-      if (lastWave !== 2 || last.length !== 2) return null;
-      return last.map((m) => m.winner);
+    if (t === "6") {
+      if (spots >= 3) {
+        if (lastWave !== 1 || last.length !== 3) return null;
+        return last.map((m) => m.winner);
+      }
+      if (spots === 2) {
+        if (lastWave < 2 || !sl?.winner) return null;
+        return [sl.winner, last[0].winner];
+      }
     }
-    if (t === "10" && spots >= 2) {
-      const sl = matches.find((m) => m.role === "seedLine");
-      if (lastWave < 3 || !sl?.winner) return null;
-      return [sl.winner, last[0].winner];
+    if (t === "7") {
+      if (spots >= 4) {
+        if (lastWave !== 1 || last.length !== 3) return null;
+        return [ko.seedId].concat(last.map((m) => m.winner)).filter(Boolean);
+      }
+      if (spots === 3) {
+        if (lastWave !== 2 || last.length !== 1 || !sl?.winner) return null;
+        return [ko.seedId, sl.winner, last[0].winner].filter(Boolean);
+      }
+      if (spots === 2) {
+        if (lastWave !== 2 || last.length !== 2) return null;
+        return last.map((m) => m.winner);
+      }
+    }
+    if (t === "10") {
+      if (spots >= 5) {
+        if (lastWave !== 1 || last.length !== 5) return null;
+        return last.map((m) => m.winner);
+      }
+      if (spots === 2) {
+        if (lastWave < 3 || !sl?.winner) return null;
+        return [sl.winner, last[0].winner];
+      }
     }
     if (last.length === 1) return last.map((m) => m.winner);
     return last.map((m) => m.winner).slice(0, spots);
@@ -934,16 +1037,20 @@
     }
 
     if (po.chain === "elim1") {
-      if (!allMatchesDone(matches)) return { resolved: false, nextMatches: [], chain: po.chain };
-      const m = matches[0];
+      const elim = matches.filter((m) => m.role === "elim1");
+      const use = elim.length ? elim : matches;
+      if (!allMatchesDone(use)) return { resolved: false, nextMatches: [], chain: po.chain };
+      const m = use[use.length - 1];
       const loser = m.winner === m.p1 ? m.p2 : m.p1;
       const ids = (po.tiedIds || []).filter((id) => id !== loser);
       return { resolved: true, qualifierIds: (po.preQualifyIds || []).concat(ids), nextMatches: [], chain: po.chain };
     }
 
     if (po.chain === "crossDraw") {
-      if (!allMatchesDone(matches)) return { resolved: false, nextMatches: [], chain: po.chain };
-      const wins = matches.filter((m) => (m.wave || 1) === 1).map((m) => m.winner);
+      const cd = matches.filter((m) => m.role === "crossDraw");
+      const use = cd.length ? cd : matches.filter((m) => (m.wave || 1) === 1);
+      if (!allMatchesDone(use)) return { resolved: false, nextMatches: [], chain: po.chain };
+      const wins = use.map((m) => m.winner);
       return { resolved: true, qualifierIds: (po.preQualifyIds || []).concat(wins), nextMatches: [], chain: po.chain };
     }
 
@@ -970,11 +1077,16 @@
     if (po.chain === "openThenBye") {
       const innerMatches = matches.filter((m) => m.role !== "byeChallenge");
       const challenge = matches.filter((m) => m.role === "byeChallenge");
-      if (po.phase !== "challenge" && !allMatchesDone(innerMatches) && innerMatches.length) {
-        const innerPo = { ...po.inner, matches: innerMatches, chain: po.inner?.chain };
+      if (po.phase !== "challenge" && innerMatches.length && !allMatchesDone(innerMatches)) {
+        const innerPo = {
+          ...po.inner,
+          matches: innerMatches,
+          chain: po.inner?.chain,
+          ko: po.inner?.ko || po.ko,
+        };
         const innerRes = resolvePlayoff(
           group.filter((p) => (po.inner?.tiedIds || po.openIds || group.map((x) => x.id)).includes(p.id)),
-          po.inner?.take || po.autoOpen + 1,
+          po.inner?.take || (Number.isFinite(po.autoOpen) ? po.autoOpen : 0) + 1,
           h2h,
           innerPo
         );
@@ -987,44 +1099,78 @@
         const open = group.filter((p) => (p.byeCount || 0) <= 0);
         const byes = group.filter((p) => (p.byeCount || 0) > 0);
         const cred = matchCredits(innerMatches);
-        const openWork = withCredits(open, cred);
-        const autoOpen = po.autoOpen || 0;
+        const autoOpen = Number.isFinite(po.autoOpen) ? po.autoOpen : 0;
         const needFromOpen = autoOpen + (po.multiBye ? byes.length : 1);
-        const inner2 = analyzeSameBye(openWork, Math.min(openWork.length, needFromOpen), h2h, []);
-        if (inner2.needsMatches) {
-          const mat = materializeCutoff(inner2, Math.random, nameOf);
-          return { resolved: false, nextMatches: mat.firstMatches || [], chain: po.chain, phase: "open" };
+        let innerWinnerIds = null;
+        if (innerMatches.length && allMatchesDone(innerMatches) && po.inner) {
+          const ir = resolvePlayoff(
+            group.filter((p) => (po.inner.tiedIds || []).includes(p.id)),
+            po.inner.take || 1,
+            h2h,
+            { ...po.inner, matches: innerMatches, chain: po.inner.chain, ko: po.inner.ko || po.ko }
+          );
+          if (ir.resolved) innerWinnerIds = ir.qualifierIds || [];
         }
-        const chosen = (inner2.qualifierIds || []).map((id) => open.find((p) => p.id === id)).filter(Boolean);
-        const orderedWork = sortBpName(withCredits(chosen, cred));
-        const autoIds = orderedWork.slice(0, autoOpen).map((p) => p.id);
-        if (po.multiBye && byes.length > 1) {
-          const challengers = orderedWork
-            .slice(autoOpen)
+        const innerTied = new Set(po.inner?.tiedIds || []);
+        const innerAmongOpen = open.some((p) => innerTied.has(p.id));
+        const needFromOpenClamped = Math.min(open.length, needFromOpen);
+        let orderedOpen;
+        if (innerWinnerIds && innerWinnerIds.length && innerAmongOpen) {
+          const seen = new Set();
+          orderedOpen = [];
+          for (const id of innerWinnerIds) {
+            if (seen.has(id)) continue;
+            const p = open.find((x) => x.id === id);
+            if (!p) continue;
+            seen.add(id);
+            orderedOpen.push(p);
+            if (orderedOpen.length >= needFromOpenClamped) break;
+          }
+        } else {
+          const inner2 = analyzeSameBye(withCredits(open, cred), Math.min(open.length, needFromOpen), h2h, []);
+          if (inner2.needsMatches) {
+            const mat = materializeCutoff(inner2, Math.random, nameOf);
+            return { resolved: false, nextMatches: mat.firstMatches || [], chain: po.chain, phase: "open" };
+          }
+          const chosen = (inner2.qualifierIds || []).map((id) => open.find((p) => p.id === id)).filter(Boolean);
+          orderedOpen = sortBpName(withCredits(chosen, cred))
             .map((p) => open.find((x) => x.id === p.id))
             .filter(Boolean);
-          if (byes.length === 1 && challengers[0]) {
-            const plan = byeVsChallenger(byes[0], challengers[0], autoIds, h2h, []);
-            if (plan.resolved) return { resolved: true, qualifierIds: plan.qualifierIds, nextMatches: [], chain: po.chain };
-            return { resolved: false, nextMatches: plan.firstMatches, chain: po.chain, phase: "challenge", byeId: plan.byeId, challengerId: plan.challengerId, preQualifyIds: autoIds };
+        }
+        if (innerWinnerIds && innerWinnerIds.length && !innerAmongOpen && spots === 1) {
+          const bRep = byes.find((p) => innerWinnerIds[0] === p.id) || byes[0];
+          const oPlan = analyzeSameBye(withCredits(open, cred), 1, h2h, []);
+          if (oPlan.needsMatches) {
+            const mat = materializeCutoff(oPlan, Math.random, nameOf);
+            return { resolved: false, nextMatches: mat.firstMatches || [], chain: po.chain, phase: "open" };
           }
+          const oRep = open.find((p) => (oPlan.qualifierIds || [])[0] === p.id) || open[0];
+          const plan = byeVsChallenger(bRep, oRep, [], h2h, []);
+          if (plan.resolved) return { resolved: true, qualifierIds: plan.qualifierIds, nextMatches: [], chain: po.chain };
+          return {
+            resolved: false,
+            nextMatches: plan.firstMatches,
+            chain: "byeChallenge",
+            phase: "challenge",
+            byeId: plan.byeId,
+            challengerId: plan.challengerId,
+            preQualifyIds: [],
+          };
         }
-        const bye = byes.length === 1 ? byes[0] : byes.find((p) => p.id === po.byeId) || byes[0];
-        const challenger =
-          orderedWork[autoOpen] && open.find((p) => p.id === orderedWork[autoOpen].id);
-        if (!challenger) {
-          return { resolved: true, qualifierIds: autoIds.concat(bye ? [bye.id] : []), nextMatches: [], chain: po.chain };
-        }
-        const plan = byeVsChallenger(bye, challenger, autoIds, h2h, []);
+        const plan = planMixedPlayIn(byes, orderedOpen, autoOpen, spots, h2h, []);
         if (plan.resolved) return { resolved: true, qualifierIds: plan.qualifierIds, nextMatches: [], chain: po.chain };
+        const mat = materializeCutoff(plan, Math.random, nameOf);
         return {
           resolved: false,
-          nextMatches: plan.firstMatches,
-          chain: po.chain,
-          phase: "challenge",
+          nextMatches: mat.firstMatches || plan.firstMatches || [],
+          chain: plan.chain,
+          phase: plan.chain === "byeChallenge" ? "challenge" : po.phase,
           byeId: plan.byeId,
           challengerId: plan.challengerId,
-          preQualifyIds: autoIds,
+          preQualifyIds: plan.preQualifyIds || [],
+          ko: mat.ko || null,
+          tiedIds: plan.tiedIds,
+          take: plan.take,
         };
       }
       if (!allMatchesDone(challenge)) return { resolved: false, nextMatches: [], chain: po.chain, phase: "challenge" };
