@@ -443,7 +443,7 @@ const byePick = pickByeOrder2([
   { name: "穩入圍", swissPoints: 4, byes: 0, bucket: 0 },
   { name: "無希望", swissPoints: 0, byes: 0, bucket: 1 },
 ]);
-assert(byePick.name === "穩入圍", "未休息時：已穩入圍者優先休息");
+assert(byePick.name === "穩入圍", "最後一輪：已穩入圍者優先休息");
 
 console.log("\n════════════════════════");
 console.log(`結果：${passed} passed, ${failed} failed`);

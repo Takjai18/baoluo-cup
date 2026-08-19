@@ -140,7 +140,7 @@ function warnSwissRounds(playerCount, swissRounds) {
   if (a.n % 2 === 1) {
     msgs.push({
       level: "ok",
-      text: `單數（${a.n} 人）每輪一人自動獲勝（計瑞士 1 勝）。優先：未曾休息 → 已穩入圍 → 已無希望入圍 → 勝場高 → 曾打過更高名次 → BP。爭席位者最後先休息，避免靠坐贏入圍。`,
+      text: `單數（${a.n} 人）每輪一人自動獲勝（計瑞士 1 勝）。平時：未曾休息 → 勝場高 → 曾打過更高名次 → BP。僅最後一輪加：已穩入圍 → 已無希望入圍，避免爭席者坐贏入圍。`,
     });
   }
   return { advice: a, messages: msgs };
@@ -1199,42 +1199,34 @@ function noHopeWithBye(player) {
   return others.filter((p) => p.swissPoints > maxSwiss).length >= koN;
 }
 
-function projectedInKo(player) {
-  const ranked = rankedPlayers();
-  const row = ranked.find((p) => p.id === player.id);
-  return !!(row && row.rank <= getKoBracketSize());
-}
-
-/**
- * 0 穩入圍  1 無希望  2 而家排入圍但未穩  3 爭席／線外（休息可能靠坐贏入圍）
- */
-function byeImpactBucket(player) {
+/** 僅最後一輪瑞士：0 穩入圍  1 無希望  2 其他人 */
+function lastRoundByeBucket(player) {
   if (isLockedForKo(player)) return 0;
   if (noHopeWithBye(player)) return 1;
-  if (projectedInKo(player)) return 2;
-  return 3;
+  return 2;
 }
 
 /**
  * 單數人「無對手」優先序：
- * 1. 未曾自動獲勝者（人人都有過先第二圈）
- * 2. 已穩入圍 → 已無希望入圍 → 線內未穩 → 線外爭席（最後）
- * 3. 瑞士勝場最多
- * 4. 曾同名次較高者對賽
- * 5. BP 較高
+ * 全程：未曾自動獲勝者（人人都有過先第二圈）
+ * 僅最後一輪：已穩入圍 → 已無希望入圍
+ * 其後：勝場最多 → 曾打過更高名次 → BP 較高
  */
 function pickByePlayer(players) {
   const list = [...players];
   if (!list.length) return null;
   const minBye = Math.min(...list.map((p) => byeCount(p.id)));
+  const lastRound = remainingRoundsAfterThis() === 0;
   const rankOf = currentRankMap();
   list.sort((a, b) => {
     const aOk = byeCount(a.id) === minBye ? 0 : 1;
     const bOk = byeCount(b.id) === minBye ? 0 : 1;
     if (aOk !== bOk) return aOk - bOk;
-    const ia = byeImpactBucket(a);
-    const ib = byeImpactBucket(b);
-    if (ia !== ib) return ia - ib;
+    if (lastRound) {
+      const ia = lastRoundByeBucket(a);
+      const ib = lastRoundByeBucket(b);
+      if (ia !== ib) return ia - ib;
+    }
     if (b.swissPoints !== a.swissPoints) return b.swissPoints - a.swissPoints;
     const fa = facedHigherRankInfo(a.id, rankOf);
     const fb = facedHigherRankInfo(b.id, rankOf);
@@ -4446,7 +4438,7 @@ function renderSettings() {
           （合理範圍 ${advice.minOk}–${advice.maxOk}；理論上限 ${advice.maxHard} 輪）</p>
           <p class="meta">經驗法則 ≈ ceil(log₂ N)＝${advice.optimal}。輪太少排名嘈；輪太多必重賽。${
             s.playerCount % 2
-              ? "單數人：未曾休息→已穩入圍／無希望先休息，避免爭席者坐贏入圍。"
+              ? "單數人：平時勝場高者休息；最後一輪先畀已穩入圍／無希望，避免爭席者坐贏。"
               : ""
           }</p>
           <button type="button" class="btn btn-secondary btn-sm" id="btnApplyOptimalSwiss">套用建議 ${advice.optimal} 輪</button>
@@ -6005,7 +5997,7 @@ function init() {
             （合理範圍 ${advice.minOk}–${advice.maxOk}；理論上限 ${advice.maxHard} 輪）</p>
             <p class="meta">經驗法則 ≈ ceil(log₂ N)＝${advice.optimal}。輪太少排名嘈；輪太多必重賽。${
               tmp.playerCount % 2
-                ? "單數人：未曾休息→已穩入圍／無希望先休息，避免爭席者坐贏入圍。"
+                ? "單數人：平時勝場高者休息；最後一輪先畀已穩入圍／無希望，避免爭席者坐贏。"
                 : ""
             }</p>
             <button type="button" class="btn btn-secondary btn-sm" id="btnApplyOptimalSwiss">套用建議 ${advice.optimal} 輪</button>
