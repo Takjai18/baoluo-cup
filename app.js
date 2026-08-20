@@ -5466,37 +5466,13 @@ function runDrawForPrize(prizeId) {
   }
   const winner = pool[Math.floor(Math.random() * pool.length)];
   const reveal = document.getElementById("drawReveal");
+  const nameEl = document.getElementById("drawRevealName");
+  const prizeEl = document.getElementById("drawRevealPrize");
   drawRolling = true;
-  if (reveal) {
-    reveal.classList.add("rolling");
-    let i = 0;
-    const ticks = Math.min(22, 8 + pool.length);
-    const timer = setInterval(() => {
-      const c = pool[i % pool.length];
-      reveal.textContent = c.name;
-      i++;
-      if (i >= ticks) {
-        clearInterval(timer);
-        reveal.classList.remove("rolling");
-        reveal.classList.add("landed");
-        reveal.textContent = winner.name;
-        d.results.push({
-          prizeId: prize.id,
-          prizeName: prize.name,
-          winnerKey: winner.key,
-          winnerName: winner.name,
-          church: winner.church,
-          at: new Date().toISOString(),
-        });
-        saveState();
-        drawRolling = false;
-        renderDraw();
-        toast(`${prize.name} → ${winner.name}`, "success");
-        setTimeout(() => reveal.classList.remove("landed"), 1600);
-      }
-    }, 70);
-  } else {
-    d.results.push({
+  if (prizeEl) prizeEl.textContent = prize.name;
+  const commit = () => {
+    const cur = ensureDraw();
+    cur.results.push({
       prizeId: prize.id,
       prizeName: prize.name,
       winnerKey: winner.key,
@@ -5507,7 +5483,55 @@ function runDrawForPrize(prizeId) {
     saveState();
     drawRolling = false;
     renderDraw();
+    const box = document.getElementById("drawReveal");
+    box?.classList.add("landed");
+    toast(`${prize.name} → ${winner.name}`, "success");
+    setTimeout(() => box?.classList.remove("landed"), 1800);
+  };
+  if (!reveal) {
+    commit();
+    return;
   }
+  reveal.classList.remove("idle", "landed", "landing");
+  reveal.classList.add("rolling");
+  if (nameEl) nameEl.textContent = pool[0].name;
+  const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  if (reduced) {
+    if (nameEl) nameEl.textContent = winner.name;
+    reveal.classList.remove("rolling");
+    commit();
+    return;
+  }
+  const bey = reveal.querySelector(".draw-bey");
+  const ring = reveal.querySelector(".draw-xtreme-ring");
+  [bey, ring].forEach((el) => {
+    if (!el) return;
+    el.getAnimations?.().forEach((a) => a.cancel());
+    el.style.transform = "";
+  });
+  bey?.animate([{ transform: "rotate(0deg)" }, { transform: "rotate(2520deg)" }], {
+    duration: 2400,
+    easing: "cubic-bezier(0.05, 0.62, 0.18, 1)",
+    fill: "forwards",
+  });
+  ring?.animate([{ transform: "rotate(0deg)" }, { transform: "rotate(-640deg)" }], {
+    duration: 2400,
+    easing: "cubic-bezier(0.05, 0.62, 0.18, 1)",
+    fill: "forwards",
+  });
+  let step = 0;
+  const total = 30;
+  const tick = () => {
+    step++;
+    if (nameEl) nameEl.textContent = step >= total ? winner.name : pool[step % pool.length].name;
+    if (step >= total) {
+      reveal.classList.remove("rolling");
+      commit();
+      return;
+    }
+    setTimeout(tick, 40 + Math.pow(step / total, 2.4) * 160);
+  };
+  tick();
 }
 
 function renderDraw() {
@@ -5602,11 +5626,14 @@ function renderDraw() {
   }
 
   const reveal = document.getElementById("drawReveal");
+  const nameEl = document.getElementById("drawRevealName");
+  const prizeEl = document.getElementById("drawRevealPrize");
   if (reveal && !drawRolling) {
     const last = d.results[d.results.length - 1];
-    reveal.textContent = last ? last.winnerName : "—";
-    reveal.classList.toggle("landed", false);
-    reveal.classList.toggle("rolling", false);
+    if (nameEl) nameEl.textContent = last ? last.winnerName : "—";
+    if (prizeEl) prizeEl.textContent = last ? last.prizeName : "";
+    reveal.classList.remove("rolling", "landing", "landed");
+    reveal.classList.toggle("idle", !last);
   }
 
   const nextBtn = document.getElementById("btnDrawNext");

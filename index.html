@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&family=Oswald:wght@600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260820k" />
+  <link rel="stylesheet" href="styles.css?v=20260820m" />
 </head>
 <body>
   <!-- 官方風格螢光黃綠 Banner：教會 | 寶螺盃 | BX Logo -->
@@ -618,7 +618,42 @@
             </div>
           </div>
           <p class="hint">預設<strong>全部參賽選手</strong>都在名單內。可剔除選手，或加入場外人士。抽出後該人唔會再入下一項。</p>
-          <div id="drawReveal" class="draw-reveal" aria-live="polite">—</div>
+          <div id="drawReveal" class="draw-reveal idle" aria-live="polite">
+            <div class="draw-arena" aria-hidden="true">
+              <div class="draw-xtreme-ring"></div>
+              <svg class="draw-bey" viewBox="0 0 200 200" role="img">
+                <defs>
+                  <radialGradient id="drawBeyMetal" cx="38%" cy="32%" r="70%">
+                    <stop offset="0%" stop-color="#3a3a3a"/>
+                    <stop offset="55%" stop-color="#161616"/>
+                    <stop offset="100%" stop-color="#050505"/>
+                  </radialGradient>
+                  <radialGradient id="drawBeyCore" cx="40%" cy="35%" r="65%">
+                    <stop offset="0%" stop-color="#f6ff9a"/>
+                    <stop offset="45%" stop-color="#c8ff00"/>
+                    <stop offset="100%" stop-color="#6f8f00"/>
+                  </radialGradient>
+                </defs>
+                <g class="draw-bey-spin">
+                  <circle cx="100" cy="100" r="92" fill="#0a0a0a" stroke="#c8ff00" stroke-width="3"/>
+                  <circle cx="100" cy="100" r="84" fill="none" stroke="#c8ff00" stroke-width="11" stroke-dasharray="7 8" stroke-linecap="butt"/>
+                  <g fill="url(#drawBeyMetal)" stroke="#c8ff00" stroke-width="2.2">
+                    <ellipse cx="100" cy="58" rx="28" ry="48"/>
+                    <ellipse cx="100" cy="58" rx="28" ry="48" transform="rotate(120 100 100)"/>
+                    <ellipse cx="100" cy="58" rx="28" ry="48" transform="rotate(240 100 100)"/>
+                  </g>
+                  <circle cx="100" cy="100" r="36" fill="url(#drawBeyMetal)" stroke="#c8ff00" stroke-width="3"/>
+                  <path d="M78 78 L122 122 M122 78 L78 122" fill="none" stroke="#c8ff00" stroke-width="9" stroke-linecap="round"/>
+                  <circle cx="100" cy="100" r="16" fill="url(#drawBeyCore)"/>
+                  <circle cx="100" cy="100" r="6" fill="#0a0a0a"/>
+                </g>
+              </svg>
+            </div>
+            <div class="draw-reveal-text">
+              <div class="draw-reveal-prize" id="drawRevealPrize"></div>
+              <div class="draw-reveal-name" id="drawRevealName">—</div>
+            </div>
+          </div>
           <div id="drawResults" class="draw-results mt-16"></div>
         </div>
 
@@ -821,6 +856,6 @@
   <!-- cache-bust：確保 GitHub Pages 載入最新 JS -->
   <script src="parts.js?v=20260819e"></script>
   <script src="cutoff.js?v=20260820i"></script>
-  <script src="app.js?v=20260820k"></script>
+  <script src="app.js?v=20260820m"></script>
 </body>
 </html>
