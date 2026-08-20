@@ -40,24 +40,33 @@ function swissMatchesOnly() {
   return list;
 }
 function isByeMatch(m) { return !!(m && (m.bye || !m.p2)); }
+const QUALIFY_RULE = process.argv.some((a) => a === "B" || a === "--rule=B" || a === "--ruleB")
+  ? "B"
+  : "A";
+
 function getPlayerStats(playerId) {
-  let wins = 0, losses = 0, battlePoints = 0;
+  let wins = 0, losses = 0, battlePoints = 0, netPoints = 0, byes = 0;
   const opponents = [];
   for (const m of swissMatchesOnly()) {
     if (m.p1 !== playerId && m.p2 !== playerId) continue;
     if (isByeMatch(m)) {
-      if (m.winner === playerId) wins++;
+      if (m.winner === playerId) {
+        wins++;
+        byes++;
+      }
       continue;
     }
     const isP1 = m.p1 === playerId;
     const myBp = isP1 ? m.p1Bp : m.p2Bp;
+    const oppBp = isP1 ? m.p2Bp : m.p1Bp;
     const oppId = isP1 ? m.p2 : m.p1;
     battlePoints += myBp || 0;
+    netPoints += (myBp || 0) - (oppBp || 0);
     opponents.push(oppId);
     if (m.winner === playerId) wins++;
     else if (m.winner) losses++;
   }
-  return { wins, losses, battlePoints, opponents, swissPoints: wins };
+  return { wins, losses, battlePoints, netPoints, byeCount: byes, opponents, swissPoints: wins };
 }
 function headToHead(aId, bId) {
   let last = null;
@@ -90,17 +99,28 @@ function rankedPlayers() {
   }
   return ordered;
 }
+function cutoffScoreOf(p, byeAdjust) {
+  if (!byeAdjust) return p.swissPoints;
+  return (p.swissPoints || 0) - byeCount(p.id);
+}
 function getCutoffContext() {
   const ranked = rankedPlayers();
   if (!ranked.length || ranked.length < koN) return { needed: false, resolved: true, koN, ranked };
-  const cutScore = ranked[koN - 1].swissPoints;
-  const lockedIn = ranked.filter((p) => p.swissPoints > cutScore);
-  const group = ranked.filter((p) => p.swissPoints === cutScore);
+  const byeAdjust =
+    QUALIFY_RULE === "B" &&
+    (state.players.length % 2 === 1 || state.players.some((p) => byeCount(p.id) > 0));
+  const ordered = byeAdjust
+    ? [...ranked].sort((a, b) => cutoffScoreOf(b, true) - cutoffScoreOf(a, true))
+    : ranked;
+  const cutScore = cutoffScoreOf(ordered[koN - 1], byeAdjust);
+  const lockedIn = ranked.filter((p) => cutoffScoreOf(p, byeAdjust) > cutScore);
+  const group = ranked.filter((p) => cutoffScoreOf(p, byeAdjust) === cutScore);
   const spots = koN - lockedIn.length;
+  const oddPath = byeAdjust;
   if (spots <= 0 || group.length <= spots) {
-    return { needed: false, resolved: true, koN, ranked, lockedIn, group, spots, cutScore };
+    return { needed: false, resolved: true, koN, ranked, lockedIn, group, spots, cutScore, oddPath };
   }
-  return { needed: true, resolved: false, koN, ranked, lockedIn, group, spots, cutScore };
+  return { needed: true, resolved: false, koN, ranked, lockedIn, group, spots, cutScore, oddPath };
 }
 function pairKey(a, b) { return a < b ? a + "|" + b : b + "|" + a; }
 function pairQuality(p1, p2, playedSet, lastOpp, hardNoRematch) {
@@ -305,13 +325,16 @@ function decorateGroup(group) {
     id: p.id,
     name: p.name,
     battlePoints: p.battlePoints,
+    netPoints: p.netPoints || 0,
     swissPoints: p.swissPoints,
     byeCount: byeCount(p.id),
+    metaScore: p.metaScore || 0,
   }));
 }
 
-function simulatePlayoff(group, spots, h2h) {
-  const analysis = C.analyzeCutoff(decorateGroup(group), spots, h2h);
+function simulatePlayoff(group, spots, h2h, oddPath) {
+  const opts = QUALIFY_RULE === "B" ? { rule: "B", oddPath: !!oddPath } : undefined;
+  const analysis = C.analyzeCutoff(decorateGroup(group), spots, h2h, opts);
   const info = {
     chain: analysis.chain || (analysis.resolved ? "none" : "?"),
     needsMatches: !!analysis.needsMatches,
@@ -342,6 +365,9 @@ function simulatePlayoff(group, spots, h2h) {
     multiBye: built.multiBye,
     take: built.take,
     matches: [],
+    rule: built.rule || QUALIFY_RULE,
+    seedId: built.seedId,
+    bOrdered: !!built.bOrdered,
   };
   const add = (ds) => {
     (ds || []).forEach((d) => {
@@ -381,6 +407,7 @@ function simulatePlayoff(group, spots, h2h) {
     if (r.ko) po.ko = r.ko;
     if (r.tiedIds) po.tiedIds = r.tiedIds;
     if (r.take != null) po.take = r.take;
+    if (r.seedId) po.seedId = r.seedId;
     if (r.resolved) {
       info.qualifierIds = r.qualifierIds || [];
       info.stuck = false;
@@ -422,6 +449,7 @@ function runOne(n) {
       id: "p" + String(i + 1).padStart(2, "0"),
       name: "P" + String(i + 1).padStart(2, "0"),
       church: i % 2 === 0 ? "kcc" : "ky",
+      metaScore: i % 5 === 0 ? 2 : i % 3 === 0 ? 1 : 0,
     })),
     rounds: [],
   };
@@ -464,7 +492,7 @@ function runOne(n) {
     seedIds = seedFromRank;
     if (seedIds.length !== koN) problems.push(`no-cutoff seed ${seedIds.length} != koN ${koN}`);
   } else {
-    playoff = simulatePlayoff(ctx.group, ctx.spots, headToHead);
+    playoff = simulatePlayoff(ctx.group, ctx.spots, headToHead, ctx.oddPath);
     if (playoff.emptyMaterialize) problems.push("needsMatches but materialize empty");
     if (playoff.stuck) problems.push(`playoff stuck chain=${playoff.chain} waves=${playoff.waves} matches=${playoff.matches}`);
     qualifiers = playoff.qualifierIds || [];
@@ -480,13 +508,21 @@ function runOne(n) {
     seedIds = ranked.filter((p) => idSet.has(p.id)).slice(0, koN).map((p) => p.id);
     if (seedIds.length !== koN) problems.push(`seed ${seedIds.length} != koN ${koN} locked=${locked.length} q=${qualifiers.length}`);
 
-    // P0 check: 2-person group different BP should pick higher BP not H2H
-    if (ctx.group.length === 2 && ctx.spots === 1 && !playoff.needsMatches) {
+    if (QUALIFY_RULE === "A" && ctx.group.length === 2 && ctx.spots === 1 && !playoff.needsMatches) {
       const [a, b] = ctx.group;
       if (a.battlePoints !== b.battlePoints) {
         const bpWin = a.battlePoints > b.battlePoints ? a.id : b.id;
         if (qualifiers[0] && qualifiers[0] !== bpWin) {
           problems.push(`P0-regression: BP winner ${bpWin} but qualifier ${qualifiers[0]}`);
+        }
+      }
+    }
+    if (QUALIFY_RULE === "B" && !ctx.oddPath && ctx.group.length === 2 && ctx.spots === 1 && playoff.resolvedUpfront) {
+      const [a, b] = ctx.group;
+      if ((a.netPoints || 0) !== (b.netPoints || 0)) {
+        const netWin = (a.netPoints || 0) > (b.netPoints || 0) ? a.id : b.id;
+        if (qualifiers[0] && qualifiers[0] !== netWin) {
+          problems.push(`B-net: net winner ${netWin} but qualifier ${qualifiers[0]}`);
         }
       }
     }
@@ -506,6 +542,7 @@ function runOne(n) {
     playoffMatches: playoff ? playoff.matches : 0,
     rematches,
     lastByeBucket,
+    oddPath: !!ctx.oddPath,
     problems,
   };
 }
@@ -525,6 +562,8 @@ function summarize(n, runs) {
     wrongQ: 0,
     lastBye: { 0: 0, 1: 0, 2: 0, none: 0 },
     rematchSum: 0,
+    playoffMatchSum: 0,
+    playoffMatchMax: 0,
     groupSizes: {},
     samples: [],
   };
@@ -540,6 +579,8 @@ function summarize(n, runs) {
     if (r.problems.some((p) => p.includes("materialize"))) out.emptyMat++;
     if (r.problems.some((p) => p.startsWith("qualifiers"))) out.wrongQ++;
     out.rematchSum += r.rematches;
+    out.playoffMatchSum += r.playoffMatches || 0;
+    if ((r.playoffMatches || 0) > out.playoffMatchMax) out.playoffMatchMax = r.playoffMatches || 0;
     if (r.needed) {
       const gs = `${r.groupN}for${r.spots}`;
       out.groupSizes[gs] = (out.groupSizes[gs] || 0) + 1;
@@ -550,11 +591,68 @@ function summarize(n, runs) {
   return out;
 }
 
+/** 窮舉爭席 n 人 s 席，睇規則 B 引擎有冇填唔到嘅形狀 */
+function probeRuleBShapes() {
+  const problems = [];
+  const ok = [];
+  for (const oddPath of [false, true]) {
+    for (let n = 2; n <= 12; n++) {
+      for (let s = 1; s < n; s++) {
+        const group = Array.from({ length: n }, (_, i) => ({
+          id: "g" + i,
+          name: "G" + i,
+          netPoints: (n - i) * 3,
+          battlePoints: 10 + (n - i),
+          swissPoints: 2,
+          byeCount: 0,
+          metaScore: i % 4,
+        }));
+        let info;
+        try {
+          info = simulatePlayoff(group, s, () => null, oddPath);
+        } catch (e) {
+          problems.push(`CRASH ${oddPath ? "odd" : "even"} ${n}for${s}: ${e.message}`);
+          continue;
+        }
+        const q = info.qualifierIds || [];
+        const label = `${oddPath ? "oddPlay" : "evenPaper"} ${n}for${s} chain=${info.chain}`;
+        if (info.stuck || info.emptyMaterialize) {
+          problems.push(`${label} stuck waves=${info.waves} matches=${info.matches} empty=${info.emptyMaterialize}`);
+        } else if (q.length !== s) {
+          problems.push(`${label} got ${q.length} qualifiers want ${s}`);
+        } else if (new Set(q).size !== q.length) {
+          problems.push(`${label} duplicate qualifiers`);
+        } else {
+          ok.push(`${n}for${s}/${oddPath ? "odd" : "even"}:${info.chain}`);
+        }
+      }
+    }
+  }
+  return { problems, okCount: ok.length };
+}
+
+function parseSizes() {
+  const arg = process.argv.find((a) => a.startsWith("--sizes="));
+  if (arg) return arg.slice(8).split(",").map((x) => parseInt(x, 10)).filter((n) => n >= 2);
+  if (QUALIFY_RULE === "B") return [8, 9, 15, 16, 17];
+  return [8, 9, 10, 16, 17, 31, 32, 33];
+}
+
 function main() {
-  const sizes = [8, 9, 10, 16, 17, 31, 32, 33];
-  const TRIALS = 50;
-  console.log(`Simulating ${sizes.join("/")} × ${TRIALS} tournaments (Swiss=ceil(log2 N), KO=4)\n`);
+  const sizes = parseSizes();
+  const TRIALS = parseInt((process.argv.find((a) => a.startsWith("--trials=")) || "").split("=")[1], 10) || 50;
+  console.log(`Simulating ${sizes.join("/")} × ${TRIALS} · 規則 ${QUALIFY_RULE}（Swiss=ceil(log2 N), KO=4）\n`);
   const t0 = Date.now();
+
+  if (QUALIFY_RULE === "B") {
+    const probe = probeRuleBShapes();
+    console.log(`══ 規則 B 爭席形狀窮舉（2–12 人 × 1..n-1 席 × 紙上／必打）══`);
+    console.log(`  通過：${probe.okCount}  失敗：${probe.problems.length}`);
+    probe.problems.slice(0, 20).forEach((p) => console.log("   - " + p));
+    if (probe.problems.length > 20) console.log(`   … 仲有 ${probe.problems.length - 20} 條`);
+    console.log("");
+  }
+
   for (const n of sizes) {
     const runs = [];
     for (let i = 0; i < TRIALS; i++) {
@@ -571,6 +669,7 @@ function main() {
     if (s.cutoffNeeded) console.log(`  爭席形狀：${JSON.stringify(s.groupSizes)}`);
     console.log(`  問題場次：${s.problemRuns}  崩潰：${s.crashes}  加賽卡住：${s.stuck}  入圍人數錯：${s.wrongQ}  抽籤空白：${s.emptyMat}`);
     console.log(`  重賽場數合計：${s.rematchSum}（平均 ${(s.rematchSum / s.trials).toFixed(2)} 對/場）`);
+    console.log(`  入圍加賽場數：合計 ${s.playoffMatchSum} · 單場最多 ${s.playoffMatchMax}`);
     if (n % 2 === 1) {
       console.log(`  最後一輪自動獲勝 bucket：穩入圍=${s.lastBye[0] || 0} 無希望=${s.lastBye[1] || 0} 其他人=${s.lastBye[2] || 0}`);
     }

@@ -494,6 +494,68 @@ console.log("\n── cutoff: 四人抽籤──");
   assert(m.firstMatches.every((x) => x.creditBp), "四人加賽計 BP");
 }
 
+console.log("\n── cutoff: 2+ 坐場者先補 BP 再同未坐場者比──");
+{
+  const r = C.analyzeCutoff(
+    [P("A", 8, 1), P("B", 8, 1), P("C", 8, 1), P("D", 8, 1)],
+    2,
+    noH2h
+  );
+  const m = C.materializeCutoff(r, () => 0, (id) => id, () => false);
+  assert(r.chain === "byeBpGen", "四個坐場者（雙數）先各打一場補 BP");
+  assert(m.firstMatches.length === 2, "四個人兩場");
+  assert(m.firstMatches.every((x) => x.creditBp && x.role === "byeBpGen"), "補 BP 場計分");
+}
+{
+  const r = C.analyzeCutoff([P("A", 8, 1), P("B", 8, 1)], 1, noH2h);
+  const m = C.materializeCutoff(r, () => 0, (id) => id, () => false);
+  assert(r.chain === "byeBpGen", "兩個坐場者打一場補 BP");
+  assert(m.firstMatches.length === 1, "一場");
+}
+{
+  const r = C.analyzeCutoff([P("A", 8, 1), P("B", 8, 1), P("C", 8, 1)], 1, noH2h);
+  const m = C.materializeCutoff(r, () => 0, (id) => id, () => false);
+  assert(r.chain === "byeBpGen" && r.seedNeeded, "三個坐場者：抽種子");
+  assert(m.firstMatches.length === 1 && m.byeBp && m.byeBp.seedId, "其餘兩人先打，種子之後對勝者");
+}
+{
+  const mixed = C.analyzeCutoff(
+    [P("A", 8, 1), P("B", 8, 1), P("C", 20, 0), P("D", 19, 0)],
+    2,
+    noH2h
+  );
+  assert(mixed.chain === "byeBpGen", "兩個坐場＋未坐場：仍先讓坐場者補 BP");
+}
+{
+  const group = [P("A", 8, 1), P("B", 8, 1), P("C", 20, 0)];
+  const po = {
+    chain: "byeBpGen",
+    byeBp: { seedId: null },
+    matches: [
+      { p1: "A", p2: "B", role: "byeBpGen", wave: 1, done: true, winner: "A", p1Bp: 4, p2Bp: 1, creditBp: true },
+    ],
+  };
+  const r = C.resolvePlayoff(group, 1, noH2h, po, () => false);
+  assert(r.resolved && r.qualifierIds[0] === "C", "坐場者補完 BP（8+4=12）仍低過未坐場 20 → 未坐場入圍");
+}
+{
+  const group = [P("A", 8, 1), P("B", 8, 1), P("G", 8, 1), P("C", 11, 0)];
+  const po = {
+    chain: "byeBpGen",
+    byeBp: { seedId: "G" },
+    matches: [
+      { p1: "A", p2: "B", role: "byeBpGen", wave: 1, done: true, winner: "A", p1Bp: 6, p2Bp: 2, creditBp: true },
+      { p1: "G", p2: "A", role: "byeBpGen", wave: 2, done: true, winner: "A", p1Bp: 1, p2Bp: 4, creditBp: true },
+    ],
+  };
+  const r = C.resolvePlayoff(group, 1, noH2h, po, () => false);
+  const cred = C.matchCredits(po.matches);
+  assert(cred.A === 4, "打完首輪再對種子：只計對種子嗰場 4 分，首輪 6 分唔計");
+  assert(cred.B === 2, "首輪負者只打過一場，計嗰場 2 分");
+  assert(cred.G === 1, "種子只計對勝者嗰場");
+  assert(r.resolved && r.qualifierIds[0] === "A", "A 8+4=12 高過未坐場 11 → A 入圍");
+}
+
 console.log("\n── cutoff: 5 人種子選手──");
 {
   const r = C.analyzeCutoff([P("A", 8), P("B", 8), P("C", 8), P("D", 8), P("E", 8)], 1, noH2h);
@@ -593,6 +655,142 @@ console.log("\n── cutoff: 7 人爭 2 席唔打決勝──");
   assert(adv2.length === 0, "爭 2 席：兩條線勝者都入，唔打決勝");
   const q = C.seedKoQualifiers(po2);
   assert(q && q.length === 2, "爭 2 席兩人入圍");
+}
+
+function PB(id, net, bp, extra) {
+  return { id, name: id, netPoints: net, battlePoints: bp == null ? net : bp, byeCount: 0, metaScore: 0, ...(extra || {}) };
+}
+const optB = { rule: "B", oddPath: false };
+const optBOdd = { rule: "B", oddPath: true };
+
+console.log("\n── cutoff B: 淨勝分獎勵壓制──");
+{
+  const r = C.analyzeCutoff([PB("Spin", 16, 16), PB("Ex", 12, 24)], 1, noH2h, optB);
+  assert(r.resolved && r.qualifierIds[0] === "Spin", "四場 4–0 Spin 淨勝 16 入圍，贏過四場 6–3 Extreme");
+}
+
+console.log("\n── cutoff B: 雙數紙上淨勝分／BP／對賽──");
+{
+  const r = C.analyzeCutoff([PB("A", 12), PB("B", 4), PB("C", 3), PB("D", 1)], 2, noH2h, optB);
+  assert(r.resolved && r.qualifierIds.includes("A") && r.qualifierIds.includes("B"), "雙數：淨勝分已可分 2 席");
+  assert(!r.needsMatches, "唔使加賽");
+}
+{
+  const r = C.analyzeCutoff([PB("A", 8, 20), PB("B", 8, 12)], 1, noH2h, optB);
+  assert(r.resolved && r.qualifierIds[0] === "A", "淨勝分同 → 高 BP 入");
+}
+{
+  const r = C.analyzeCutoff([PB("A", 8, 10), PB("B", 8, 10)], 1, () => "B", optB);
+  assert(r.resolved && r.qualifierIds[0] === "B", "淨勝分同 BP 同 → 對賽勝方入");
+}
+{
+  const r = C.analyzeCutoff([PB("A", 8, 10), PB("B", 8, 10)], 1, noH2h, optB);
+  assert(!r.resolved && r.chain === "bPair", "未曾對賽 → 加賽");
+  assert(r.firstMatches[0].creditBp === false, "規則 B 加賽唔計 BP");
+}
+
+console.log("\n── cutoff B: 4 人 2 席高打低──");
+{
+  const r = C.analyzeCutoff(
+    [PB("A", 8), PB("B", 8), PB("C", 8), PB("D", 8)],
+    2,
+    noH2h,
+    optB
+  );
+  assert(r.chain === "bHighLow" && r.firstMatches.length === 2, "全同 → 兩場高打低");
+  assert(r.firstMatches.every((m) => m.creditBp === false), "打贏出線");
+}
+{
+  const r = C.analyzeCutoff(
+    [PB("A", 20), PB("B", 10), PB("C", 6), PB("D", 2)],
+    2,
+    noH2h,
+    optBOdd
+  );
+  assert(r.chain === "bHighLow", "單數路徑即使淨勝分不同都要打");
+  assert(r.firstMatches[0].p1 === "A" && r.firstMatches[0].p2 === "D", "最高打最低");
+  assert(r.firstMatches[1].p1 === "B" && r.firstMatches[1].p2 === "C", "第二高打第二低");
+}
+
+console.log("\n── cutoff B: 3 人種子──");
+{
+  const r = C.analyzeCutoff([PB("A", 12), PB("B", 8), PB("C", 3)], 2, noH2h, optBOdd);
+  assert(r.chain === "bPair" && r.preQualifyIds[0] === "A", "3 人 2 席：最高直入");
+  assert(r.firstMatches[0].p1 === "B" && r.firstMatches[0].p2 === "C", "其餘兩人打");
+  const po = {
+    chain: "bPair",
+    preQualifyIds: r.preQualifyIds,
+    matches: [{ ...r.firstMatches[0], done: true, winner: "C", p1Bp: 1, p2Bp: 4 }],
+  };
+  const out = C.resolvePlayoff([PB("A", 12), PB("B", 8), PB("C", 3)], 2, noH2h, po);
+  assert(out.resolved && out.qualifierIds.includes("A") && out.qualifierIds.includes("C"), "種子 + 勝者入");
+}
+{
+  const r = C.analyzeCutoff([PB("A", 12), PB("B", 8), PB("C", 3)], 1, noH2h, optBOdd);
+  const m = C.materializeCutoff(r, () => 0, (id) => id);
+  assert(r.chain === "seedKo" && m.ko.seedId === "A", "3 人 1 席：A 做種子");
+  assert(m.firstMatches.length === 1 && m.firstMatches[0].p1 === "B" && m.firstMatches[0].p2 === "C", "B vs C 先打");
+}
+
+console.log("\n── cutoff B: 種子線／陀螺分──");
+{
+  const ko = C.buildSeedKoB(["A", "B", "C", "D", "E"], 2);
+  assert(ko.template === "5" && ko.seedId === "A", "5 人種子選手係最高");
+  assert(ko.wave1[0][0] === "B" && ko.wave1[0][1] === "E", "5 人：2v5");
+  assert(ko.wave1[1][0] === "C" && ko.wave1[1][1] === "D", "5 人：3v4");
+}
+{
+  const ko = C.buildSeedKoB(["A", "B", "C", "D", "E", "F"], 2);
+  assert(ko.template === "6" && ko.seedLinePair[0] === "A" && ko.seedLinePair[1] === "F", "6 人種子線＝最高對最低");
+}
+{
+  const r = C.analyzeCutoff(
+    [PB("T0", 8, 8, { metaScore: 2 }), PB("T1", 8, 8, { metaScore: 1 })],
+    1,
+    noH2h,
+    optBOdd
+  );
+  assert(r.chain === "bPair" && r.firstMatches[0].p1 === "T1", "單數 2 人仍要打；陀螺分低者排前（唔影響入圍，只排對賽／種子）");
+}
+{
+  const r = C.analyzeCutoff(
+    [
+      PB("A", 8, 8, { metaScore: 2 }),
+      PB("B", 8, 8, { metaScore: 1 }),
+      PB("C", 8, 8, { metaScore: 1 }),
+    ],
+    2,
+    noH2h,
+    optBOdd
+  );
+  assert(r.preQualifyIds[0] === "B", "3 人 2 席：無 T0、T1 較少者優先做種子直入");
+}
+
+console.log("\n── cutoff B: 只淘汰 1 人──");
+{
+  const r = C.analyzeCutoff(
+    [PB("A", 20), PB("B", 10), PB("C", 6), PB("D", 2)],
+    3,
+    noH2h,
+    optBOdd
+  );
+  assert(r.chain === "bElim1", "4 人 3 席：只淘汰 1");
+  assert(r.preQualifyIds.includes("A") && r.preQualifyIds.includes("B"), "最高兩人直入");
+  assert(r.firstMatches[0].p1 === "C" && r.firstMatches[0].p2 === "D", "最低兩人打");
+  const po = {
+    chain: "bElim1",
+    tiedIds: r.tiedIds,
+    preQualifyIds: r.preQualifyIds,
+    matches: [{ ...r.firstMatches[0], done: true, winner: "D", p1Bp: 0, p2Bp: 4 }],
+  };
+  const out = C.resolvePlayoff(
+    [PB("A", 20), PB("B", 10), PB("C", 6), PB("D", 2)],
+    3,
+    noH2h,
+    po
+  );
+  assert(out.resolved && out.qualifierIds.includes("D") && !out.qualifierIds.includes("C"), "負者出局，勝者留隊");
+  assert(out.qualifierIds.length === 3, "3 人入圍");
 }
 
 console.log("\n════════════════════════");

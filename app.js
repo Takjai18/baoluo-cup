@@ -166,6 +166,9 @@ function getKoBracketSizeFor(playerCount, koSize) {
   return k;
 }
 
+const QUALIFY_RULES = ["A", "B"];
+const QUALIFY_RULE_ENGINE_READY = { A: true, B: true };
+
 function defaultSettings() {
   return {
     referees: 4, // 裁判人數
@@ -174,6 +177,7 @@ function defaultSettings() {
     playerCount: 16, // 參賽人數（可單數；單數則輪空）
     playerPreset: "16", // '8' | '16' | '32' | '64' | 'other'
     koSize: 4, // 淘汰賽名額：4 | 8 | 16
+    qualifyRule: "A", // 入圍規則 A 完整決策樹／B 簡易（尚未寫入）
   };
 }
 
@@ -186,6 +190,10 @@ function normalizeSettings(s) {
   let playerCount = parseInt(src.playerCount, 10);
   let playerPreset = String(src.playerPreset || "");
   let koSize = parseInt(src.koSize, 10);
+  let qualifyRule = String(src.qualifyRule || d.qualifyRule || "A")
+    .trim()
+    .toUpperCase();
+  if (!QUALIFY_RULES.includes(qualifyRule)) qualifyRule = d.qualifyRule;
 
   if (!Number.isFinite(referees) || referees < 1) referees = d.referees;
   if (!Number.isFinite(stadiums) || stadiums < 1) stadiums = d.stadiums;
@@ -213,7 +221,7 @@ function normalizeSettings(s) {
   if (!Number.isFinite(koSize)) koSize = defaultKoSize(playerCount);
   koSize = getKoBracketSizeFor(playerCount, koSize);
 
-  return { referees, stadiums, swissRounds, playerCount, playerPreset, koSize };
+  return { referees, stadiums, swissRounds, playerCount, playerPreset, koSize, qualifyRule };
 }
 
 /** 實際可用報到站 = min(裁判, 對戰盤) */
@@ -241,6 +249,65 @@ function getPairingPlayerCount() {
 function getKoBracketSize() {
   const s = normalizeSettings(state.settings);
   return getKoBracketSizeFor(s.playerCount, s.koSize);
+}
+
+function getQualifyRule() {
+  const r = String(normalizeSettings(state.settings).qualifyRule || "A").toUpperCase();
+  return QUALIFY_RULES.includes(r) ? r : "A";
+}
+
+function qualifyRuleLabel(rule) {
+  return rule === "B" ? "規則 B（簡易規則）" : "規則 A（完整決策樹）";
+}
+
+function qualifyEngineReady(rule) {
+  return !!QUALIFY_RULE_ENGINE_READY[rule || getQualifyRule()];
+}
+
+/** 產生入圍／淘汰賽前：規則 B 未實作則請改用 A */
+function ensureQualifyEngineForAction(actionLabel) {
+  const rule = getQualifyRule();
+  if (qualifyEngineReady(rule)) return true;
+  if (
+    confirm(
+      `${qualifyRuleLabel(rule)}尚未寫入系統。\n要改用規則 A 嚟${actionLabel}？`
+    )
+  ) {
+    state.settings = normalizeSettings({ ...state.settings, qualifyRule: "A" });
+    saveState({ backup: "改用入圍規則 A" });
+    return true;
+  }
+  toast(`${qualifyRuleLabel(rule)}尚未寫入系統。請喺大會設定改用規則 A。`, "error");
+  return false;
+}
+
+function updateQualifyRuleHint(rule) {
+  const hint = document.getElementById("qualifyRuleHint");
+  if (!hint) return;
+  if (rule === "B") {
+    hint.innerHTML =
+      "規則 B 為簡易入圍：獎勵壓制（淨勝分）。雙數先睇紙上（淨勝分 → 總 BP → 對賽）；單數扣坐場分後爭席組打贏出線。詳情見「規則」頁。";
+  } else {
+    hint.innerHTML =
+      "規則 A 為完整入圍決策樹（坐場、BP、對賽、加賽多數打贏≠入圍）。詳情見「規則」頁。";
+  }
+}
+
+function deckMetaScore(player) {
+  if (!player || typeof getBeyTier !== "function") return 0;
+  let s = 0;
+  for (const b of player.beys || []) {
+    const t = getBeyTier(b);
+    if (t === "T0") s += 2;
+    else if (t === "T1") s += 1;
+  }
+  return s;
+}
+
+function ruleBUsesByeAdjust() {
+  if (getQualifyRule() !== "B") return false;
+  if (getPairingPlayerCount() % 2 === 1) return true;
+  return state.players.some((p) => byeCount(p.id) > 0);
 }
 
 function getMatchesPerRound() {
@@ -650,14 +717,17 @@ function swissMatchesOnly() {
 }
 
 function getPlayerStats(playerId) {
-  let wins = 0, losses = 0, battlePoints = 0;
+  let wins = 0, losses = 0, battlePoints = 0, netPoints = 0, byes = 0;
   const opponents = [];
   /** 每局詳情：{ round, oppId, won, myBp, oppBp } */
   const matchLog = [];
   for (const m of swissMatchesOnly()) {
     if (m.p1 !== playerId && m.p2 !== playerId) continue;
     if (isByeMatch(m)) {
-      if (m.winner === playerId) wins++;
+      if (m.winner === playerId) {
+        wins++;
+        byes++;
+      }
       continue;
     }
     const isP1 = m.p1 === playerId;
@@ -667,6 +737,7 @@ function getPlayerStats(playerId) {
     const won = m.winner === playerId;
     const draw = !m.winner || !!m.draw;
     battlePoints += myBp || 0;
+    netPoints += (myBp || 0) - (oppBp || 0);
     opponents.push(oppId);
     matchLog.push({
       round: m.round,
@@ -679,7 +750,17 @@ function getPlayerStats(playerId) {
     if (won) wins++;
     else if (m.winner) losses++;
   }
-  return { wins, losses, battlePoints, opponents, matchLog, swissPoints: wins };
+  return {
+    wins,
+    losses,
+    battlePoints,
+    netPoints,
+    byeCount: byes,
+    adjustedSwiss: wins - byes,
+    opponents,
+    matchLog,
+    swissPoints: wins,
+  };
 }
 
 function isByeMatch(m) {
@@ -809,6 +890,12 @@ function shuffleList(arr) {
   return a;
 }
 
+function cutoffScoreOf(p, byeAdjust) {
+  if (!byeAdjust) return p.swissPoints;
+  const byes = p.byeCount != null ? p.byeCount : byeCount(p.id);
+  return (p.swissPoints || 0) - (byes || 0);
+}
+
 /** 爭最後幾個淘汰賽名額的同分組 */
 function getCutoffContext() {
   const koN = getKoBracketSize();
@@ -816,14 +903,19 @@ function getCutoffContext() {
   if (!ranked.length || ranked.length < koN) {
     return { needed: false, resolved: true, koN, ranked };
   }
-  const cutScore = ranked[koN - 1].swissPoints;
-  const lockedIn = ranked.filter((p) => p.swissPoints > cutScore);
-  const group = ranked.filter((p) => p.swissPoints === cutScore);
+  const byeAdjust = ruleBUsesByeAdjust();
+  const ordered = byeAdjust
+    ? [...ranked].sort((a, b) => cutoffScoreOf(b, true) - cutoffScoreOf(a, true))
+    : ranked;
+  const cutScore = cutoffScoreOf(ordered[koN - 1], byeAdjust);
+  const lockedIn = ranked.filter((p) => cutoffScoreOf(p, byeAdjust) > cutScore);
+  const group = ranked.filter((p) => cutoffScoreOf(p, byeAdjust) === cutScore);
   const spots = koN - lockedIn.length;
+  const oddPath = byeAdjust;
   if (spots <= 0 || group.length <= spots) {
-    return { needed: false, resolved: true, koN, ranked, lockedIn, group, spots, cutScore };
+    return { needed: false, resolved: true, koN, ranked, lockedIn, group, spots, cutScore, oddPath, byeAdjust };
   }
-  return { needed: true, resolved: false, koN, ranked, lockedIn, group, spots, cutScore };
+  return { needed: true, resolved: false, koN, ranked, lockedIn, group, spots, cutScore, oddPath, byeAdjust };
 }
 
 function makePlayoffMatch(p1Id, p2Id, label) {
@@ -848,13 +940,18 @@ function makePlayoffMatch(p1Id, p2Id, label) {
 }
 
 function decorateCutoffGroup(group) {
-  return (group || []).map((p) => ({
-    id: p.id,
-    name: p.name,
-    battlePoints: p.battlePoints,
-    swissPoints: p.swissPoints,
-    byeCount: byeCount(p.id),
-  }));
+  return (group || []).map((p) => {
+    const full = playerById(p.id) || p;
+    return {
+      id: p.id,
+      name: p.name,
+      battlePoints: p.battlePoints,
+      netPoints: p.netPoints || 0,
+      swissPoints: p.swissPoints,
+      byeCount: p.byeCount != null ? p.byeCount : byeCount(p.id),
+      metaScore: deckMetaScore(full),
+    };
+  });
 }
 
 function analyzeLiveCutoff(ctx) {
@@ -867,7 +964,10 @@ function analyzeLiveCutoff(ctx) {
       chain: null,
     };
   }
-  return BaoluoCutoff.analyzeCutoff(decorateCutoffGroup(ctx.group), ctx.spots, headToHead);
+  return BaoluoCutoff.analyzeCutoff(decorateCutoffGroup(ctx.group), ctx.spots, headToHead, {
+    rule: getQualifyRule(),
+    oddPath: !!ctx.oddPath,
+  });
 }
 
 function sortCutoffPlayers(a, b) {
@@ -922,7 +1022,7 @@ function resolveLivePlayoff(ctx) {
   }
   const po = state.cutPlayoff;
   if (!po || !po.chain) return { resolved: false, qualifierIds: null, nextMatches: [] };
-  return BaoluoCutoff.resolvePlayoff(decorateCutoffGroup(ctx.group), ctx.spots, headToHead, po);
+  return BaoluoCutoff.resolvePlayoff(decorateCutoffGroup(ctx.group), ctx.spots, headToHead, po, havePlayed);
 }
 
 function cutPlayoffComplete() {
@@ -937,7 +1037,7 @@ function maybeAdvanceCutPlayoff() {
   if (!po?.matches?.length) return;
   const ctx = getCutoffContext();
   if (!ctx.needed) return;
-  const r = BaoluoCutoff.resolvePlayoff(decorateCutoffGroup(ctx.group), ctx.spots, headToHead, po);
+  const r = BaoluoCutoff.resolvePlayoff(decorateCutoffGroup(ctx.group), ctx.spots, headToHead, po, havePlayed);
   if (r.phase) po.phase = r.phase;
   if (r.byeId) po.byeId = r.byeId;
   if (r.challengerId) po.challengerId = r.challengerId;
@@ -950,6 +1050,7 @@ function maybeAdvanceCutPlayoff() {
 }
 
 function generateCutoffPlayoff() {
+  if (!ensureQualifyEngineForAction("產生入圍加賽")) return;
   const ctx = getCutoffContext();
   if (!ctx.needed) {
     toast("入圍名額已可分清，唔使加賽", "success");
@@ -961,7 +1062,7 @@ function generateCutoffPlayoff() {
     return;
   }
   const nameOf = (id) => playerById(id)?.name || id;
-  const built = BaoluoCutoff.materializeCutoff(analysis, Math.random, nameOf);
+  const built = BaoluoCutoff.materializeCutoff(analysis, Math.random, nameOf, havePlayed);
   if (!built.firstMatches?.length) {
     toast("依家用總分／對賽已可分高下，無需產生加賽", "success");
     return;
@@ -986,14 +1087,23 @@ function generateCutoffPlayoff() {
     inner: built.inner || null,
     multiBye: !!built.multiBye,
     take: built.take,
+    byeBp: built.byeBp || null,
+    rule: built.rule || getQualifyRule(),
+    seedId: built.seedId || null,
+    bOrdered: !!built.bOrdered,
   };
   saveState({ backup: "產生入圍加賽" });
   render();
   switchTab("pairings");
-  const hint =
-    built.chain === "seedKo" || built.chain === "elim1" || built.chain === "crossDraw"
-      ? "小型淘汰：打贏出線（唔計 BP）"
-      : "先到 4，打完加本場 BP 再比（打贏唔等於入圍）";
+  const winIn =
+    getQualifyRule() === "B" ||
+    built.chain === "seedKo" ||
+    built.chain === "elim1" ||
+    built.chain === "crossDraw" ||
+    (built.chain || "").startsWith("b");
+  const hint = winIn
+    ? "打贏出線（唔計 BP）"
+    : "先到 4，打完加本場 BP 再比（打贏唔等於入圍）";
   toast(`已產生入圍加賽。${hint}`, "success");
 }
 
@@ -1004,17 +1114,34 @@ function playoffQualifiers(ctx) {
   return r.qualifierIds || [];
 }
 
+function sortRuleBKoSeeds(players) {
+  const byeAdjust = ruleBUsesByeAdjust();
+  return [...players].sort((a, b) => {
+    const sa = cutoffScoreOf(a, byeAdjust);
+    const sb = cutoffScoreOf(b, byeAdjust);
+    if (sb !== sa) return sb - sa;
+    if ((b.netPoints || 0) !== (a.netPoints || 0)) return b.netPoints - a.netPoints;
+    if ((b.battlePoints || 0) !== (a.battlePoints || 0)) return b.battlePoints - a.battlePoints;
+    const h = headToHead(a.id, b.id);
+    if (h === a.id) return -1;
+    if (h === b.id) return 1;
+    return String(a.name || "").localeCompare(String(b.name || ""), "zh-Hant");
+  });
+}
+
 function cutoffSeedList() {
   const ctx = getCutoffContext();
   const ranked = rankedPlayers();
   const koN = ctx.koN || getKoBracketSize();
-  if (!ctx.needed) return ranked.slice(0, koN);
+  const pick = (list) =>
+    getQualifyRule() === "B" ? sortRuleBKoSeeds(list).slice(0, koN) : list.slice(0, koN);
+  if (!ctx.needed) return pick(ranked);
   const qids = playoffQualifiers(ctx);
   if (!qids) return null;
   const locked = (ctx.lockedIn || []).map((p) => p.id);
   const extra = qids.filter((id) => !locked.includes(id));
   const idSet = new Set([...locked, ...extra]);
-  return ranked.filter((p) => idSet.has(p.id)).slice(0, koN);
+  return pick(ranked.filter((p) => idSet.has(p.id)));
 }
 
 function isSwissFinishedForKo() {
@@ -1580,6 +1707,7 @@ function saveSettingsFromForm() {
   const swissRounds = parseInt(document.getElementById("setSwissRounds")?.value, 10);
   const playerPreset = document.getElementById("setPlayerPreset")?.value || "16";
   const koSize = parseInt(document.getElementById("setKoSize")?.value, 10);
+  const qualifyRule = document.getElementById("setQualifyRule")?.value || "A";
   let playerCount;
   if (playerPreset === "other") {
     playerCount = parseInt(document.getElementById("setPlayerCountCustom")?.value, 10);
@@ -1587,6 +1715,7 @@ function saveSettingsFromForm() {
     playerCount = parseInt(playerPreset, 10);
   }
 
+  const prev = normalizeSettings(state.settings);
   const next = normalizeSettings({
     referees,
     stadiums,
@@ -1594,6 +1723,7 @@ function saveSettingsFromForm() {
     playerCount,
     playerPreset,
     koSize,
+    qualifyRule,
   });
 
   if (state.phase !== "setup" && next.playerCount !== getTotalPlayers()) {
@@ -1627,6 +1757,17 @@ function saveSettingsFromForm() {
     toast("淘汰賽名額不可超過參賽人數", "error");
     renderSettings();
     return;
+  }
+
+  if (next.qualifyRule !== prev.qualifyRule && (state.knockout || state.cutPlayoff)) {
+    if (
+      !confirm(
+        "入圍規則改動唔會改現有加賽／淘汰賽。\n重做淘汰賽或重新產生加賽先會用新規則。仍儲存？"
+      )
+    ) {
+      renderSettings();
+      return;
+    }
   }
 
   const prevSwiss = getSwissRounds();
@@ -1702,7 +1843,7 @@ function saveSettingsFromForm() {
   saveState({ backup: "儲存設定" });
   render();
   toast(
-    `已儲存：${state.settings.playerCount} 人 · 瑞士 ${getSwissRounds()} 輪 · 淘汰設定 ${getKoBracketSize()} 強 · 站 ${getActiveStations()}`,
+    `已儲存：${state.settings.playerCount} 人 · 瑞士 ${getSwissRounds()} 輪 · 淘汰 ${getKoBracketSize()} 強 · 入圍 ${qualifyRuleLabel(next.qualifyRule)} · 站 ${getActiveStations()}`,
     "success"
   );
 }
@@ -3269,6 +3410,7 @@ function koMatchHasDownstream(matchRef) {
 }
 
 function startKnockout() {
+  if (!ensureQualifyEngineForAction("產生淘汰賽")) return;
   const need = getSwissRounds();
   const relevant = state.rounds.filter((r) => r.round <= need);
   const okSwiss = relevant.length >= need && relevant.every((r) => r.locked);
@@ -3696,6 +3838,7 @@ function render() {
           ? "淘汰賽"
           : "—";
   renderSettings();
+  renderRules();
   renderPlayers();
   renderPairings();
   renderStandings();
@@ -4369,6 +4512,7 @@ function renderSettings() {
   const presetEl = document.getElementById("setPlayerPreset");
   const customEl = document.getElementById("setPlayerCountCustom");
   const koEl = document.getElementById("setKoSize");
+  const qrEl = document.getElementById("setQualifyRule");
   if (refEl) refEl.value = s.referees;
   if (stEl) stEl.value = s.stadiums;
   if (swEl) swEl.value = s.swissRounds;
@@ -4383,6 +4527,8 @@ function renderSettings() {
     });
     koEl.value = String(s.koSize);
   }
+  if (qrEl) qrEl.value = s.qualifyRule === "B" ? "B" : "A";
+  updateQualifyRuleHint(s.qualifyRule);
   syncPlayerCountCustomVisibility();
 
   const lockedPlayers = state.phase !== "setup";
@@ -4435,10 +4581,54 @@ function renderSettings() {
         ${s.playerPreset === "other" ? " · 自訂" : ""}<br>
         <strong>可用報到站：${stations}</strong>
         ＝ min(裁判 ${s.referees}，對戰盤 ${s.stadiums}) · 分派：<strong>${zones}</strong><br>
-        瑞士制 <strong>${s.swissRounds}</strong> 輪 · 淘汰賽 <strong>${s.koSize} 強</strong>
-        ${lockedPlayers ? "<br><span class='meta'>比賽已開始，參賽人數已鎖定；仍可改裁判／對戰盤／輪次／淘汰名額（未鎖定輪會重分區）。</span>" : ""}
+        瑞士制 <strong>${s.swissRounds}</strong> 輪 · 淘汰賽 <strong>${s.koSize} 強</strong> · 入圍 <strong>${qualifyRuleLabel(s.qualifyRule)}</strong>
+        ${lockedPlayers ? "<br><span class='meta'>比賽已開始，參賽人數已鎖定；仍可改裁判／對戰盤／輪次／淘汰名額／入圍規則（未鎖定輪會重分區）。</span>" : ""}
       </div>`;
   }
+}
+
+const RULES_OPEN_KEY = "baoluo-cup-rules-open";
+const RULES_COLLAPSE_IDS = ["rulesBattle", "rulesQualify", "rulesRuleA", "rulesRuleB"];
+
+function renderRules() {
+  const rule = getQualifyRule();
+  const ready = qualifyEngineReady(rule);
+  const badge = document.getElementById("rulesCurrentBadge");
+  if (badge) {
+    badge.textContent = ready ? `現行：規則 ${rule}` : `已選：規則 ${rule}（尚未套用）`;
+  }
+  const aEl = document.getElementById("rulesRuleA");
+  const bEl = document.getElementById("rulesRuleB");
+  aEl?.classList.toggle("rules-current", rule === "A");
+  bEl?.classList.toggle("rules-current", rule === "B");
+  aEl?.classList.toggle("rules-pending", false);
+  bEl?.classList.toggle("rules-pending", rule === "B" && !ready);
+}
+
+function bindRulesCollapse() {
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem(RULES_OPEN_KEY) || "{}") || {};
+  } catch (_) {
+    saved = {};
+  }
+  RULES_COLLAPSE_IDS.forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (Object.prototype.hasOwnProperty.call(saved, id)) el.open = !!saved[id];
+    el.addEventListener("toggle", persistRulesCollapse);
+  });
+}
+
+function persistRulesCollapse() {
+  try {
+    const cur = {};
+    RULES_COLLAPSE_IDS.forEach((id) => {
+      const n = document.getElementById(id);
+      if (n) cur[id] = !!n.open;
+    });
+    localStorage.setItem(RULES_OPEN_KEY, JSON.stringify(cur));
+  } catch (_) {}
 }
 
 /** 排名頁：project = 投影大字；detail = 詳細對戰紀錄 */
@@ -4793,7 +4983,11 @@ function renderTies() {
       <div class="tie-group" style="border-color:rgba(200,255,0,0.45)">
         <h3>入圍加賽 · 最後 ${ctx.spots} 席「${ctx.koN} 強」</h3>
         <div class="tie-result">${plan.lines.map((t) => `• ${escapeHtml(t)}`).join("<br>")}</div>
-        <p class="hint" style="margin-top:10px">入圍同種子分開。不同自動獲勝次數唔直接用瑞士總 BP 比。加賽多數情況：先到 4（最多 6），打完加本場 BP 再比，<strong>打贏唔等於入圍</strong>。5 人以上真同分先至抽籤小型淘汰（打贏出線）。</p>
+        <p class="hint" style="margin-top:10px">入圍規則：<strong>${escapeHtml(qualifyRuleLabel(getQualifyRule()))}</strong>。${
+          getQualifyRule() === "B"
+            ? "獎勵壓制：淨勝分先於總 BP。雙數可先用紙上分；單數扣坐場分後爭席組加賽。<strong>打贏就入圍</strong>。種子選手／種子線跟淨勝分（再總 BP、對賽、登記陀螺 T0×2+T1×1）。"
+            : "入圍同種子分開。不同自動獲勝次數唔直接用瑞士總 BP 比。加賽多數情況：先到 4（最多 6），打完加本場 BP 再比，<strong>打贏唔等於入圍</strong>。5 人以上真同分先至抽籤小型淘汰（打贏出線）。"
+        }</p>
         <div class="btn-row wrap mt-16">
           ${
             ready
@@ -5196,7 +5390,7 @@ function renderBattleScoreModal(p1, p2, m, opts = {}) {
             <option value="extreme">Extreme Finish（3分）</option>
             <option value="over">Over Finish（2分）</option>
             <option value="burst">Burst Finish（2分）</option>
-            <option value="spin">Spin Finish（1分）</option>
+            <option value="spin" selected>Spin Finish（1分）</option>
             <option value="draw">平手（0分）</option>
           </select>
         </label>
@@ -5498,7 +5692,7 @@ function closeManualModal() {
 
 // ─── Tabs ────────────────────────────────────────────────
 const TAB_STORAGE_KEY = "baoluo-cup-active-tab";
-const VALID_TABS = ["settings", "players", "pairings", "standings", "history", "ties", "knockout", "export"];
+const VALID_TABS = ["settings", "rules", "players", "pairings", "standings", "history", "ties", "knockout", "export"];
 
 function getSavedTab() {
   try {
@@ -5541,6 +5735,7 @@ function switchTab(name, opts = {}) {
   if (name === "pairings") renderPairings();
   if (name === "standings") renderStandings();
   if (name === "history") renderHistory();
+  if (name === "rules") renderRules();
 }
 
 // ─── Init ────────────────────────────────────────────────
@@ -5853,6 +6048,7 @@ function init() {
     const hash = (location.hash || "").replace(/^#/, "").trim();
     if (VALID_TABS.includes(hash)) switchTab(hash, { fromHash: true });
   });
+  bindRulesCollapse();
   // 還原分頁：URL #pairings 優先，其次 localStorage（refresh 會留喺同一分頁）
   switchTab(getInitialTab());
 
@@ -5958,6 +6154,7 @@ function init() {
     const swissRounds = parseInt(document.getElementById("setSwissRounds")?.value, 10);
     const playerPreset = document.getElementById("setPlayerPreset")?.value || "16";
     const koSize = parseInt(document.getElementById("setKoSize")?.value, 10);
+    const qualifyRule = document.getElementById("setQualifyRule")?.value || "A";
     const playerCount =
       playerPreset === "other"
         ? parseInt(document.getElementById("setPlayerCountCustom")?.value, 10)
@@ -5969,6 +6166,7 @@ function init() {
       playerCount,
       playerPreset,
       koSize,
+      qualifyRule,
     });
     const stations = Math.max(1, Math.min(tmp.referees, tmp.stadiums));
     const { advice, messages } = warnSwissRounds(tmp.playerCount, tmp.swissRounds);
@@ -6011,7 +6209,7 @@ function init() {
       preview.innerHTML = `
           <div class="hint" style="margin:0">
             <strong>預覽 · ${tmp.playerCount} 人</strong>（每輪 ${Math.floor(tmp.playerCount / 2)} 場${tmp.playerCount % 2 ? "＋1 輪空" : ""}）
-            · 站 ${stations} · 瑞士 ${tmp.swissRounds} 輪 · 淘汰 ${tmp.koSize} 強<br>
+            · 站 ${stations} · 瑞士 ${tmp.swissRounds} 輪 · 淘汰 ${tmp.koSize} 強 · 入圍 ${qualifyRuleLabel(tmp.qualifyRule)}<br>
             分派：<strong>${zones}</strong>
             <br><span class="meta">按「儲存設定」後生效</span>
           </div>`;
@@ -6024,9 +6222,10 @@ function init() {
         opt.hidden = v > tmp.playerCount;
       });
     }
+    updateQualifyRuleHint(tmp.qualifyRule);
     syncPlayerCountCustomVisibility();
   };
-  ["setReferees", "setStadiums", "setSwissRounds", "setPlayerPreset", "setPlayerCountCustom", "setKoSize"].forEach(
+  ["setReferees", "setStadiums", "setSwissRounds", "setPlayerPreset", "setPlayerCountCustom", "setKoSize", "setQualifyRule"].forEach(
     (id) => {
       document.getElementById(id)?.addEventListener("change", previewSettings);
       document.getElementById(id)?.addEventListener("input", previewSettings);

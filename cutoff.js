@@ -46,9 +46,22 @@
   }
 
   function matchCredits(matches) {
+    const lastByeGenWave = {};
+    for (const m of matches || []) {
+      if (m.role !== "byeBpGen" || !m.done) continue;
+      const w = m.wave || 1;
+      lastByeGenWave[m.p1] = Math.max(lastByeGenWave[m.p1] || 0, w);
+      lastByeGenWave[m.p2] = Math.max(lastByeGenWave[m.p2] || 0, w);
+    }
     const c = {};
     for (const m of matches || []) {
       if (!m.done || m.creditBp === false) continue;
+      const wave = m.wave || 1;
+      if (m.role === "byeBpGen") {
+        if (lastByeGenWave[m.p1] === wave) c[m.p1] = (c[m.p1] || 0) + (m.p1Bp || 0);
+        if (lastByeGenWave[m.p2] === wave) c[m.p2] = (c[m.p2] || 0) + (m.p2Bp || 0);
+        continue;
+      }
       c[m.p1] = (c[m.p1] || 0) + (m.p1Bp || 0);
       c[m.p2] = (c[m.p2] || 0) + (m.p2Bp || 0);
     }
@@ -327,78 +340,54 @@
     };
   }
 
+  function pairPreferUnplayed(ids, playedFn, rng) {
+    const played = typeof playedFn === "function" ? playedFn : () => false;
+    const sh = shuffleList(ids, rng);
+    const used = new Set();
+    const pairs = [];
+    for (const a of sh) {
+      if (used.has(a)) continue;
+      const cands = sh.filter((b) => b !== a && !used.has(b));
+      if (!cands.length) break;
+      const fresh = cands.filter((b) => !played(a, b));
+      const pool = fresh.length ? fresh : cands;
+      const b = shuffleList(pool, rng)[0];
+      used.add(a);
+      used.add(b);
+      pairs.push([a, b]);
+    }
+    return pairs;
+  }
+
+  function planByeBpGen(byes, spots, lines) {
+    const n = byes.length;
+    const odd = n % 2 === 1;
+    lines.push(
+      odd
+        ? `${n} 位自動獲勝者（單數）：抽 1 名種子，其餘抽籤對賽（未曾對賽優先）；種子再抽籤同其中一組勝者對賽。每人只計自己最後一場 BP（首輪再晉級打種子嘅，首輪分唔計）。再同未坐場者比總 BP／對賽；仍分唔開就再加賽。`
+        : `${n} 位自動獲勝者（雙數）：全部抽籤打一場（未曾對賽優先），補一場 BP 後再同未坐場者比總 BP／對賽；仍分唔開就再加賽。`
+    );
+    return {
+      resolved: false,
+      needsMatches: true,
+      chain: "byeBpGen",
+      byeIds: byes.map((p) => p.id),
+      seedNeeded: odd,
+      needsDraw: true,
+      spots,
+      lines,
+    };
+  }
+
   function analyzeMultiBye(byes, open, spots, h2h, lines) {
     lines = lines || [];
-    lines.push(`${byes.length} 人曾經自動獲勝：同類先比，再同未輪空者加賽（瑞士總 BP 唔跨組直接比）。`);
+    lines.push(`${byes.length} 人曾經自動獲勝：先喺坐場者之間打一輪補 BP，再同未坐場者一齊用總 BP／對賽決定。`);
 
     if (open.length + byes.length <= spots) {
       return { resolved: true, qualifierIds: open.concat(byes).map((p) => p.id), needsMatches: false, chain: null, lines };
     }
 
-    const autoOpen = Math.max(0, spots - byes.length);
-    if (open.length <= autoOpen) {
-      const needByes = spots - open.length;
-      const bp = analyzeSameBye(byes, needByes, h2h, lines);
-      if (bp.resolved) {
-        return { ...bp, qualifierIds: open.map((p) => p.id).concat(bp.qualifierIds || []) };
-      }
-      return bp;
-    }
-
-    if (spots === 1) {
-      const bPlan = analyzeSameBye(byes, 1, h2h, []);
-      const oPlan = analyzeSameBye(open, 1, h2h, []);
-      if (bPlan.needsMatches || oPlan.needsMatches) {
-        const inner = bPlan.needsMatches ? bPlan : oPlan;
-        lines.push(...(inner.lines || []));
-        lines.push("先完成同類加賽，再由雙方代表對賽。");
-        return {
-          resolved: false,
-          needsMatches: true,
-          chain: "openThenBye",
-          phase: "open",
-          inner,
-          multiBye: true,
-          byeIds: byes.map((p) => p.id),
-          openIds: open.map((p) => p.id),
-          autoOpen: 0,
-          spots: 1,
-          firstMatches: inner.firstMatches || [],
-          needsDraw: inner.needsDraw,
-          tiedIds: inner.tiedIds,
-          lines,
-        };
-      }
-      const bRep = byes.find((p) => (bPlan.qualifierIds || [])[0] === p.id) || byes[0];
-      const oRep = open.find((p) => (oPlan.qualifierIds || [])[0] === p.id) || open[0];
-      return byeVsChallenger(bRep, oRep, [], h2h, lines);
-    }
-
-    const needFromOpen = autoOpen + byes.length;
-    const inner = analyzeSameBye(open, Math.min(open.length, needFromOpen), h2h, []);
-    if (inner.needsMatches) {
-      lines.push(...(inner.lines || []));
-      lines.push("先排定未輪空者次序，再同自動獲勝者加賽。");
-      return {
-        resolved: false,
-        needsMatches: true,
-        chain: "openThenBye",
-        phase: "open",
-        inner,
-        multiBye: true,
-        byeIds: byes.map((p) => p.id),
-        autoOpen,
-        spots,
-        firstMatches: inner.firstMatches || [],
-        needsDraw: inner.needsDraw,
-        tiedIds: inner.tiedIds,
-        lines,
-      };
-    }
-
-    const chosen = (inner.qualifierIds || []).map((id) => open.find((p) => p.id === id)).filter(Boolean);
-    const ordered = sortBpName(chosen.length ? chosen : sortBpName(open));
-    return planMixedPlayIn(byes, ordered, autoOpen, spots, h2h, lines);
+    return planByeBpGen(byes, spots, lines);
   }
 
   function planMixedPlayIn(byes, orderedOpen, autoOpen, spots, h2h, lines) {
@@ -474,7 +463,341 @@
     };
   }
 
-  function analyzeCutoff(group, spots, h2h) {
+  function highLowPairs(ids) {
+    const pairs = [];
+    for (let i = 0, j = ids.length - 1; i < j; i++, j--) pairs.push([ids[i], ids[j]]);
+    return pairs;
+  }
+
+  /** 規則 B：已按淨勝分／BP／陀螺分排好（最好在前），高打低；單數 #1 做種子選手 */
+  function buildSeedKoB(orderedIds, spots) {
+    const ids = (orderedIds || []).slice();
+    const n = ids.length;
+    const s = Math.max(1, spots | 0);
+    if (n % 2 === 1) {
+      const seedId = ids[0];
+      const rest = ids.slice(1);
+      const pairs = highLowPairs(rest);
+      const seedLinePair = n >= 7 && pairs.length ? pairs[0] : null;
+      const template = n === 5 ? "5" : n === 7 ? "7" : "oddGeneric";
+      return { template, spots: s, seedId, wave1: pairs, seedLinePair };
+    }
+    const pairs = highLowPairs(ids);
+    const template = n === 4 ? "4" : n === 6 ? "6" : n === 10 ? "10" : "evenGeneric";
+    const seedLinePair = n === 4 ? null : pairs[0] || null;
+    return { template, spots: s, seedId: null, wave1: pairs, seedLinePair };
+  }
+
+  function cmpRuleBSeed(a, b) {
+    const na = a.netPoints || 0;
+    const nb = b.netPoints || 0;
+    if (nb !== na) return nb - na;
+    const pa = a.battlePoints || 0;
+    const pb = b.battlePoints || 0;
+    if (pb !== pa) return pb - pa;
+    const ma = a.metaScore || 0;
+    const mb = b.metaScore || 0;
+    if (ma !== mb) return ma - mb;
+    return String(a.name || a.id).localeCompare(String(b.name || b.id), "zh-Hant");
+  }
+
+  function sortRuleBSeed(players) {
+    return [...(players || [])].sort(cmpRuleBSeed);
+  }
+
+  function bandAtKey(sorted, spots, key) {
+    if (!sorted.length) {
+      return { cut: 0, clearIn: [], tied: [], clearOut: [], spotsLeft: spots };
+    }
+    if (spots >= sorted.length) {
+      return { cut: sorted[sorted.length - 1][key], clearIn: sorted, tied: [], clearOut: [], spotsLeft: 0 };
+    }
+    if (spots <= 0) {
+      return { cut: Infinity, clearIn: [], tied: [], clearOut: sorted, spotsLeft: 0 };
+    }
+    const cut = sorted[spots - 1][key];
+    const clearIn = sorted.filter((p) => p[key] > cut);
+    const tied = sorted.filter((p) => p[key] === cut);
+    const clearOut = sorted.filter((p) => p[key] < cut);
+    return { cut, clearIn, tied, clearOut, spotsLeft: spots - clearIn.length };
+  }
+
+  function tagRuleB(result) {
+    return Object.assign({ rule: "B" }, result);
+  }
+
+  /** 規則 B 加賽：打贏出線。ordered 最好在前。 */
+  function planWinnerInB(tied, spotsLeft, preQualifyIds, lines) {
+    const n = tied.length;
+    const s = spotsLeft | 0;
+    const pre = preQualifyIds || [];
+    if (n <= s) {
+      return tagRuleB({
+        resolved: true,
+        qualifierIds: pre.concat(tied.map((p) => p.id)),
+        needsMatches: false,
+        chain: null,
+        preQualifyIds: pre,
+        lines,
+      });
+    }
+    if (s <= 0) {
+      return tagRuleB({
+        resolved: true,
+        qualifierIds: pre.slice(),
+        needsMatches: false,
+        chain: null,
+        preQualifyIds: pre,
+        lines,
+      });
+    }
+
+    const ordered = sortRuleBSeed(tied);
+    const ids = ordered.map((p) => p.id);
+    const nm = (i) => (ordered[i] && (ordered[i].name || ordered[i].id)) || ids[i];
+    const seedKey = (p) => `${p.netPoints || 0}|${p.battlePoints || 0}|${p.metaScore || 0}`;
+    const uniqueKeys = new Set(tied.map(seedKey));
+    const needsSeedShuffle = uniqueKeys.size === 1 && n > 2;
+
+    if (n === 2 && s === 1) {
+      lines.push(`兩人爭 1 席：加賽一場，勝者入圍。`);
+      return tagRuleB({
+        resolved: false,
+        needsMatches: true,
+        chain: "bPair",
+        tiedIds: ids,
+        take: 1,
+        preQualifyIds: pre,
+        firstMatches: [
+          {
+            p1: ids[0],
+            p2: ids[1],
+            wave: 1,
+            creditBp: false,
+            role: "bPair",
+            label: `入圍加賽 · ${ordered[0].name} vs ${ordered[1].name}`,
+          },
+        ],
+        lines,
+      });
+    }
+
+    if (n === 3 && s === 2) {
+      lines.push(
+        `3 人 2 席：${ordered[0].name}（淨勝分最高）種子直入；${ordered[1].name} vs ${ordered[2].name}，勝者入。`
+      );
+      return tagRuleB({
+        resolved: false,
+        needsMatches: true,
+        chain: "bPair",
+        seedId: ids[0],
+        tiedIds: [ids[1], ids[2]],
+        take: 1,
+        preQualifyIds: pre.concat([ids[0]]),
+        firstMatches: [
+          {
+            p1: ids[1],
+            p2: ids[2],
+            wave: 1,
+            creditBp: false,
+            role: "bPair",
+            label: `入圍加賽 · 爭第 2 席 ${nm(1)} vs ${nm(2)}`,
+          },
+        ],
+        lines,
+      });
+    }
+
+    if (n % 2 === 0 && s === n / 2) {
+      const firstMatches = [];
+      for (let i = 0; i < n / 2; i++) {
+        firstMatches.push({
+          p1: ids[i],
+          p2: ids[n - 1 - i],
+          wave: 1,
+          creditBp: false,
+          role: "bHighLow",
+          label: `入圍加賽 · ${nm(i)} vs ${nm(n - 1 - i)}`,
+        });
+      }
+      lines.push(`${n} 人爭 ${s} 席：淨勝分最高打最低、第二高打第二低，勝者入圍。`);
+      return tagRuleB({
+        resolved: false,
+        needsMatches: true,
+        chain: "bHighLow",
+        tiedIds: ids,
+        take: s,
+        preQualifyIds: pre,
+        firstMatches,
+        needsSeedShuffle,
+        lines,
+      });
+    }
+
+    if (n - s === 1) {
+      const auto = ids.slice(0, n - 2);
+      const a = ordered[n - 2];
+      const b = ordered[n - 1];
+      if (auto.length) {
+        lines.push(
+          `${n} 人只淘汰 1 人：${auto.map((id) => ordered.find((p) => p.id === id).name).join("、")} 直入；淨勝分最低兩人 ${a.name} vs ${b.name}，負者出局。`
+        );
+      } else {
+        lines.push(`${n} 人只淘汰 1 人：${a.name} vs ${b.name}，負者出局。`);
+      }
+      return tagRuleB({
+        resolved: false,
+        needsMatches: true,
+        chain: "bElim1",
+        tiedIds: ids,
+        take: s,
+        preQualifyIds: pre.concat(auto),
+        firstMatches: [
+          {
+            p1: a.id,
+            p2: b.id,
+            wave: 1,
+            creditBp: false,
+            role: "elim1",
+            label: `入圍加賽 · 淘汰場 ${a.name} vs ${b.name}`,
+          },
+        ],
+        lines,
+      });
+    }
+
+    lines.push(
+      `${n} 人爭 ${s} 席：種子選手／種子線小型淘汰，打贏出線。` +
+        (n % 2 === 1
+          ? `種子選手＝淨勝分最高（${ordered[0].name}）。`
+          : `種子線＝淨勝分最高對最低。`)
+    );
+    return tagRuleB({
+      resolved: false,
+      needsMatches: true,
+      chain: "seedKo",
+      tiedIds: ids,
+      take: s,
+      preQualifyIds: pre,
+      needsDraw: false,
+      bOrdered: true,
+      needsSeedShuffle,
+      lines,
+    });
+  }
+
+  function paperResolveEvenB(group, spots, h2h, lines) {
+    const pre = [];
+    let spotsLeft = spots;
+    const byNet = [...group].sort((a, b) => (b.netPoints || 0) - (a.netPoints || 0));
+    const netBand = bandAtKey(byNet, spotsLeft, "netPoints");
+    if (netBand.clearIn.length) {
+      lines.push(
+        `淨勝分已可先入圍：${netBand.clearIn.map((p) => `${p.name}（${p.netPoints}）`).join("、")}。`
+      );
+      pre.push(...netBand.clearIn.map((p) => p.id));
+      spotsLeft = netBand.spotsLeft;
+    }
+    if (netBand.clearOut.length && netBand.tied.length) {
+      lines.push(`淨勝分較低出局：${netBand.clearOut.map((p) => p.name).join("、")}。`);
+    }
+    if (netBand.tied.length <= spotsLeft) {
+      lines.push("用淨勝分已可分清入圍，無需加賽。");
+      return tagRuleB({
+        resolved: true,
+        qualifierIds: pre.concat(netBand.tied.map((p) => p.id)),
+        needsMatches: false,
+        chain: null,
+        preQualifyIds: pre,
+        lines,
+      });
+    }
+
+    const byBp = [...netBand.tied].sort((a, b) => (b.battlePoints || 0) - (a.battlePoints || 0));
+    const bpBand = bandAtKey(byBp, spotsLeft, "battlePoints");
+    if (bpBand.clearIn.length) {
+      lines.push(
+        `總 BP 已可先入圍：${bpBand.clearIn.map((p) => `${p.name}（${p.battlePoints}）`).join("、")}。`
+      );
+      pre.push(...bpBand.clearIn.map((p) => p.id));
+      spotsLeft = bpBand.spotsLeft;
+    }
+    if (bpBand.tied.length <= spotsLeft) {
+      lines.push("用總 BP 已可分清入圍，無需加賽。");
+      return tagRuleB({
+        resolved: true,
+        qualifierIds: pre.concat(bpBand.tied.map((p) => p.id)),
+        needsMatches: false,
+        chain: null,
+        preQualifyIds: pre,
+        lines,
+      });
+    }
+
+    const tied = bpBand.tied;
+    if (tied.length === 2 && spotsLeft === 1) {
+      const a = tied[0];
+      const b = tied[1];
+      const h = h2h ? h2h(a.id, b.id) : null;
+      if (h) {
+        const wName = h === a.id ? a.name : b.name;
+        lines.push(`兩人淨勝分同、總 BP 同，對賽已分 → ${wName} 入圍。`);
+        return tagRuleB({
+          resolved: true,
+          qualifierIds: pre.concat([h]),
+          needsMatches: false,
+          chain: null,
+          preQualifyIds: pre,
+          lines,
+        });
+      }
+      lines.push(`兩人淨勝分同、總 BP 同且未對賽 → 加賽，勝者入圍。`);
+      return planWinnerInB(tied, 1, pre, lines);
+    }
+
+    lines.push(
+      tied.length > 2
+        ? `${tied.length} 人淨勝分同、總 BP 同，對賽分唔開 → 加賽，打贏出線。`
+        : "仍要爭席 → 加賽，打贏出線。"
+    );
+    return planWinnerInB(tied, spotsLeft, pre, lines);
+  }
+
+  function analyzeCutoffB(group, spots, h2h, opts) {
+    const lines = [];
+    const g = group || [];
+    const s = spots | 0;
+    const oddPath = !!(opts && opts.oddPath);
+    if (!g.length) {
+      return tagRuleB({
+        resolved: true,
+        qualifierIds: [],
+        needsMatches: false,
+        chain: null,
+        lines: ["沒有爭席選手。"],
+      });
+    }
+    lines.push(`規則 B · ${g.length} 人爭最後 ${s} 個名額。`);
+    if (g.length <= s) {
+      return tagRuleB({
+        resolved: true,
+        qualifierIds: g.map((p) => p.id),
+        needsMatches: false,
+        chain: null,
+        lines,
+      });
+    }
+    if (oddPath) {
+      lines.push("單數場：扣除自動獲勝後嘅爭席組直接加賽（打贏出線）。淨勝分只用來排高打低同抽種子。");
+      return planWinnerInB(g, s, [], lines);
+    }
+    lines.push("雙數場：先比總淨勝分，再比總 BP，再比對賽；仍要爭先至加賽（打贏出線）。");
+    return paperResolveEvenB(g, s, h2h, lines);
+  }
+
+  function analyzeCutoff(group, spots, h2h, opts) {
+    const o = opts && typeof opts === "object" ? opts : {};
+    if (o.rule === "B") return analyzeCutoffB(group, spots, h2h, o);
     const lines = [];
     const g = group || [];
     const s = spots | 0;
@@ -485,9 +808,12 @@
     const byes = g.filter((p) => (p.byeCount || 0) > 0);
     const open = g.filter((p) => (p.byeCount || 0) <= 0);
     if (byes.length) {
-      lines.push(`曾經自動獲勝：${namesOf(byes)}（同未輪空者唔直接用瑞士總 BP 比）。`);
+      lines.push(`曾經自動獲勝：${namesOf(byes)}（補 BP 前唔同未坐場者直接用瑞士總 BP 比）。`);
     }
-    if (byes.length === 0 || open.length === 0) return analyzeSameBye(g, s, h2h, lines);
+    if (g.length <= s) {
+      return { resolved: true, qualifierIds: g.map((p) => p.id), needsMatches: false, chain: null, lines };
+    }
+    if (byes.length === 0) return analyzeSameBye(g, s, h2h, lines);
     if (byes.length === 1) return analyzeOneBye(byes[0], open, s, h2h, lines);
     return analyzeMultiBye(byes, open, s, h2h, lines);
   }
@@ -598,9 +924,30 @@
     });
   }
 
-  function materializeCutoff(analysis, rng, nameOf) {
+  function materializeCutoff(analysis, rng, nameOf, playedFn) {
     const out = { ...analysis, firstMatches: analysis.firstMatches ? [...analysis.firstMatches] : [] };
     const nm = typeof nameOf === "function" ? nameOf : (id) => id;
+    const played = typeof playedFn === "function" ? playedFn : analysis.played;
+    if (analysis.chain === "byeBpGen" && analysis.byeIds && !out.firstMatches.length) {
+      const ids = analysis.byeIds;
+      let seedId = null;
+      let pool = ids;
+      if (analysis.seedNeeded && ids.length >= 3) {
+        const sh = shuffleList(ids, rng);
+        seedId = sh[0];
+        pool = sh.slice(1);
+      }
+      const pairs = pairPreferUnplayed(pool, played, rng);
+      out.byeBp = { seedId };
+      out.firstMatches = pairs.map((pr) => ({
+        p1: pr[0],
+        p2: pr[1],
+        wave: 1,
+        creditBp: true,
+        role: "byeBpGen",
+        label: `入圍加賽 · 坐場者補 BP ${nm(pr[0])} vs ${nm(pr[1])}`,
+      }));
+    }
     if (analysis.chain === "draw4" && analysis.tiedIds) {
       const pool = shuffleList(analysis.tiedIds, rng);
       out.firstMatches = [
@@ -622,8 +969,28 @@
       ];
     }
     if (analysis.chain === "seedKo" && analysis.tiedIds) {
-      out.ko = buildSeedKo(analysis.tiedIds, analysis.take || 1, rng);
+      let ids = analysis.tiedIds.slice();
+      if (analysis.needsSeedShuffle) ids = shuffleList(ids, rng);
+      out.ko = analysis.bOrdered
+        ? buildSeedKoB(ids, analysis.take || 1)
+        : buildSeedKo(ids, analysis.take || 1, rng);
       out.firstMatches = seedKoWave1Matches(out.ko, nm);
+    }
+    if (analysis.chain === "bHighLow" && analysis.needsSeedShuffle && analysis.tiedIds) {
+      const ids = shuffleList(analysis.tiedIds, rng);
+      const n = ids.length;
+      out.tiedIds = ids;
+      out.firstMatches = [];
+      for (let i = 0; i < n / 2; i++) {
+        out.firstMatches.push({
+          p1: ids[i],
+          p2: ids[n - 1 - i],
+          wave: 1,
+          creditBp: false,
+          role: "bHighLow",
+          label: `入圍加賽 · ${nm(ids[i])} vs ${nm(ids[n - 1 - i])}`,
+        });
+      }
     }
     if (analysis.chain === "crossDraw" && analysis.tiedIds) {
       const pool = shuffleList(analysis.tiedIds, rng);
@@ -933,13 +1300,103 @@
     return { resolved: true, qualifierIds: (po.preQualifyIds || []).concat([win]) };
   }
 
-  function resolvePlayoff(group, spots, h2h, po) {
+  function resolvePlayoff(group, spots, h2h, po, playedFn) {
     if (!po || !po.chain) {
       const a = analyzeCutoff(group, spots, h2h);
       return { ...a, nextMatches: [] };
     }
     const matches = po.matches || [];
     const nameOf = (id) => (group.find((p) => p.id === id) || {}).name || id;
+
+    if (po.chain === "byeBpGen") {
+      const gen = matches.filter((m) => m.role === "byeBpGen");
+      const seedId = po.byeBp && po.byeBp.seedId;
+      const w1 = gen.filter((m) => (m.wave || 1) === 1);
+      if (!w1.length || !allMatchesDone(w1)) return { resolved: false, nextMatches: [], chain: po.chain };
+      if (seedId && !gen.some((m) => m.wave === 2)) {
+        const winners = w1.map((m) => m.winner).filter(Boolean);
+        const played = typeof playedFn === "function" ? playedFn : () => false;
+        let pool = winners.filter((w) => !played(seedId, w) && !h2hOfMatch(matches, seedId, w));
+        if (!pool.length) pool = winners.slice();
+        const opp = pool.length ? shuffleList(pool, Math.random)[0] : null;
+        if (!opp) return { resolved: false, nextMatches: [], chain: po.chain };
+        return {
+          resolved: false,
+          nextMatches: [
+            {
+              p1: seedId,
+              p2: opp,
+              wave: 2,
+              creditBp: true,
+              role: "byeBpGen",
+              label: "入圍加賽 · 種子補 BP",
+            },
+          ],
+          chain: po.chain,
+        };
+      }
+      if (seedId) {
+        const w2 = gen.filter((m) => m.wave === 2);
+        if (!w2.length || !allMatchesDone(w2)) return { resolved: false, nextMatches: [], chain: po.chain };
+      }
+      const cred = matchCredits(gen);
+      const worked = withCredits(group, cred);
+      const combinedH2h = (a, b) => h2hOfMatch(matches, a, b) || (h2h && h2h(a, b)) || null;
+      const next = analyzeSameBye(worked, spots, combinedH2h, []);
+      if (next.resolved) {
+        return { resolved: true, qualifierIds: next.qualifierIds || [], nextMatches: [], chain: po.chain };
+      }
+      const mat = materializeCutoff(next, Math.random, nameOf, playedFn);
+      return {
+        resolved: false,
+        nextMatches: mat.firstMatches || next.firstMatches || [],
+        chain: next.chain,
+        tiedIds: next.tiedIds,
+        take: next.take,
+        preQualifyIds: next.preQualifyIds,
+        ko: mat.ko || null,
+      };
+    }
+
+    if (po.chain === "bPair") {
+      if (!allMatchesDone(matches)) return { resolved: false, nextMatches: [], chain: po.chain };
+      const m = matches[matches.length - 1];
+      return {
+        resolved: true,
+        qualifierIds: (po.preQualifyIds || []).concat([m.winner]),
+        nextMatches: [],
+        chain: po.chain,
+      };
+    }
+
+    if (po.chain === "bHighLow") {
+      const use = matches.filter((m) => m.role === "bHighLow");
+      const wave = use.length ? use : matches.filter((m) => (m.wave || 1) === 1);
+      if (!allMatchesDone(wave)) return { resolved: false, nextMatches: [], chain: po.chain };
+      return {
+        resolved: true,
+        qualifierIds: (po.preQualifyIds || []).concat(wave.map((m) => m.winner)),
+        nextMatches: [],
+        chain: po.chain,
+      };
+    }
+
+    if (po.chain === "bElim1") {
+      const elim = matches.filter((m) => m.role === "elim1" || m.role === "bElim1");
+      const use = elim.length ? elim : matches;
+      if (!allMatchesDone(use)) return { resolved: false, nextMatches: [], chain: po.chain };
+      const m = use[use.length - 1];
+      const loser = m.winner === m.p1 ? m.p2 : m.p1;
+      const ids = (po.tiedIds || []).filter((id) => id !== loser);
+      const pre = po.preQualifyIds || [];
+      const extra = ids.filter((id) => !pre.includes(id));
+      return {
+        resolved: true,
+        qualifierIds: pre.concat(extra),
+        nextMatches: [],
+        chain: po.chain,
+      };
+    }
 
     if (po.chain === "pair") {
       if (!allMatchesDone(matches)) return { resolved: false, nextMatches: [], chain: po.chain };
@@ -989,6 +1446,41 @@
           ],
           chain: po.chain,
         };
+      }
+      if (pick.tied && pick.tied.length >= 3) {
+        const a = pick.tied[0];
+        const b = pick.tied[1];
+        const has = matches.some(
+          (m) => (m.wave || 1) >= 2 && ((m.p1 === a && m.p2 === b) || (m.p1 === b && m.p2 === a))
+        );
+        if (!has) {
+          return {
+            resolved: false,
+            nextMatches: [
+              {
+                p1: a,
+                p2: b,
+                wave: 2,
+                creditBp: true,
+                role: "pair",
+                label: "入圍加賽 · 三循環後再打",
+              },
+            ],
+            chain: po.chain,
+          };
+        }
+        const h = h2hOfMatch(matches, a, b);
+        if (h) {
+          const take = po.take || 1;
+          const third = pick.tied.find((id) => id !== a && id !== b);
+          const ids = take >= 2 ? [h, third].filter(Boolean) : [h];
+          return {
+            resolved: true,
+            qualifierIds: (po.preQualifyIds || []).concat(pick.pre || []).concat(ids),
+            nextMatches: [],
+            chain: po.chain,
+          };
+        }
       }
       return { resolved: false, nextMatches: [], chain: po.chain };
     }
@@ -1185,9 +1677,11 @@
   return {
     PLAYOFF_CATCHUP_MAX,
     analyzeCutoff,
+    analyzeCutoffB,
     materializeCutoff,
     resolvePlayoff,
     buildSeedKo,
+    buildSeedKoB,
     advanceSeedKo,
     seedKoQualifiers,
     shuffleList,

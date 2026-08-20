@@ -3192,3 +3192,126 @@ body.sync-readonly #btnCloudCreate {
   opacity: 0.45;
   pointer-events: none;
 }
+
+/* 規則頁：兩大塊可收合 */
+.rules-block {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-top: 14px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.rules-block > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 16px 18px;
+  font-family: var(--font-display);
+  font-size: 1.12rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: rgba(200, 255, 0, 0.07);
+  border-bottom: 1px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  user-select: none;
+}
+.rules-block > summary::-webkit-details-marker { display: none; }
+.rules-block > summary::before {
+  content: "▸";
+  color: var(--accent);
+  font-size: 1.15rem;
+  width: 1.2em;
+  flex: 0 0 auto;
+  line-height: 1;
+}
+.rules-block[open] > summary::before { content: "▾"; }
+.rules-block[open] > summary {
+  border-bottom-color: var(--border);
+}
+.rules-body {
+  padding: 16px 18px 22px;
+  line-height: 1.7;
+}
+.rules-body h4 {
+  margin: 18px 0 8px;
+  color: var(--accent);
+  font-size: 1.02rem;
+  letter-spacing: 0.02em;
+}
+.rules-body h4:first-child { margin-top: 0; }
+.rules-body ol,
+.rules-body ul {
+  padding-left: 1.4em;
+  margin: 0 0 10px;
+}
+.rules-body li { margin: 5px 0; }
+.rules-body a {
+  color: var(--accent);
+  font-weight: 700;
+}
+.rules-body .meta { margin: 0 0 12px; }
+.rules-sub {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.28);
+}
+.rules-sub > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 14px;
+  font-weight: 800;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  user-select: none;
+}
+.rules-sub > summary::-webkit-details-marker { display: none; }
+.rules-sub > summary::before {
+  content: "▸";
+  color: var(--accent);
+  margin-right: 6px;
+}
+.rules-sub[open] > summary::before { content: "▾"; }
+.rules-tree { padding: 0 14px 16px; }
+.rules-tree h4 { margin-top: 14px; }
+.rules-sub.rules-current {
+  border-color: rgba(200, 255, 0, 0.55);
+  box-shadow: 0 0 0 1px rgba(200, 255, 0, 0.18);
+}
+.rules-sub.rules-current > summary::after {
+  content: "現行";
+  margin-left: 4px;
+  display: inline-flex;
+  align-items: center;
+  background: rgba(200, 255, 0, 0.15);
+  color: var(--accent);
+  border: 1px solid rgba(200, 255, 0, 0.4);
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+.rules-sub.rules-current.rules-pending > summary::after {
+  content: "已選 · 尚未套用";
+  color: var(--warning);
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.12);
+}
+
+@media (max-width: 640px) {
+  .rules-block > summary,
+  .rules-body {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .rules-block > summary {
+    font-size: 1.02rem;
+  }
+}
