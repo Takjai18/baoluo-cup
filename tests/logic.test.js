@@ -82,11 +82,39 @@ const b16 = seededBracketOrder(16);
 assert(b16[0] === 1 && b16[1] === 16 && b16[2] === 8 && b16[3] === 9, "16: 1v16, 8v9…");
 assert(b16.length === 16 && new Set(b16).size === 16, "16: unique seeds");
 
+function koSizeAdvice(playerCount) {
+  const n = Math.max(2, playerCount | 0);
+  const allowed = [4, 8, 16].filter((k) => k <= n);
+  let optimal;
+  if (n < 4) optimal = Math.max(2, n);
+  else if (n <= 16) optimal = 4;
+  else if (n <= 32) optimal = 8;
+  else optimal = 16;
+  if (allowed.length && !allowed.includes(optimal)) {
+    const le = allowed.filter((k) => k <= optimal);
+    optimal = le.length ? le[le.length - 1] : allowed[allowed.length - 1];
+  }
+  if (optimal > n) {
+    optimal = allowed.length ? allowed[allowed.length - 1] : Math.max(2, n);
+  }
+  return { n, optimal, allowed };
+}
+
 console.log("\n── swissRoundsAdvice ──");
 assert(swissRoundsAdvice(8).optimal === 3, "8 人 → 3 輪");
 assert(swissRoundsAdvice(16).optimal === 4, "16 人 → 4 輪");
+assert(swissRoundsAdvice(17).optimal === 5, "17 人 → 5 輪");
 assert(swissRoundsAdvice(32).optimal === 5, "32 人 → 5 輪");
 assert(swissRoundsAdvice(64).optimal === 6, "64 人 → 6 輪");
+
+console.log("\n── koSizeAdvice ──");
+assert(koSizeAdvice(8).optimal === 4, "8 人 → 4 強");
+assert(koSizeAdvice(9).optimal === 4, "9 人 → 4 強");
+assert(koSizeAdvice(16).optimal === 4, "16 人 → 4 強");
+assert(koSizeAdvice(17).optimal === 8, "17 人 → 8 強");
+assert(koSizeAdvice(32).optimal === 8, "32 人 → 8 強");
+assert(koSizeAdvice(33).optimal === 16, "33 人 → 16 強");
+assert(koSizeAdvice(64).optimal === 16, "64 人 → 16 強");
 
 console.log("\n── autoWinnerFromScores ──");
 assert(autoWinnerFromScores("a", "b", 4, 2) === "a", "4-2 → a");

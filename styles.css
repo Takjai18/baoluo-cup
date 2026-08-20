@@ -3021,6 +3021,9 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   margin-bottom: 8px;
   color: var(--hi);
 }
+.swiss-calc-body .btn {
+  margin-top: 4px;
+}
 .swiss-calc-body p {
   margin: 0 0 8px;
   line-height: 1.45;

@@ -105,14 +105,15 @@ function swissRoundsAdvice(playerCount) {
   return { n, optimal, minOk, maxOk, maxHard, rematchRiskAt, log2 };
 }
 
-function warnSwissRounds(playerCount, swissRounds) {
+function warnSwissRounds(playerCount, swissRounds, koSize) {
   const a = swissRoundsAdvice(playerCount);
   const r = swissRounds;
+  const koN = getKoBracketSizeFor(playerCount, koSize);
   const msgs = [];
   if (r < a.minOk) {
     msgs.push({
       level: "warn",
-      text: `輪數偏少（建議約 ${a.optimal} 輪，合理 ${a.minOk}–${a.maxOk}）。排名鑑別度可能不足，前${getKoBracketSizeFor(playerCount, null)}名邊界容易同分。`,
+      text: `輪數偏少（建議約 ${a.optimal} 輪，合理 ${a.minOk}–${a.maxOk}）。排名鑑別度可能不足，前 ${koN} 名邊界容易同分。`,
     });
   } else if (r > a.maxOk) {
     msgs.push({
@@ -134,24 +135,84 @@ function warnSwissRounds(playerCount, swissRounds) {
   if (!msgs.length) {
     msgs.push({
       level: "ok",
-      text: `輪數合適（建議 ${a.optimal} 輪 · 合理範圍 ${a.minOk}–${a.maxOk}）。`,
+      text: `瑞士輪數合適（建議 ${a.optimal} 輪 · 合理範圍 ${a.minOk}–${a.maxOk}）。`,
     });
   }
   if (a.n % 2 === 1) {
     msgs.push({
       level: "ok",
-      text: `單數（${a.n} 人）每輪一人自動獲勝（計瑞士 1 勝）。平時：未曾休息 → 勝場高 → 曾打過更高名次 → BP。僅最後一輪加：已穩入圍 → 已無希望入圍，避免爭席者坐贏入圍。`,
+      text: `單數（${a.n} 人）每輪一人自動獲勝（計瑞士 1 勝）。平時：未曾休息 → 勝場高 → 曾打過更高名次 → BP。僅最後一輪加：已穩入圍 → 已無希望入圍，避免爭席者坐贏。`,
     });
   }
   return { advice: a, messages: msgs };
 }
 
+/** 淘汰規模：約場人數 ¼–½。單數剛過 16／32 時寧取大一檔，避免 4 強爭席加賽過長。 */
+function koSizeAdvice(playerCount) {
+  const n = Math.max(2, playerCount | 0);
+  const allowed = KO_PRESETS.filter((k) => k <= n);
+  let optimal;
+  if (n < 4) optimal = Math.max(2, n);
+  else if (n <= 16) optimal = 4;
+  else if (n <= 32) optimal = 8;
+  else optimal = 16;
+  if (allowed.length && !allowed.includes(optimal)) {
+    const le = allowed.filter((k) => k <= optimal);
+    optimal = le.length ? le[le.length - 1] : allowed[allowed.length - 1];
+  }
+  if (optimal > n) {
+    optimal = allowed.length ? allowed[allowed.length - 1] : Math.max(2, n);
+  }
+  return { n, optimal, allowed };
+}
+
+function warnKoSize(playerCount, koSize) {
+  const a = koSizeAdvice(playerCount);
+  const k = getKoBracketSizeFor(playerCount, koSize);
+  const msgs = [];
+  const ratio = a.n ? k / a.n : 1;
+  if (k >= a.n) {
+    msgs.push({
+      level: "warn",
+      text: `淘汰賽 ${k} 強等於或超過人數，瑞士制切唔到線。建議 ${a.optimal} 強。`,
+    });
+  } else if (k < a.optimal && a.n % 2 === 1 && a.n > 16) {
+    msgs.push({
+      level: "warn",
+      text: `單數 ${a.n} 人用 ${k} 強，爭席加賽會偏長（例如 17 人 4 強成日 6 人爭 2 席打 4–5 場）。建議 ${a.optimal} 強。`,
+    });
+  } else if (k < a.optimal) {
+    msgs.push({
+      level: "warn",
+      text: `淘汰名額偏少（建議 ${a.optimal} 強）。入圍邊界人多，加賽較長。`,
+    });
+  } else if (ratio >= 0.7) {
+    msgs.push({
+      level: "warn",
+      text: `淘汰賽 ${k} 強佔 ${a.n} 人大部分，瑞士制幾乎人人入圍。建議 ${a.optimal} 強。`,
+    });
+  } else if (k === a.optimal) {
+    msgs.push({
+      level: "ok",
+      text: `淘汰賽規模合適（建議 ${a.optimal} 強）。`,
+    });
+  } else {
+    msgs.push({
+      level: "ok",
+      text: `淘汰賽 ${k} 強可用；建議值係 ${a.optimal} 強。`,
+    });
+  }
+  return { advice: a, messages: msgs };
+}
+
+function warnEventFormat(playerCount, swissRounds, koSize) {
+  const swiss = warnSwissRounds(playerCount, swissRounds, koSize);
+  const ko = warnKoSize(playerCount, koSize);
+  return { swiss: swiss.advice, ko: ko.advice, messages: swiss.messages.concat(ko.messages) };
+}
+
 function defaultKoSize(playerCount) {
-  const n = playerCount | 0;
-  if (n >= 16) return 4;
-  if (n >= 8) return 4;
-  if (n >= 4) return 4;
-  return Math.max(2, n);
+  return koSizeAdvice(playerCount).optimal;
 }
 
 function getKoBracketSizeFor(playerCount, koSize) {
@@ -177,7 +238,7 @@ function defaultSettings() {
     playerCount: 16, // 參賽人數（可單數；單數則輪空）
     playerPreset: "16", // '8' | '16' | '32' | '64' | 'other'
     koSize: 4, // 淘汰賽名額：4 | 8 | 16
-    qualifyRule: "A", // 入圍規則 A 完整決策樹／B 簡易（尚未寫入）
+    qualifyRule: "A", // 入圍規則 A 完整決策樹／B 簡易（淨勝分、打贏出線）
   };
 }
 
@@ -1743,7 +1804,7 @@ function saveSettingsFromForm() {
   }
 
   // 瑞士輪警告（可無視）
-  const { messages } = warnSwissRounds(next.playerCount, next.swissRounds);
+  const { messages } = warnEventFormat(next.playerCount, next.swissRounds, next.koSize);
   const bad = messages.filter((m) => m.level === "warn" || m.level === "danger");
   if (bad.length) {
     const text = bad.map((m) => "· " + m.text).join("\n");
@@ -4504,6 +4565,60 @@ function closeBeyOrderModal() {
   beyOrderMatchId = null;
 }
 
+function applyAdvisedFormat(playerCount) {
+  const n = Math.max(2, playerCount | 0);
+  const sw = swissRoundsAdvice(n).optimal;
+  const ko = getKoBracketSizeFor(n, koSizeAdvice(n).optimal);
+  const swEl = document.getElementById("setSwissRounds");
+  const koEl = document.getElementById("setKoSize");
+  if (koEl) {
+    [...koEl.options].forEach((opt) => {
+      const v = parseInt(opt.value, 10);
+      opt.disabled = v > n;
+      opt.hidden = v > n;
+    });
+    koEl.value = String(ko);
+  }
+  if (swEl) swEl.value = String(sw);
+  toast(`已填入建議：瑞士 ${sw} 輪 · ${ko} 強（記得按儲存設定）`, "success");
+  swEl?.dispatchEvent(new Event("change"));
+}
+
+function fillSettingsCalculator(playerCount, swissRounds, koSize) {
+  const calc = document.getElementById("swissCalcPanel");
+  if (!calc) return;
+  const { swiss, ko, messages } = warnEventFormat(playerCount, swissRounds, koSize);
+  const allowedKo = (ko.allowed || []).join("／") || "4／8／16";
+  calc.innerHTML = `
+      <div class="swiss-calc">
+        <div class="swiss-calc-title">📐 賽制建議</div>
+        <div class="swiss-calc-body">
+          <p><strong>${swiss.n} 人</strong>建議
+          瑞士 <strong class="accent">${swiss.optimal}</strong> 輪 ·
+          淘汰 <strong class="accent">${ko.optimal} 強</strong></p>
+          <p class="meta">瑞士合理 ${swiss.minOk}–${swiss.maxOk} 輪（理論上限 ${swiss.maxHard}）。
+          淘汰可選 ${allowedKo} 強。輪太少排名嘈；輪太多必重賽；淘汰太少則爭席加賽長。
+          ${
+            playerCount % 2
+              ? "單數：平時勝場高者休息；最後一輪先畀已穩入圍／無希望。規則 B 下爭席組要加賽。"
+              : ""
+          }</p>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnApplyOptimalSwiss">套用建議 ${swiss.optimal} 輪 · ${ko.optimal} 強</button>
+        </div>
+        <div class="swiss-calc-msgs">
+          ${messages
+            .map(
+              (m) =>
+                `<div class="swiss-msg swiss-msg-${m.level}">${m.level === "ok" ? "✓" : m.level === "danger" ? "⛔" : "⚠"} ${escapeHtml(m.text)}</div>`
+            )
+            .join("")}
+        </div>
+      </div>`;
+  document.getElementById("btnApplyOptimalSwiss")?.addEventListener("click", () => {
+    applyAdvisedFormat(playerCount);
+  });
+}
+
 function renderSettings() {
   const s = normalizeSettings(state.settings);
   const refEl = document.getElementById("setReferees");
@@ -4538,40 +4653,7 @@ function renderSettings() {
   const stations = getActiveStations();
   const matches = getMatchesPerRound();
   const preview = document.getElementById("settingsPreview");
-  const calc = document.getElementById("swissCalcPanel");
-  const { advice, messages } = warnSwissRounds(s.playerCount, s.swissRounds);
-
-  if (calc) {
-    calc.innerHTML = `
-      <div class="swiss-calc">
-        <div class="swiss-calc-title">📐 瑞士制輪數計算器</div>
-        <div class="swiss-calc-body">
-          <p><strong>${s.playerCount} 人</strong>建議 <strong class="accent">${advice.optimal}</strong> 輪
-          （合理範圍 ${advice.minOk}–${advice.maxOk}；理論上限 ${advice.maxHard} 輪）</p>
-          <p class="meta">經驗法則 ≈ ceil(log₂ N)＝${advice.optimal}。輪太少排名嘈；輪太多必重賽。${
-            s.playerCount % 2
-              ? "單數人：平時勝場高者休息；最後一輪先畀已穩入圍／無希望，避免爭席者坐贏。"
-              : ""
-          }</p>
-          <button type="button" class="btn btn-secondary btn-sm" id="btnApplyOptimalSwiss">套用建議 ${advice.optimal} 輪</button>
-        </div>
-        <div class="swiss-calc-msgs">
-          ${messages
-            .map(
-              (m) =>
-                `<div class="swiss-msg swiss-msg-${m.level}">${m.level === "ok" ? "✓" : m.level === "danger" ? "⛔" : "⚠"} ${escapeHtml(m.text)}</div>`
-            )
-            .join("")}
-        </div>
-      </div>`;
-    document.getElementById("btnApplyOptimalSwiss")?.addEventListener("click", () => {
-      if (swEl) {
-        swEl.value = String(advice.optimal);
-        swEl.dispatchEvent(new Event("change"));
-      }
-      toast(`已填入建議 ${advice.optimal} 輪（記得按儲存設定）`, "success");
-    });
-  }
+  fillSettingsCalculator(s.playerCount, s.swissRounds, s.koSize);
 
   if (preview) {
     const zones = Array.from({ length: stations }, (_, i) => zoneLabel(i)).join("、");
@@ -6169,40 +6251,7 @@ function init() {
       qualifyRule,
     });
     const stations = Math.max(1, Math.min(tmp.referees, tmp.stadiums));
-    const { advice, messages } = warnSwissRounds(tmp.playerCount, tmp.swissRounds);
-    const calc = document.getElementById("swissCalcPanel");
-    if (calc) {
-      calc.innerHTML = `
-        <div class="swiss-calc">
-          <div class="swiss-calc-title">📐 瑞士制輪數計算器</div>
-          <div class="swiss-calc-body">
-            <p><strong>${tmp.playerCount} 人</strong>建議 <strong class="accent">${advice.optimal}</strong> 輪
-            （合理範圍 ${advice.minOk}–${advice.maxOk}；理論上限 ${advice.maxHard} 輪）</p>
-            <p class="meta">經驗法則 ≈ ceil(log₂ N)＝${advice.optimal}。輪太少排名嘈；輪太多必重賽。${
-              tmp.playerCount % 2
-                ? "單數人：平時勝場高者休息；最後一輪先畀已穩入圍／無希望，避免爭席者坐贏。"
-                : ""
-            }</p>
-            <button type="button" class="btn btn-secondary btn-sm" id="btnApplyOptimalSwiss">套用建議 ${advice.optimal} 輪</button>
-          </div>
-          <div class="swiss-calc-msgs">
-            ${messages
-              .map(
-                (m) =>
-                  `<div class="swiss-msg swiss-msg-${m.level}">${m.level === "ok" ? "✓" : m.level === "danger" ? "⛔" : "⚠"} ${escapeHtml(m.text)}</div>`
-              )
-              .join("")}
-          </div>
-        </div>`;
-      document.getElementById("btnApplyOptimalSwiss")?.addEventListener("click", () => {
-        const swEl = document.getElementById("setSwissRounds");
-        if (swEl) {
-          swEl.value = String(advice.optimal);
-          previewSettings();
-        }
-        toast(`已填入建議 ${advice.optimal} 輪（記得按儲存設定）`, "success");
-      });
-    }
+    fillSettingsCalculator(tmp.playerCount, tmp.swissRounds, tmp.koSize);
     const preview = document.getElementById("settingsPreview");
     if (preview) {
       const zones = Array.from({ length: stations }, (_, i) => zoneLabel(i)).join("、");
