@@ -5503,22 +5503,15 @@ function runDrawForPrize(prizeId) {
     return;
   }
   const bey = reveal.querySelector(".draw-bey");
-  const ring = reveal.querySelector(".draw-xtreme-ring");
-  [bey, ring].forEach((el) => {
-    if (!el) return;
-    el.getAnimations?.().forEach((a) => a.cancel());
-    el.style.transform = "";
-  });
-  bey?.animate([{ transform: "rotate(0deg)" }, { transform: "rotate(2520deg)" }], {
-    duration: 2400,
-    easing: "cubic-bezier(0.05, 0.62, 0.18, 1)",
-    fill: "forwards",
-  });
-  ring?.animate([{ transform: "rotate(0deg)" }, { transform: "rotate(-640deg)" }], {
-    duration: 2400,
-    easing: "cubic-bezier(0.05, 0.62, 0.18, 1)",
-    fill: "forwards",
-  });
+  if (bey) {
+    bey.getAnimations?.().forEach((a) => a.cancel());
+    bey.style.transform = "";
+    bey.animate([{ transform: "rotate(0deg)" }, { transform: "rotate(2520deg)" }], {
+      duration: 2400,
+      easing: "cubic-bezier(0.05, 0.62, 0.18, 1)",
+      fill: "forwards",
+    });
+  }
   let step = 0;
   const total = 30;
   const tick = () => {
