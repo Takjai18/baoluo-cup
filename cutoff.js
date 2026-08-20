@@ -666,6 +666,37 @@
       });
     }
 
+    if (s > n / 2) {
+      const sitN = 2 * s - n;
+      const sitters = ordered.slice(0, sitN);
+      const pool = ordered.slice(sitN);
+      const firstMatches = [];
+      for (let i = 0, j = pool.length - 1; i < j; i++, j--) {
+        firstMatches.push({
+          p1: pool[i].id,
+          p2: pool[j].id,
+          wave: 1,
+          creditBp: false,
+          role: "bHighLow",
+          label: `入圍加賽 · ${pool[i].name} vs ${pool[j].name}`,
+        });
+      }
+      lines.push(
+        `${n} 人爭 ${s} 席：淨勝分最高 ${sitN} 人直入；其餘高打低，勝者入（只淘汰 ${n - s} 人）。`
+      );
+      return tagRuleB({
+        resolved: false,
+        needsMatches: true,
+        chain: "bHighLow",
+        tiedIds: ids,
+        take: s,
+        preQualifyIds: pre.concat(sitters.map((p) => p.id)),
+        firstMatches,
+        needsSeedShuffle,
+        lines,
+      });
+    }
+
     lines.push(
       `${n} 人爭 ${s} 席：種子選手／種子線小型淘汰，打贏出線。` +
         (n % 2 === 1
@@ -1300,6 +1331,59 @@
     return { resolved: true, qualifierIds: (po.preQualifyIds || []).concat([win]) };
   }
 
+  /** 規則 B 種子線：打完一輪後，剩下多過席就再按高打低／種子繼續，產生夠嘅勝者。 */
+  function resolveBSeedKo(group, h2h, po, nameOf) {
+    const matches = po.matches || [];
+    const take = po.take || 1;
+    const pre = po.preQualifyIds || [];
+    if (!matches.length || !allMatchesDone(matches)) {
+      return { resolved: false, nextMatches: [], chain: po.chain };
+    }
+    const maxWave = matches.reduce((n, m) => Math.max(n, m.wave || 1), 0);
+    const losers = new Set();
+    for (const m of matches) {
+      if (!m.done || !m.winner) continue;
+      losers.add(m.winner === m.p1 ? m.p2 : m.p1);
+    }
+    const remainingIds = (po.tiedIds || []).filter((id) => !losers.has(id));
+    if (remainingIds.length <= take) {
+      return {
+        resolved: true,
+        qualifierIds: pre.concat(remainingIds),
+        nextMatches: [],
+        chain: po.chain,
+      };
+    }
+    const remainingPlayers = remainingIds
+      .map((id) => group.find((p) => p.id === id))
+      .filter(Boolean);
+    const plan = planWinnerInB(remainingPlayers, take, [], []);
+    if (plan.resolved) {
+      return {
+        resolved: true,
+        qualifierIds: pre.concat(plan.qualifierIds || remainingIds.slice(0, take)),
+        nextMatches: [],
+        chain: po.chain,
+      };
+    }
+    const mat = materializeCutoff(plan, Math.random, nameOf);
+    const next = (mat.firstMatches || plan.firstMatches || []).map((d) => ({
+      ...d,
+      wave: maxWave + 1,
+    }));
+    if (!next.length) return { resolved: false, nextMatches: [], chain: po.chain };
+    return {
+      resolved: false,
+      nextMatches: next,
+      chain: po.chain,
+      take,
+      preQualifyIds: pre,
+      ko: mat.ko || po.ko,
+      bOrdered: true,
+      rule: "B",
+    };
+  }
+
   function resolvePlayoff(group, spots, h2h, po, playedFn) {
     if (!po || !po.chain) {
       const a = analyzeCutoff(group, spots, h2h);
@@ -1550,6 +1634,10 @@
       if (!allMatchesDone(matches)) return { resolved: false, nextMatches: [], chain: po.chain };
       const r = resolveByeChallengeMatch(po, group);
       return { ...r, nextMatches: [], chain: po.chain };
+    }
+
+    if (po.chain === "seedKo" && (po.rule === "B" || po.bOrdered)) {
+      return resolveBSeedKo(group, h2h, po, nameOf);
     }
 
     if (po.chain === "seedKo") {

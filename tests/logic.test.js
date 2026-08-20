@@ -793,6 +793,45 @@ console.log("\n── cutoff B: 只淘汰 1 人──");
   assert(out.qualifierIds.length === 3, "3 人入圍");
 }
 
+console.log("\n── cutoff B: 8 人 3 席繼續產生夠勝者──");
+{
+  const group = ["A", "B", "C", "D", "E", "F", "G", "H"].map((id, i) => PB(id, 20 - i * 2, 12));
+  const r = C.analyzeCutoff(group, 3, noH2h, optBOdd);
+  const built = C.materializeCutoff(r, () => 0, (id) => id);
+  assert(r.chain === "seedKo" && built.firstMatches.length === 4, "8 人 3 席首輪四場");
+  const po = {
+    chain: "seedKo",
+    rule: "B",
+    bOrdered: true,
+    ko: built.ko,
+    tiedIds: r.tiedIds,
+    take: 3,
+    preQualifyIds: [],
+    matches: built.firstMatches.map((x) => ({ ...x, done: true, winner: x.p1, p1Bp: 4, p2Bp: 0 })),
+  };
+  const mid = C.resolvePlayoff(group, 3, noH2h, po);
+  assert(!mid.resolved && mid.nextMatches && mid.nextMatches.length === 1, "4 個勝者爭 3 席：再打淘汰 1 人");
+  po.matches = po.matches.concat(
+    mid.nextMatches.map((x) => ({ ...x, done: true, winner: x.p1, p1Bp: 4, p2Bp: 0 }))
+  );
+  const out = C.resolvePlayoff(group, 3, noH2h, po);
+  assert(out.resolved && out.qualifierIds.length === 3, "最終 3 人入圍");
+  assert(!out.qualifierIds.includes("H") && !out.qualifierIds.includes("G"), "首輪負者不入");
+}
+{
+  const group = ["A", "B", "C", "D", "E", "F"].map((id, i) => PB(id, 20 - i * 2, 12));
+  const r = C.analyzeCutoff(group, 4, noH2h, optBOdd);
+  assert(r.chain === "bHighLow" && r.preQualifyIds.length === 2, "6 人 4 席：最高 2 人直入");
+  assert(r.firstMatches.length === 2, "其餘 4 人兩場");
+  const po = {
+    chain: "bHighLow",
+    preQualifyIds: r.preQualifyIds,
+    matches: r.firstMatches.map((x) => ({ ...x, done: true, winner: x.p1, p1Bp: 4, p2Bp: 0 })),
+  };
+  const out = C.resolvePlayoff(group, 4, noH2h, po);
+  assert(out.resolved && out.qualifierIds.length === 4, "6 人 4 席最終 4 人入圍");
+}
+
 console.log("\n════════════════════════");
 console.log(`結果：${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

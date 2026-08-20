@@ -165,7 +165,7 @@ function countRematches(pairs, playedSet) {
 }
 function byeCount(playerId) {
   let n = 0;
-  for (const r of state.rounds || []) {
+  for (const r of (state && state.rounds) || []) {
     for (const m of r.matches || []) {
       if (isByeMatch(m) && m.p1 === playerId) n++;
     }
@@ -327,7 +327,7 @@ function decorateGroup(group) {
     battlePoints: p.battlePoints,
     netPoints: p.netPoints || 0,
     swissPoints: p.swissPoints,
-    byeCount: byeCount(p.id),
+    byeCount: p.byeCount != null ? p.byeCount : byeCount(p.id),
     metaScore: p.metaScore || 0,
   }));
 }
