@@ -444,9 +444,60 @@ function defaultState() {
     rounds: [], // { round, locked, matches: [{ id, p1, p2, zone, zoneLabel, winner, p1Bp, p2Bp, done }] }
     knockout: null, // { bracketSize, rounds:[{name,matches}], third, final }
     cutPlayoff: null, // 入圍加賽 { spots, cutScore, playerIds, matches, chain, highId }
+    draw: defaultDraw(),
     updatedAt: null,
     _rev: 0,
   };
+}
+
+function defaultDraw() {
+  return {
+    extras: [],
+    excludedPlayerIds: [],
+    prizes: [],
+    results: [],
+  };
+}
+
+function normalizeDraw(d) {
+  const base = defaultDraw();
+  if (!d || typeof d !== "object") return base;
+  const extras = Array.isArray(d.extras)
+    ? d.extras
+        .map((e) => ({
+          id: String(e.id || uid("dx")),
+          name: String(e.name || "").trim(),
+          church: ["kcc", "ky", "out"].includes(e.church) ? e.church : "out",
+        }))
+        .filter((e) => e.name)
+    : [];
+  const prizes = Array.isArray(d.prizes)
+    ? d.prizes
+        .map((p) => ({
+          id: String(p.id || uid("prize")),
+          name: String(p.name || "").trim(),
+        }))
+        .filter((p) => p.name)
+    : [];
+  const results = Array.isArray(d.results)
+    ? d.results.map((r) => ({
+        prizeId: String(r.prizeId || ""),
+        prizeName: String(r.prizeName || ""),
+        winnerKey: String(r.winnerKey || ""),
+        winnerName: String(r.winnerName || ""),
+        church: r.church || "",
+        at: r.at || null,
+      }))
+    : [];
+  const excludedPlayerIds = Array.isArray(d.excludedPlayerIds)
+    ? d.excludedPlayerIds.map(String)
+    : [];
+  return { extras, prizes, results, excludedPlayerIds };
+}
+
+function ensureDraw() {
+  state.draw = normalizeDraw(state.draw);
+  return state.draw;
 }
 
 function migratePlayers(players) {
@@ -498,6 +549,7 @@ function loadState() {
     st.settings = normalizeSettings(parsed.settings || st.settings);
     st.players = migratePlayers(st.players);
     st.knockout = migrateKnockout(parsed.knockout || st.knockout);
+    st.draw = normalizeDraw(parsed.draw || st.draw);
     st._rev = parseInt(parsed._rev, 10) || 0;
     // 補上舊場次 zone（若無）
     const stations = Math.max(1, Math.min(st.settings.referees, st.settings.stadiums));
@@ -533,6 +585,7 @@ function saveState(opts = {}) {
         st.settings = normalizeSettings(st.settings || {});
         st.players = migratePlayers(st.players);
         st.knockout = migrateKnockout(st.knockout);
+        st.draw = normalizeDraw(st.draw);
         state = st;
       }
     } catch (_) {
@@ -602,6 +655,7 @@ function applyRemoteTournamentState(payload, opts = {}) {
   st.settings = normalizeSettings(st.settings || {});
   st.players = migratePlayers(st.players);
   st.knockout = migrateKnockout(st.knockout);
+  st.draw = normalizeDraw(st.draw);
   state = st;
   saveState({
     fromRemote: true,
@@ -663,6 +717,7 @@ function restoreBackupById(id) {
   state.settings = normalizeSettings(data.settings || state.settings);
   state.players = migratePlayers(data.players);
   state.knockout = migrateKnockout(data.knockout);
+  state.draw = normalizeDraw(data.draw);
   saveState();
   render();
   toast("已還原備份", "success");
@@ -3844,6 +3899,7 @@ function importJsonFile(file) {
       state.settings = normalizeSettings(data.settings || state.settings);
       state.players = migratePlayers(state.players);
       state.knockout = migrateKnockout(data.knockout);
+      state.draw = normalizeDraw(data.draw);
       saveState();
       render();
       toast("已還原備份", "success");
@@ -3906,6 +3962,7 @@ function render() {
   renderHistory();
   renderTies();
   renderKnockout();
+  renderDraw();
   renderBackupPanel();
   renderHeaderTime();
   updateSyncUi();
@@ -5269,6 +5326,335 @@ function renderKnockout() {
   });
 }
 
+// ─── 抽籤 ────────────────────────────────────────────────
+let drawRolling = false;
+
+function drawChurchLabel(id) {
+  if (id === "out") return "場外";
+  return churchLabel(id);
+}
+
+function drawPool() {
+  const d = ensureDraw();
+  const excluded = new Set(d.excludedPlayerIds);
+  const taken = new Set((d.results || []).map((r) => r.winnerKey));
+  const list = [];
+  for (const p of state.players) {
+    const key = "p:" + p.id;
+    if (excluded.has(p.id) || taken.has(key)) continue;
+    list.push({ key, id: p.id, name: p.name, church: p.church, source: "player" });
+  }
+  for (const e of d.extras) {
+    const key = "e:" + e.id;
+    if (taken.has(key)) continue;
+    list.push({ key, id: e.id, name: e.name, church: e.church || "out", source: "extra" });
+  }
+  return list;
+}
+
+function nextUndrawnPrize() {
+  const d = ensureDraw();
+  const drawn = new Set(d.results.map((r) => r.prizeId));
+  return d.prizes.find((p) => !drawn.has(p.id)) || null;
+}
+
+function addDrawExtra() {
+  if (!assertCanWrite()) return;
+  const name = document.getElementById("drawExtraName")?.value.trim();
+  if (!name) {
+    toast("請輸入姓名", "error");
+    return;
+  }
+  const church = getSelectedChurch("#drawExtraChurch") || "out";
+  const d = ensureDraw();
+  d.extras.push({ id: uid("dx"), name, church });
+  document.getElementById("drawExtraName").value = "";
+  saveState();
+  renderDraw();
+  toast(`已加入 ${name}`, "success");
+}
+
+function addDrawPrize() {
+  if (!assertCanWrite()) return;
+  const name = document.getElementById("drawPrizeName")?.value.trim();
+  if (!name) {
+    toast("請輸入獎品名稱", "error");
+    return;
+  }
+  const d = ensureDraw();
+  d.prizes.push({ id: uid("prize"), name });
+  document.getElementById("drawPrizeName").value = "";
+  saveState();
+  renderDraw();
+  toast(`已加入獎品「${name}」`, "success");
+}
+
+function setDrawPlayerIncluded(playerId, included) {
+  if (!assertCanWrite()) return;
+  const d = ensureDraw();
+  const set = new Set(d.excludedPlayerIds);
+  if (included) set.delete(playerId);
+  else set.add(playerId);
+  d.excludedPlayerIds = [...set];
+  saveState();
+  renderDraw();
+}
+
+function removeDrawExtra(id) {
+  if (!assertCanWrite()) return;
+  const d = ensureDraw();
+  d.extras = d.extras.filter((e) => e.id !== id);
+  saveState();
+  renderDraw();
+}
+
+function removeDrawPrize(id) {
+  if (!assertCanWrite()) return;
+  const d = ensureDraw();
+  if (d.results.some((r) => r.prizeId === id)) {
+    toast("已抽出嘅獎品請用「重抽」或先清除結果", "error");
+    return;
+  }
+  d.prizes = d.prizes.filter((p) => p.id !== id);
+  saveState();
+  renderDraw();
+}
+
+function resetDrawResults() {
+  if (!assertCanWrite()) return;
+  const d = ensureDraw();
+  if (!d.results.length) {
+    toast("未有抽出結果", "error");
+    return;
+  }
+  if (!confirm("清除全部抽出結果？名單同獎品會保留。")) return;
+  d.results = [];
+  saveState();
+  renderDraw();
+  toast("已清除抽出結果", "success");
+}
+
+function redrawPrize(prizeId) {
+  if (!assertCanWrite() || drawRolling) return;
+  const d = ensureDraw();
+  const before = d.results.length;
+  d.results = d.results.filter((r) => r.prizeId !== prizeId);
+  if (d.results.length === before) return;
+  saveState();
+  runDrawForPrize(prizeId);
+}
+
+function drawNextPrize() {
+  if (!assertCanWrite() || drawRolling) return;
+  const prize = nextUndrawnPrize();
+  if (!prize) {
+    toast(ensureDraw().prizes.length ? "獎品已全部抽出" : "請先加入獎品", "error");
+    return;
+  }
+  runDrawForPrize(prize.id);
+}
+
+function runDrawForPrize(prizeId) {
+  const d = ensureDraw();
+  const prize = d.prizes.find((p) => p.id === prizeId);
+  if (!prize) return;
+  const pool = drawPool();
+  if (!pool.length) {
+    toast("名單已空，無法抽出", "error");
+    renderDraw();
+    return;
+  }
+  const winner = pool[Math.floor(Math.random() * pool.length)];
+  const reveal = document.getElementById("drawReveal");
+  drawRolling = true;
+  if (reveal) {
+    reveal.classList.add("rolling");
+    let i = 0;
+    const ticks = Math.min(22, 8 + pool.length);
+    const timer = setInterval(() => {
+      const c = pool[i % pool.length];
+      reveal.textContent = c.name;
+      i++;
+      if (i >= ticks) {
+        clearInterval(timer);
+        reveal.classList.remove("rolling");
+        reveal.classList.add("landed");
+        reveal.textContent = winner.name;
+        d.results.push({
+          prizeId: prize.id,
+          prizeName: prize.name,
+          winnerKey: winner.key,
+          winnerName: winner.name,
+          church: winner.church,
+          at: new Date().toISOString(),
+        });
+        saveState();
+        drawRolling = false;
+        renderDraw();
+        toast(`${prize.name} → ${winner.name}`, "success");
+        setTimeout(() => reveal.classList.remove("landed"), 1600);
+      }
+    }, 70);
+  } else {
+    d.results.push({
+      prizeId: prize.id,
+      prizeName: prize.name,
+      winnerKey: winner.key,
+      winnerName: winner.name,
+      church: winner.church,
+      at: new Date().toISOString(),
+    });
+    saveState();
+    drawRolling = false;
+    renderDraw();
+  }
+}
+
+function renderDraw() {
+  const d = ensureDraw();
+  const pool = drawPool();
+  const countEl = document.getElementById("drawPoolCount");
+  if (countEl) countEl.textContent = `${pool.length} 人可抽`;
+
+  const playerList = document.getElementById("drawPlayerList");
+  if (playerList) {
+    if (!state.players.length) {
+      playerList.innerHTML = `<div class="meta">尚未有參賽選手。加入選手後會自動列入抽籤名單。</div>`;
+    } else {
+      const excluded = new Set(d.excludedPlayerIds);
+      const taken = new Set(d.results.map((r) => r.winnerKey));
+      playerList.innerHTML = state.players
+        .map((p) => {
+          const key = "p:" + p.id;
+          const won = taken.has(key);
+          const on = !excluded.has(p.id);
+          return `<label class="draw-row ${won ? "won" : ""} ${on ? "" : "off"}">
+            <input type="checkbox" data-draw-player="${escapeHtml(p.id)}" ${on ? "checked" : ""} ${won ? "disabled" : ""} />
+            <span class="draw-name">${escapeHtml(p.name)}</span>
+            <span class="church-tag ${p.church}">${churchLabel(p.church)}</span>
+            ${won ? `<span class="meta">已抽出</span>` : ""}
+          </label>`;
+        })
+        .join("");
+    }
+  }
+
+  const extraList = document.getElementById("drawExtraList");
+  if (extraList) {
+    if (!d.extras.length) {
+      extraList.innerHTML = `<div class="meta">未有場外名單。</div>`;
+    } else {
+      const taken = new Set(d.results.map((r) => r.winnerKey));
+      extraList.innerHTML = d.extras
+        .map((e) => {
+          const won = taken.has("e:" + e.id);
+          return `<div class="draw-row ${won ? "won" : ""}">
+            <span class="draw-name">${escapeHtml(e.name)}</span>
+            <span class="church-tag ${e.church === "out" ? "" : e.church}">${drawChurchLabel(e.church)}</span>
+            ${won ? `<span class="meta">已抽出</span>` : `<button type="button" class="btn-icon" data-draw-del-extra="${escapeHtml(e.id)}" title="移出名單">✕</button>`}
+          </div>`;
+        })
+        .join("");
+    }
+  }
+
+  const prizeList = document.getElementById("drawPrizeList");
+  if (prizeList) {
+    if (!d.prizes.length) {
+      prizeList.innerHTML = `<div class="meta">尚未加入獎品。</div>`;
+    } else {
+      const byPrize = new Map(d.results.map((r) => [r.prizeId, r]));
+      prizeList.innerHTML = d.prizes
+        .map((p, i) => {
+          const r = byPrize.get(p.id);
+          return `<div class="draw-prize ${r ? "done" : ""}">
+            <div>
+              <strong>${i + 1}. ${escapeHtml(p.name)}</strong>
+              ${r ? `<div class="meta">→ ${escapeHtml(r.winnerName)}</div>` : ""}
+            </div>
+            <div class="btn-row">
+              ${
+                r
+                  ? `<button type="button" class="btn btn-ghost btn-sm" data-draw-redraw="${escapeHtml(p.id)}">重抽</button>`
+                  : `<button type="button" class="btn btn-secondary btn-sm" data-draw-one="${escapeHtml(p.id)}">抽出</button>
+                     <button type="button" class="btn-icon" data-draw-del-prize="${escapeHtml(p.id)}" title="刪除">✕</button>`
+              }
+            </div>
+          </div>`;
+        })
+        .join("");
+    }
+  }
+
+  const results = document.getElementById("drawResults");
+  if (results) {
+    if (!d.results.length) {
+      results.innerHTML = `<div class="meta">尚未抽出。</div>`;
+    } else {
+      results.innerHTML = `<ol class="draw-result-list">${d.results
+        .map(
+          (r) =>
+            `<li><strong>${escapeHtml(r.prizeName)}</strong> → ${escapeHtml(r.winnerName)}
+              <span class="church-tag ${r.church === "out" ? "" : r.church || ""}">${drawChurchLabel(r.church)}</span></li>`
+        )
+        .join("")}</ol>`;
+    }
+  }
+
+  const reveal = document.getElementById("drawReveal");
+  if (reveal && !drawRolling) {
+    const last = d.results[d.results.length - 1];
+    reveal.textContent = last ? last.winnerName : "—";
+    reveal.classList.toggle("landed", false);
+    reveal.classList.toggle("rolling", false);
+  }
+
+  const nextBtn = document.getElementById("btnDrawNext");
+  if (nextBtn) {
+    const next = nextUndrawnPrize();
+    nextBtn.disabled = drawRolling || !next || !drawPool().length;
+    nextBtn.textContent = next ? `抽出：${next.name}` : d.prizes.length ? "已全部抽出" : "抽出下一項";
+  }
+}
+
+function bindDrawUi() {
+  document.getElementById("btnDrawAddExtra")?.addEventListener("click", addDrawExtra);
+  document.getElementById("drawExtraName")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") addDrawExtra();
+  });
+  document.getElementById("btnDrawAddPrize")?.addEventListener("click", addDrawPrize);
+  document.getElementById("drawPrizeName")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") addDrawPrize();
+  });
+  document.getElementById("btnDrawNext")?.addEventListener("click", drawNextPrize);
+  document.getElementById("btnDrawResetResults")?.addEventListener("click", resetDrawResults);
+
+  const extraChurch = document.getElementById("drawExtraChurch");
+  if (extraChurch) {
+    syncChurchCheckStyles(extraChurch);
+    extraChurch.querySelectorAll('input[type="radio"]').forEach((radio) => {
+      radio.addEventListener("change", () => syncChurchCheckStyles(extraChurch));
+    });
+  }
+
+  const tab = document.getElementById("tab-draw");
+  tab?.addEventListener("change", (e) => {
+    const id = e.target?.dataset?.drawPlayer;
+    if (!id) return;
+    setDrawPlayerIncluded(id, !!e.target.checked);
+  });
+  tab?.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-draw-del-extra],[data-draw-del-prize],[data-draw-one],[data-draw-redraw]");
+    if (!t) return;
+    if (t.dataset.drawDelExtra) removeDrawExtra(t.dataset.drawDelExtra);
+    else if (t.dataset.drawDelPrize) removeDrawPrize(t.dataset.drawDelPrize);
+    else if (t.dataset.drawOne) {
+      if (drawRolling) return;
+      runDrawForPrize(t.dataset.drawOne);
+    } else if (t.dataset.drawRedraw) redrawPrize(t.dataset.drawRedraw);
+  });
+}
+
 // ─── Score Modal ─────────────────────────────────────────
 let scoreModalMatchId = null;
 let scoreModalWinner = null;
@@ -5774,7 +6160,7 @@ function closeManualModal() {
 
 // ─── Tabs ────────────────────────────────────────────────
 const TAB_STORAGE_KEY = "baoluo-cup-active-tab";
-const VALID_TABS = ["settings", "rules", "players", "pairings", "standings", "history", "ties", "knockout", "export"];
+const VALID_TABS = ["settings", "rules", "players", "pairings", "standings", "history", "ties", "knockout", "draw", "export"];
 
 function getSavedTab() {
   try {
@@ -5818,6 +6204,7 @@ function switchTab(name, opts = {}) {
   if (name === "standings") renderStandings();
   if (name === "history") renderHistory();
   if (name === "rules") renderRules();
+  if (name === "draw") renderDraw();
 }
 
 // ─── Init ────────────────────────────────────────────────
@@ -6131,6 +6518,7 @@ function init() {
     if (VALID_TABS.includes(hash)) switchTab(hash, { fromHash: true });
   });
   bindRulesCollapse();
+  bindDrawUi();
   // 還原分頁：URL #pairings 優先，其次 localStorage（refresh 會留喺同一分頁）
   switchTab(getInitialTab());
 

@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&family=Oswald:wght@600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260820j" />
+  <link rel="stylesheet" href="styles.css?v=20260820k" />
 </head>
 <body>
   <!-- 官方風格螢光黃綠 Banner：教會 | 寶螺盃 | BX Logo -->
@@ -72,6 +72,7 @@
       <button class="nav-btn" data-tab="history">④ 詳細戰績</button>
       <button class="nav-btn" data-tab="ties">⑤ 同分</button>
       <button class="nav-btn" data-tab="knockout">⑥ 淘汰賽</button>
+      <button class="nav-btn" data-tab="draw">抽籤</button>
       <button class="nav-btn" data-tab="export">⑦ 匯出</button>
     </nav>
 
@@ -606,6 +607,60 @@
         </div>
       </section>
 
+      <!-- ===== DRAW ===== -->
+      <section id="tab-draw" class="tab">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>抽籤 <span class="badge" id="drawPoolCount">0 人可抽</span></h2>
+            <div class="btn-row">
+              <button type="button" class="btn btn-primary" id="btnDrawNext">抽出下一項</button>
+              <button type="button" class="btn btn-ghost" id="btnDrawResetResults">清除結果</button>
+            </div>
+          </div>
+          <p class="hint">預設<strong>全部參賽選手</strong>都在名單內。可剔除選手，或加入場外人士。抽出後該人唔會再入下一項。</p>
+          <div id="drawReveal" class="draw-reveal" aria-live="polite">—</div>
+          <div id="drawResults" class="draw-results mt-16"></div>
+        </div>
+
+        <div class="grid-2 mt-16">
+          <div class="panel">
+            <h3 class="section-label">抽籤名單</h3>
+            <div class="draw-subhead">參賽選手（預設全部參加）</div>
+            <div id="drawPlayerList" class="draw-list"></div>
+            <div class="draw-subhead mt-16">場外名單</div>
+            <div class="add-player-form">
+              <input type="text" id="drawExtraName" class="input" placeholder="姓名" maxlength="20" />
+              <div class="church-checks" id="drawExtraChurch" role="radiogroup" aria-label="所屬">
+                <label class="church-check kcc">
+                  <input type="radio" name="drawExtraChurch" value="kcc" />
+                  <span>九龍城基督徒會</span>
+                </label>
+                <label class="church-check ky">
+                  <input type="radio" name="drawExtraChurch" value="ky" />
+                  <span>宣道會基蔭堂</span>
+                </label>
+                <label class="church-check">
+                  <input type="radio" name="drawExtraChurch" value="out" checked />
+                  <span>場外</span>
+                </label>
+              </div>
+              <button class="btn btn-secondary" id="btnDrawAddExtra" type="button">加入名單</button>
+            </div>
+            <div id="drawExtraList" class="draw-list mt-12"></div>
+          </div>
+
+          <div class="panel">
+            <h3 class="section-label">獎品</h3>
+            <div class="form-row">
+              <input type="text" id="drawPrizeName" class="input" placeholder="獎品名稱" maxlength="40" />
+              <button class="btn btn-secondary" id="btnDrawAddPrize" type="button">加入獎品</button>
+            </div>
+            <p class="meta mt-8">按列表由上至下抽出。可刪未抽出嘅項目，或重抽已抽出嘅項目。</p>
+            <div id="drawPrizeList" class="draw-prize-list mt-12"></div>
+          </div>
+        </div>
+      </section>
+
       <!-- ===== EXPORT ===== -->
       <section id="tab-export" class="tab">
         <div class="panel">
@@ -766,6 +821,6 @@
   <!-- cache-bust：確保 GitHub Pages 載入最新 JS -->
   <script src="parts.js?v=20260819e"></script>
   <script src="cutoff.js?v=20260820i"></script>
-  <script src="app.js?v=20260820j"></script>
+  <script src="app.js?v=20260820k"></script>
 </body>
 </html>

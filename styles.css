@@ -2021,6 +2021,13 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
   color: var(--ky);
   box-shadow: 0 0 0 1px var(--ky);
 }
+.church-check.on:not(.kcc):not(.ky),
+.church-check:has(input:checked):not(.kcc):not(.ky) {
+  border-color: var(--accent);
+  background: rgba(200, 255, 0, 0.12);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(200, 255, 0, 0.35);
+}
 .church-check:not(.on):not(:has(input:checked)) {
   opacity: 0.85;
 }
@@ -3191,9 +3198,104 @@ body.sync-readonly #btnAddPlayer,
 body.sync-readonly #btnFillDemo,
 body.sync-readonly #btnClearPlayers,
 body.sync-readonly #btnStartTournament,
-body.sync-readonly #btnCloudCreate {
+body.sync-readonly #btnCloudCreate,
+body.sync-readonly #btnDrawNext,
+body.sync-readonly #btnDrawAddExtra,
+body.sync-readonly #btnDrawAddPrize,
+body.sync-readonly #btnDrawResetResults {
   opacity: 0.45;
   pointer-events: none;
+}
+
+/* 抽籤 */
+.draw-reveal {
+  margin-top: 8px;
+  min-height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 6vw, 3rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(200, 255, 0, 0.35);
+  border-radius: 14px;
+  text-align: center;
+  padding: 12px 16px;
+}
+.draw-reveal.rolling {
+  color: #fff;
+  opacity: 0.85;
+}
+.draw-reveal.landed {
+  box-shadow: 0 0 24px rgba(200, 255, 0, 0.35);
+}
+.draw-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  overflow: auto;
+}
+.draw-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.28);
+}
+.draw-row.off {
+  opacity: 0.5;
+}
+.draw-row.won {
+  border-color: rgba(200, 255, 0, 0.35);
+}
+.draw-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+.draw-name {
+  font-weight: 800;
+  flex: 1;
+}
+.draw-subhead {
+  font-weight: 800;
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+}
+.draw-prize-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.draw-prize {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.28);
+}
+.draw-prize.done {
+  border-color: rgba(200, 255, 0, 0.4);
+}
+.draw-result-list {
+  margin: 0;
+  padding-left: 1.3em;
+  line-height: 1.7;
+}
+.draw-result-list li {
+  margin: 4px 0;
+}
+#tab-draw .church-checks {
+  flex: 1 1 100%;
 }
 
 /* 規則頁：兩大塊可收合 */
