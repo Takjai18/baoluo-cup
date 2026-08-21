@@ -637,12 +637,22 @@ function assertCanWrite() {
   return true;
 }
 
+function hydrateTournamentState(parsed) {
+  const st = { ...defaultState(), ...parsed };
+  st.settings = normalizeSettings(st.settings || {});
+  st.players = migratePlayers(st.players);
+  st.knockout = migrateKnockout(st.knockout);
+  st.draw = normalizeDraw(st.draw);
+  return st;
+}
+
 function applyRemoteTournamentState(payload, opts = {}) {
   if (!payload || !payload.state) return;
   const remoteRev = parseInt(payload.rev, 10) || 0;
   const localRev = parseInt(state._rev, 10) || 0;
   const role = window.BaoluoSync?.getStatus?.()?.role || "viewer";
   const justPushed = window.BaoluoSync?.getStatus?.()?.lastPushedRev || 0;
+  const pendingPush = !!window.BaoluoSync?.getStatus?.()?.pendingPush;
   const apply = opts.force || payload.merged
     ? true
     : window.BaoluoSync?.shouldApplyRemote
@@ -650,21 +660,31 @@ function applyRemoteTournamentState(payload, opts = {}) {
       : remoteRev > localRev;
   if (!apply) return;
 
-  // 主持本地有更新但未推完時，遠端突然更新 → 確認
-  if (role === "host" && remoteRev > localRev && remoteRev > justPushed) {
-    // 正常：另一部主持機寫入
-  }
-
   const parsed = payload.state;
-  const st = { ...defaultState(), ...parsed };
-  st.settings = normalizeSettings(st.settings || {});
-  st.players = migratePlayers(st.players);
-  st.knockout = migrateKnockout(st.knockout);
-  st.draw = normalizeDraw(st.draw);
-  state = st;
+  const pendingLocal =
+    role === "host" &&
+    !opts.force &&
+    !payload.merged &&
+    typeof window.BaoluoSync?.mergeTournamentStates === "function" &&
+    (pendingPush || localRev > justPushed);
+
+  let st;
+  if (pendingLocal) {
+    // 多部主持同時入分：遠端快照唔可以整份蓋走尚未推送嘅本機賽果。
+    // 合併進同一個 state 物件，等已排程嘅 schedulePush 仍然推到合併後資料。
+    const merged = window.BaoluoSync.mergeTournamentStates(state, parsed);
+    st = hydrateTournamentState(merged);
+    Object.keys(state).forEach((k) => {
+      if (!(k in st)) delete state[k];
+    });
+    Object.assign(state, st);
+  } else {
+    st = hydrateTournamentState(parsed);
+    state = st;
+  }
   saveState({
     fromRemote: true,
-    remoteRev,
+    remoteRev: pendingLocal ? Math.max(localRev, remoteRev) : remoteRev,
     remoteUpdatedAt: payload.updatedAt || null,
   });
   render();
@@ -3595,6 +3615,7 @@ async function commitMatchBattles(matchId, battles, forceComplete) {
 }
 
 function lockRoundAndAdvance() {
+  if (!assertCanWrite()) return;
   const round = currentRoundObj();
   if (!round) return;
   if (!round.matches.every((m) => m.done)) {
@@ -3737,6 +3758,7 @@ function koMatchHasDownstream(matchRef) {
 }
 
 function startKnockout() {
+  if (!assertCanWrite()) return;
   if (!ensureQualifyEngineForAction("產生淘汰賽")) return;
   const need = getSwissRounds();
   const relevant = state.rounds.filter((r) => r.round <= need);
