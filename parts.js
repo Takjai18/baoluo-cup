@@ -354,6 +354,8 @@ function normalizePlayer(p) {
   }
   if (typeof p.deckChecked !== "boolean") p.deckChecked = false;
   if (typeof p.late !== "boolean") p.late = false;
+  if (p.lateAt != null && p.lateAt !== "") p.lateAt = String(p.lateAt);
+  if (p.nameAt != null && p.nameAt !== "") p.nameAt = String(p.nameAt);
   return p;
 }
 

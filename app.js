@@ -141,7 +141,7 @@ function warnSwissRounds(playerCount, swissRounds, koSize) {
   if (a.n % 2 === 1) {
     msgs.push({
       level: "ok",
-      text: `單數（${a.n} 人）每輪一人坐場。準時選手坐場＝自動獲勝 +1；遲到者優先坐場但計 0–4 負。平時：未曾休息 → 勝場高 → 曾打過更高名次 → BP。僅最後一輪（準時選手）加：已穩入圍 → 已無希望入圍。`,
+      text: `單數（${a.n} 人）每輪一人坐場。準時坐場＝自動獲勝 +1。已知會遲到者勾「遲到」：優先坐場但計 0–4 負；若對上準時選手亦自動 0–4。到達後取消勾選，之後輪次當準時（本輪已記嘅 0–4 保留）。平時坐場：未曾休息 → 勝場高 → 曾打過更高名次 → BP。僅最後一輪（準時選手）加：已穩入圍 → 已無希望入圍。`,
     });
   }
   return { advice: a, messages: msgs };
@@ -347,7 +347,7 @@ function updateQualifyRuleHint(rule) {
   if (!hint) return;
   if (rule === "B") {
     hint.innerHTML =
-      "規則 B 為簡易入圍：獎勵壓制（淨勝分）。雙數先睇紙上（淨勝分 → 總 BP → 對賽）；單數扣坐場分後爭席組打贏出線。詳情見「規則」頁。";
+      "規則 B 為簡易入圍：獎勵壓制（淨勝分）。而家係雙數就先睇紙上（淨勝分 → 總 BP → 對賽）；而家係單數就扣坐場分後爭席組打贏出線。單數開場之後加人變成雙數：仍然扣過往自動勝再切線，但改行紙上（唔再逼爭席組必打）。詳情見「規則」頁。";
   } else {
     hint.innerHTML =
       "規則 A 為完整入圍決策樹（坐場、BP、對賽、加賽多數打贏≠入圍）。詳情見「規則」頁。";
@@ -369,6 +369,11 @@ function ruleBUsesByeAdjust() {
   if (getQualifyRule() !== "B") return false;
   if (getPairingPlayerCount() % 2 === 1) return true;
   return state.players.some((p) => byeCount(p.id) > 0);
+}
+
+/** 規則 B 第 3 層「爭席組必打」只跟而家人數係單定雙，唔跟開場時係單數。 */
+function ruleBOddPlayoffPath() {
+  return getQualifyRule() === "B" && getPairingPlayerCount() % 2 === 1;
 }
 
 function getMatchesPerRound() {
@@ -1042,7 +1047,7 @@ function getCutoffContext() {
   const lockedIn = ranked.filter((p) => cutoffScoreOf(p, byeAdjust) > cutScore);
   const group = ranked.filter((p) => cutoffScoreOf(p, byeAdjust) === cutScore);
   const spots = koN - lockedIn.length;
-  const oddPath = byeAdjust;
+  const oddPath = ruleBOddPlayoffPath();
   if (spots <= 0 || group.length <= spots) {
     return { needed: false, resolved: true, koN, ranked, lockedIn, group, spots, cutScore, oddPath, byeAdjust };
   }
@@ -1226,16 +1231,16 @@ function generateCutoffPlayoff() {
   saveState({ backup: "產生入圍加賽" });
   render();
   switchTab("pairings");
-  const winIn =
-    getQualifyRule() === "B" ||
-    built.chain === "seedKo" ||
-    built.chain === "elim1" ||
-    built.chain === "crossDraw" ||
-    (built.chain || "").startsWith("b");
-  const hint = winIn
+  const hint = isWinInPlayoff(state.cutPlayoff)
     ? "打贏出線（唔計 BP）"
     : "先到 4，打完加本場 BP 再比（打贏唔等於入圍）";
   toast(`已產生入圍加賽。${hint}`, "success");
+}
+
+function isWinInPlayoff(po) {
+  if (getQualifyRule() === "B") return true;
+  const c = String(po && po.chain ? po.chain : "");
+  return c === "seedKo" || c === "elim1" || c === "crossDraw" || c.startsWith("b");
 }
 
 function playoffQualifiers(ctx) {
@@ -2133,6 +2138,7 @@ function addPlayer(name, church, opts = {}) {
   }
   const p = makePlayer(name, church);
   p.late = lateJoin || !!opts.late;
+  if (p.late) p.lateAt = new Date().toISOString();
   state.players.push(p);
   saveState();
   render();
@@ -2157,7 +2163,7 @@ function maybeIncludeLateInCurrentRound(player) {
   }
   if (
     confirm(
-      `${player.name} 已標為遲到。\n將重新產生本輪對戰表，盡量唔好讓準時選手對上遲到選手。\n單數時遲到者優先坐場（坐場計 0–4 負，唔係自動勝）。若對上，遲到方自動 0–4。重配？`
+      `${player.name} 已標為遲到（已知會遲到、尚未到場）。\n將重配本輪：遲到者優先坐場（0–4 負）或對上準時自動 0–4。\n到場後請取消「遲到」勾選，之後輪次當準時。重配？`
     )
   ) {
     state.rounds = state.rounds.filter((r) => r.round !== round.round);
@@ -2176,19 +2182,14 @@ function setPlayerLate(id, late) {
   const p = playerById(id);
   if (!p) return;
   p.late = !!late;
+  p.lateAt = new Date().toISOString();
+  let clearedForfeit = false;
   const round = currentRoundObj();
   if (round && !round.locked) {
     round.matches.forEach((m) => {
       if (isByeMatch(m) && m.p1 === id) {
         if (late) applyLateSitLossIfNeeded(m);
-        else {
-          m.lateSitLoss = false;
-          m.winner = m.p1;
-          m.p1Bp = 0;
-          m.p2Bp = 0;
-          m.done = true;
-          m.draw = false;
-        }
+        // 取消遲到：本輪已坐場嘅 0–4 保留（之後輪次先當準時）
         return;
       }
       if (m.lateForfeit) {
@@ -2201,6 +2202,7 @@ function setPlayerLate(id, late) {
           m.p1Bp = 0;
           m.p2Bp = 0;
           m.battles = emptyBattles();
+          clearedForfeit = true;
         }
       } else if (!m.done) {
         applyLateForfeitIfNeeded(m);
@@ -2209,6 +2211,14 @@ function setPlayerLate(id, late) {
   }
   saveState();
   render();
+  if (!late) {
+    toast(
+      clearedForfeit
+        ? `${p.name} 已到場：本場改為正式對賽（可入分）。之後輪次當準時，唔會再自動 0–4。`
+        : `${p.name} 已取消遲到。本輪已記嘅坐場 0–4 會保留；之後輪次當準時配對。`,
+      "success"
+    );
+  }
 }
 
 function removePlayer(id) {
@@ -2225,6 +2235,7 @@ function updatePlayerName(id, name) {
   const p = playerById(id);
   if (!p) return;
   p.name = (name || "").trim() || p.name;
+  p.nameAt = new Date().toISOString();
   saveState();
 }
 
@@ -4287,7 +4298,7 @@ function renderPlayers() {
                 <span>基蔭</span>
               </label>
             </div>
-            <label class="pc-late-check ${p.late ? "on" : ""}">
+            <label class="pc-late-check ${p.late ? "on" : ""}" title="已知會遲到、尚未到場先勾。到達後取消：之後輪次當準時，唔再自動 0–4。本輪已記嘅坐場 0–4 會保留。">
               <input type="checkbox" class="pc-late-input" data-id="${p.id}" ${p.late ? "checked" : ""} />
               <span>遲到</span>
             </label>
@@ -4708,9 +4719,7 @@ function renderPairings() {
         <div class="zone-block-head">
           <span class="zone-badge">入圍加賽</span>
           <span class="meta">${po.matches.filter((m) => m.done).length} / ${po.matches.length} 場 · 爭 ${po.koN || ""} 強餘額 · ${
-            po.chain === "seedKo" || po.chain === "elim1" || po.chain === "crossDraw"
-              ? "打贏出線"
-              : "打完加本場 BP 再比（打贏唔等於入圍）"
+            isWinInPlayoff(po) ? "打贏出線" : "打完加本場 BP 再比（打贏唔等於入圍）"
           }</span>
         </div>
         <div class="match-grid zone-matches">
@@ -5387,7 +5396,7 @@ function renderTies() {
         <div class="tie-result">${plan.lines.map((t) => `• ${escapeHtml(t)}`).join("<br>")}</div>
         <p class="hint" style="margin-top:10px">入圍規則：<strong>${escapeHtml(qualifyRuleLabel(getQualifyRule()))}</strong>。${
           getQualifyRule() === "B"
-            ? "獎勵壓制：淨勝分先於總 BP。雙數可先用紙上分；單數扣坐場分後爭席組加賽。<strong>打贏就入圍</strong>。種子選手／種子線跟淨勝分（再總 BP、對賽、登記陀螺 T0×2+T1×1）。"
+            ? "獎勵壓制：淨勝分先於總 BP。而家雙數可先用紙上分；而家單數扣坐場分後爭席組加賽。<strong>打贏就入圍</strong>。單數開場後加人變雙數：仍然扣過往自動勝，但改行紙上。種子選手／種子線跟淨勝分（再總 BP、對賽、登記陀螺 T0×2+T1×1）。"
             : "入圍同種子分開。不同自動獲勝次數唔直接用瑞士總 BP 比。加賽多數情況：先到 4（最多 6），打完加本場 BP 再比，<strong>打贏唔等於入圍</strong>。5 人以上真同分先至抽籤小型淘汰（打贏出線）。"
         }</p>
         <div class="btn-row wrap mt-16">

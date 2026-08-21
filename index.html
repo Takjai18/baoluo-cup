@@ -180,7 +180,7 @@
             <h2>☁ 雲端同步（多裝置）</h2>
           </div>
           <div class="hint">
-            用<strong>比賽 ID</strong>讓多部電腦睇同一場；輸入<strong>主持碼</strong>先可以改分。
+            用<strong>比賽 ID</strong>讓多部電腦睇同一場。多部計分機都可以輸入<strong>主持碼</strong>一齊改分（系統會合併賽果）；只填 ID、唔填主持碼＝只讀／投影。
             未設定 Firebase 時呢度會提示，App 仍可本機單機用。
           </div>
           <div id="cloudSyncStatus" class="sync-status-box mt-16">未連線 · 本機模式</div>
@@ -399,20 +399,20 @@
 
                 <h4>第 1 層：瑞士勝場切線</h4>
                 <ol>
-                  <li><strong>雙數參賽</strong>：按瑞士勝場。第 K 名嘅勝場＝裁切分 C。高過 C 鎖定入圍，低過 C 出局，等於 C 為爭席組。</li>
-                  <li><strong>單數參賽</strong>（或場上有人坐過場）：每人先扣自動獲勝次數，再用扣完後嘅勝場切線。高過線 100% 入，低過線 100% 出局，等於線而且人多過席＝爭席組。</li>
+                  <li><strong>雙數參賽、全程無人自動勝</strong>：按瑞士勝場。第 K 名嘅勝場＝裁切分 C。高過 C 鎖定入圍，低過 C 出局，等於 C 為爭席組。</li>
+                  <li><strong>而家單數，或曾經有人自動勝</strong>（包括單數開場後加人變成雙數）：每人先扣自動獲勝次數，再用扣完後嘅勝場切線。高過線 100% 入，低過線 100% 出局，等於線而且人多過席＝爭席組。</li>
                   <li>爭席組人數 ≤ 餘席 → 全部入。</li>
                 </ol>
 
-                <h4>第 2 層：雙數場 · 紙上先分</h4>
-                <p>爭席組未加賽前：<strong>總淨勝分 → 總 BP → 對賽</strong>。高過線先入，低過線出局。</p>
+                <h4>第 2 層：而家雙數 · 紙上先分</h4>
+                <p>跟<strong>而家場上人數</strong>（唔跟開場時）。爭席組未加賽前：<strong>總淨勝分 → 總 BP → 對賽</strong>。高過線先入，低過線出局。單數開場之後加人變成雙數，亦行呢層。</p>
                 <ul>
                   <li><strong>2 人 1 席</strong>：有對賽則勝方入；未曾對賽則加賽，勝者入。</li>
                   <li>多人仍然同一條線 → 第 4 層加賽。</li>
                 </ul>
 
-                <h4>第 3 層：單數場 · 爭席組直接打</h4>
-                <p>扣坐場分後嘅爭席組<strong>一律加賽</strong>（唔用紙上淨勝分跳過）。淨勝分只用嚟排邊個打邊個、邊個做種子。</p>
+                <h4>第 3 層：而家單數 · 爭席組直接打</h4>
+                <p>只喺<strong>而家場上人數係單數</strong>時用。扣坐場分後嘅爭席組<strong>一律加賽</strong>（唔用紙上淨勝分跳過）。淨勝分只用嚟排邊個打邊個、邊個做種子。</p>
 
                 <h4>第 4 層：加賽點分組（打贏出線）</h4>
                 <p>排法：淨勝分高至低 → 總 BP → 陀螺種子分低至高 → 仍然一樣就抽籤。</p>
@@ -489,7 +489,8 @@
             <div class="church-summary mt-12" id="churchSummary"></div>
             <div class="hint mt-12" style="margin-bottom:0">
               點選一個教會（二選一），輸入姓名後按「預先登記」。比賽開始後仍可「加入遲到選手」。
-              選手卡可勾「遲到」：單數場遲到者優先坐場（坐場計 0–4 負，唔係自動勝）；若準時選手對上遲到者，遲到方自動 0–4。
+              「遲到」係畀<strong>已知會遲到、尚未到場</strong>嘅選手：單數優先坐場（0–4 負，唔係自動勝）；雙數若對上準時選手亦自動 0–4（遲到期間打唔到真賽係正常）。
+              <strong>到達後請取消勾選</strong>，之後輪次當準時、唔再自動 0–4。本輪已記嘅坐場 0–4 會保留。
               上蓋：<strong>BX49</strong> / <strong>UX15</strong> / <strong>CX07</strong> / <strong>CX15</strong>（Enter 確認）。
               CX 可選紋章＋主刃＋輔助（Expand 另需超越戰刃）。固鎖完整列表；軸心代碼（H、LR、J…）。
             </div>
@@ -833,10 +834,10 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js?v=20260819e"></script>
-  <script src="sync.js?v=20260819e"></script>
+  <script src="sync.js?v=20260822a"></script>
   <!-- cache-bust：確保 GitHub Pages 載入最新 JS -->
-  <script src="parts.js?v=20260820p"></script>
+  <script src="parts.js?v=20260822a"></script>
   <script src="cutoff.js?v=20260820i"></script>
-  <script src="app.js?v=20260820r"></script>
+  <script src="app.js?v=20260822a"></script>
 </body>
 </html>

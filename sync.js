@@ -334,24 +334,69 @@
     return m.p1 < m.p2 ? m.p1 + "|" + m.p2 : m.p2 + "|" + m.p1;
   }
 
-  function mergeMatchLists(localList, remoteList) {
-    const out = [];
-    const usedRemote = new Set();
-    const remote = remoteList || [];
-    const local = localList || [];
-    for (const lm of local) {
-      const byId = remote.find((rm) => rm.id && lm.id && rm.id === lm.id);
-      const byPair = !byId ? remote.find((rm) => pairKeyOf(rm) && pairKeyOf(rm) === pairKeyOf(lm)) : null;
-      const rm = byId || byPair;
-      if (rm) {
-        usedRemote.add(rm);
-        out.push(richerMatch(lm, rm));
-      } else {
-        out.push(lm);
-      }
+  function listProgress(list) {
+    return (list || []).reduce((n, m) => n + matchProgress(m), 0);
+  }
+
+  function stampMs(v) {
+    if (v == null || v === "") return 0;
+    const n = Date.parse(v);
+    if (Number.isFinite(n)) return n;
+    const x = Number(v);
+    return Number.isFinite(x) ? x : 0;
+  }
+
+  function beyCompleteness(p) {
+    const beys = p && p.beys;
+    if (!Array.isArray(beys)) return p && p.deckChecked ? 10 : 0;
+    let n = p && p.deckChecked ? 10 : 0;
+    for (const b of beys) {
+      if (!b || typeof b !== "object") continue;
+      if (b.bladeId || b.bladeCode || b.bladeName || b.bladeCustom) n += 2;
+      if (b.ratchet) n += 1;
+      if (b.bit) n += 1;
+      if (b.lockChip || b.mainBlade || b.assistBlade) n += 1;
     }
-    for (const rm of remote) {
-      if (!usedRemote.has(rm)) out.push(rm);
+    return n;
+  }
+
+  /**
+   * 多部主持可能各自重配：唔好把兩套對戰表叠埋（同一人打兩場）。
+   * 以「已記入進度較多」嗰套為底，再用同一對手／同一 id 覆上較完整賽果。
+   */
+  function mergeMatchLists(localList, remoteList) {
+    const local = localList || [];
+    const remote = remoteList || [];
+    if (!local.length) return remote.slice();
+    if (!remote.length) return local.slice();
+
+    const localProg = listProgress(local);
+    const remoteProg = listProgress(remote);
+    const base = localProg >= remoteProg ? local : remote;
+    const other = localProg >= remoteProg ? remote : local;
+    const usedOther = new Set();
+    const occupied = new Set();
+    const out = [];
+
+    for (const bm of base) {
+      const byId = other.find((om) => om && om.id && bm.id && om.id === bm.id);
+      const byPair = !byId
+        ? other.find((om) => pairKeyOf(om) && pairKeyOf(om) === pairKeyOf(bm))
+        : null;
+      const om = byId || byPair;
+      if (om) usedOther.add(om);
+      const merged = om ? richerMatch(bm, om) : bm;
+      out.push(merged);
+      if (merged && merged.p1) occupied.add(merged.p1);
+      if (merged && merged.p2) occupied.add(merged.p2);
+    }
+    for (const om of other) {
+      if (usedOther.has(om)) continue;
+      if (om && om.p1 && occupied.has(om.p1)) continue;
+      if (om && om.p2 && occupied.has(om.p2)) continue;
+      out.push(om);
+      if (om && om.p1) occupied.add(om.p1);
+      if (om && om.p2) occupied.add(om.p2);
     }
     return out;
   }
@@ -373,6 +418,44 @@
     return [...map.values()].sort((a, b) => (a.round || 0) - (b.round || 0));
   }
 
+  function mergeOnePlayer(local, remote) {
+    const lateAtL = stampMs(local.lateAt);
+    const lateAtR = stampMs(remote.lateAt);
+    let late;
+    let lateAt;
+    if (lateAtL || lateAtR) {
+      if (lateAtL >= lateAtR) {
+        late = !!local.late;
+        lateAt = local.lateAt;
+      } else {
+        late = !!remote.late;
+        lateAt = remote.lateAt;
+      }
+    } else {
+      late = !!local.late;
+      lateAt = local.lateAt || remote.lateAt || null;
+    }
+
+    const useLocalBeys = beyCompleteness(local) >= beyCompleteness(remote);
+    const beys = useLocalBeys ? local.beys || remote.beys : remote.beys || local.beys;
+
+    const nameAtL = stampMs(local.nameAt);
+    const nameAtR = stampMs(remote.nameAt);
+    const nameSrc = nameAtL || nameAtR ? (nameAtL >= nameAtR ? local : remote) : local;
+
+    return {
+      ...remote,
+      ...local,
+      name: nameSrc.name || local.name || remote.name,
+      church: local.church || remote.church,
+      late,
+      lateAt: lateAt || null,
+      nameAt: nameSrc.nameAt || local.nameAt || remote.nameAt || null,
+      beys,
+      deckChecked: !!(local.deckChecked || remote.deckChecked),
+    };
+  }
+
   function mergePlayers(localPlayers, remotePlayers) {
     const map = new Map();
     for (const p of remotePlayers || []) if (p && p.id) map.set(p.id, p);
@@ -383,11 +466,45 @@
         map.set(p.id, p);
         continue;
       }
-      const localDone = !!p.deckChecked;
-      const remoteDone = !!other.deckChecked;
-      map.set(p.id, localDone && !remoteDone ? p : remoteDone && !localDone ? other : p);
+      map.set(p.id, mergeOnePlayer(p, other));
     }
     return [...map.values()];
+  }
+
+  function mergeCutPlayoff(local, remote) {
+    if (!local) return remote || null;
+    if (!remote) return local;
+    const aProg = listProgress(local.matches);
+    const bProg = listProgress(remote.matches);
+    const base = cloneForFirestore(aProg >= bProg ? local : remote);
+    const other = aProg >= bProg ? remote : local;
+    base.matches = mergeMatchLists(base.matches || [], other.matches || []);
+    if (other.preQualifyIds && other.preQualifyIds.length && !base.preQualifyIds) {
+      base.preQualifyIds = other.preQualifyIds;
+    }
+    return base;
+  }
+
+  function mergeById(localList, remoteList) {
+    const map = new Map();
+    for (const x of remoteList || []) if (x && x.id) map.set(x.id, x);
+    for (const x of localList || []) if (x && x.id) map.set(x.id, x);
+    return [...map.values()];
+  }
+
+  function mergeDraw(local, remote) {
+    if (!local) return remote || null;
+    if (!remote) return local;
+    const results = new Map();
+    for (const r of remote.results || []) if (r && r.prizeId) results.set(r.prizeId, r);
+    for (const r of local.results || []) if (r && r.prizeId) results.set(r.prizeId, r);
+    const excluded = new Set([...(remote.excludedPlayerIds || []), ...(local.excludedPlayerIds || [])]);
+    return {
+      extras: mergeById(local.extras, remote.extras),
+      prizes: mergeById(local.prizes, remote.prizes),
+      results: [...results.values()],
+      excludedPlayerIds: [...excluded],
+    };
   }
 
   function mergeKnockout(localKo, remoteKo) {
@@ -419,6 +536,8 @@
     out.players = mergePlayers(local.players, remote.players);
     out.rounds = mergeRounds(local.rounds, remote.rounds);
     out.knockout = mergeKnockout(local.knockout, remote.knockout);
+    out.cutPlayoff = mergeCutPlayoff(local.cutPlayoff, remote.cutPlayoff);
+    out.draw = mergeDraw(local.draw, remote.draw);
     out.settings = { ...(remote.settings || {}), ...(local.settings || {}) };
     out.phase = phaseRank(local.phase) >= phaseRank(remote.phase) ? local.phase : remote.phase;
     out.currentRound = Math.max(local.currentRound || 0, remote.currentRound || 0);
@@ -566,6 +685,10 @@
     pushNow,
     flush,
     mergeTournamentStates,
+    mergePlayers,
+    mergeMatchLists,
+    mergeCutPlayoff,
+    mergeDraw,
     onStatus,
     onRemote,
     getStatus,

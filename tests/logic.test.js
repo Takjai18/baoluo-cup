@@ -931,6 +931,54 @@ function splitLatePairs(players) {
   assert(matchDone && !won, "歷史頁：遲到坐場算完場負，唔係進行中");
 }
 
+console.log("\n── rule B odd→even path ──");
+function ruleBOddPlayoffPath(n, rule) {
+  return rule === "B" && n % 2 === 1;
+}
+function ruleBUsesByeAdjust(n, rule, anyBye) {
+  if (rule !== "B") return false;
+  if (n % 2 === 1) return true;
+  return !!anyBye;
+}
+assert(ruleBOddPlayoffPath(9, "B") === true, "9 人：爭席組必打");
+assert(ruleBOddPlayoffPath(10, "B") === false, "加人變 10 人：改行紙上，唔再必打");
+assert(ruleBUsesByeAdjust(10, "B", true) === true, "變雙數後仍然扣過往自動勝");
+assert(ruleBUsesByeAdjust(16, "B", false) === false, "全程雙數無人坐場：唔扣");
+assert(ruleBOddPlayoffPath(16, "A") === false, "規則 A 唔行 B 單數路徑");
+
+console.log("\n── multi-host merge ──");
+require("../sync.js");
+const Sync = globalThis.BaoluoSync;
+{
+  const merged = Sync.mergePlayers(
+    [{ id: "p1", name: "A", late: false, lateAt: "2026-08-22T12:00:00.000Z", deckChecked: false, beys: [] }],
+    [{ id: "p1", name: "A", late: true, lateAt: "2026-08-22T11:00:00.000Z", deckChecked: true, beys: [{ bladeId: "ux-15", bit: "H" }] }]
+  );
+  assert(merged.length === 1, "同一人合併成一條");
+  assert(merged[0].late === false, "較新嘅取消遲到唔被陀螺核對蓋走");
+  assert(merged[0].deckChecked === true, "陀螺已核對要保留");
+  assert(merged[0].beys && merged[0].beys[0] && merged[0].beys[0].bladeId === "ux-15", "較完整陀螺保留");
+}
+{
+  const local = [{ id: "m1", p1: "a", p2: "c", done: false, p1Bp: 0, p2Bp: 0, battles: [] }];
+  const remote = [{ id: "m2", p1: "a", p2: "b", done: true, p1Bp: 4, p2Bp: 1, winner: "a", battles: [{ winnerId: "a" }] }];
+  const out = Sync.mergeMatchLists(local, remote);
+  assert(out.length === 1, "兩套對戰表唔好叠成兩場");
+  assert(out[0].p2 === "b" && out[0].done, "保留已有賽果嗰套配對");
+}
+{
+  const local = { players: [], rounds: [], draw: { extras: [], prizes: [], results: [], excludedPlayerIds: [] } };
+  const remote = {
+    players: [],
+    rounds: [],
+    cutPlayoff: { chain: "bPair", matches: [{ id: "po1", p1: "a", p2: "b", done: true, winner: "a", p1Bp: 4, p2Bp: 0 }] },
+    draw: { extras: [{ id: "dx1", name: "場外" }], prizes: [{ id: "pr1", name: "獎" }], results: [{ prizeId: "pr1", winnerName: "A" }], excludedPlayerIds: [] },
+  };
+  const out = Sync.mergeTournamentStates(local, remote);
+  assert(out.cutPlayoff && out.cutPlayoff.matches.length === 1, "遠端入圍加賽唔好被空本機蓋走");
+  assert(out.draw && out.draw.results.length === 1 && out.draw.extras.length === 1, "抽籤結果／場外名單要合併");
+}
+
 console.log("\n════════════════════════");
 console.log(`結果：${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

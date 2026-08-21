@@ -109,6 +109,7 @@ function getCutoffContext() {
   const byeAdjust =
     QUALIFY_RULE === "B" &&
     (state.players.length % 2 === 1 || state.players.some((p) => byeCount(p.id) > 0));
+  const oddPath = QUALIFY_RULE === "B" && state.players.length % 2 === 1;
   const ordered = byeAdjust
     ? [...ranked].sort((a, b) => cutoffScoreOf(b, true) - cutoffScoreOf(a, true))
     : ranked;
@@ -116,7 +117,6 @@ function getCutoffContext() {
   const lockedIn = ranked.filter((p) => cutoffScoreOf(p, byeAdjust) > cutScore);
   const group = ranked.filter((p) => cutoffScoreOf(p, byeAdjust) === cutScore);
   const spots = koN - lockedIn.length;
-  const oddPath = byeAdjust;
   if (spots <= 0 || group.length <= spots) {
     return { needed: false, resolved: true, koN, ranked, lockedIn, group, spots, cutScore, oddPath };
   }
