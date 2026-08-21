@@ -926,6 +926,9 @@ function splitLatePairs(players) {
 {
   const sit = { bye: true, p1: "late", p2: null, lateSitLoss: true, winner: null, p1Bp: 0, p2Bp: 4, done: true };
   assert(sit.lateSitLoss && sit.winner == null && sit.p2Bp === 4, "遲到坐場：唔係自動勝，記 0–4 負");
+  const matchDone = !!sit.done;
+  const won = matchDone && sit.winner === "late";
+  assert(matchDone && !won, "歷史頁：遲到坐場算完場負，唔係進行中");
 }
 
 console.log("\n════════════════════════");

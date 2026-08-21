@@ -141,7 +141,7 @@ function warnSwissRounds(playerCount, swissRounds, koSize) {
   if (a.n % 2 === 1) {
     msgs.push({
       level: "ok",
-      text: `單數（${a.n} 人）每輪一人自動獲勝（計瑞士 1 勝）。平時：未曾休息 → 勝場高 → 曾打過更高名次 → BP。僅最後一輪加：已穩入圍 → 已無希望入圍，避免爭席者坐贏。`,
+      text: `單數（${a.n} 人）每輪一人坐場。準時選手坐場＝自動獲勝 +1；遲到者優先坐場但計 0–4 負。平時：未曾休息 → 勝場高 → 曾打過更高名次 → BP。僅最後一輪（準時選手）加：已穩入圍 → 已無希望入圍。`,
     });
   }
   return { advice: a, messages: msgs };
@@ -1423,8 +1423,12 @@ function isLockedForKo(player) {
 }
 
 function remainingRoundsAfterThis() {
-  const thisRound = (state.rounds || []).length + 1;
+  const thisRound = state.currentRound || (state.rounds || []).length + 1;
   return Math.max(0, getSwissRounds() - thisRound);
+}
+
+function hasRealSwissResult(m) {
+  return !!(m && m.done && !isByeMatch(m) && !m.lateForfeit);
 }
 
 /** 即使今輪自動獲勝＋之後全勝，都追唔上已有 koN 個更高勝場 */
@@ -2105,11 +2109,11 @@ function addPlayer(name, church, opts = {}) {
     toast("請輸入姓名", "error");
     return false;
   }
-  const lateJoin = !!(opts.late || (state.phase !== "setup" && state.phase !== "done"));
-  if (state.phase === "done") {
-    toast("比賽已結束，無法再加入選手", "error");
+  if (state.phase !== "setup" && state.phase !== "swiss") {
+    toast("瑞士制已結束，無法再加入比賽選手。場外人士可去「抽籤」加入名單。", "error");
     return false;
   }
+  const lateJoin = !!(opts.late || state.phase === "swiss");
   if (state.players.length >= 128) {
     toast("最多 128 人", "error");
     return false;
@@ -2146,7 +2150,7 @@ function maybeIncludeLateInCurrentRound(player) {
     toast(`${player.name} 已加入（遲到）。本輪已鎖定，下一輪開始配對。`, "success");
     return;
   }
-  const realDone = round.matches.some((m) => m.done && !isByeMatch(m) && !m.lateForfeit);
+  const realDone = round.matches.some(hasRealSwissResult);
   if (realDone) {
     toast(`${player.name} 已加入（遲到）。本輪已有賽果，下一輪開始配對。`, "success");
     return;
@@ -2175,7 +2179,18 @@ function setPlayerLate(id, late) {
   const round = currentRoundObj();
   if (round && !round.locked) {
     round.matches.forEach((m) => {
-      if (isByeMatch(m)) return;
+      if (isByeMatch(m) && m.p1 === id) {
+        if (late) applyLateSitLossIfNeeded(m);
+        else {
+          m.lateSitLoss = false;
+          m.winner = m.p1;
+          m.p1Bp = 0;
+          m.p2Bp = 0;
+          m.done = true;
+          m.draw = false;
+        }
+        return;
+      }
       if (m.lateForfeit) {
         const l1 = isLatePlayer(playerById(m.p1));
         const l2 = isLatePlayer(playerById(m.p2));
@@ -3406,7 +3421,7 @@ function regeneratePairing() {
     toast("本輪已鎖定，無法重新配對", "error");
     return;
   }
-  if (round.matches.some((m) => m.done)) {
+  if (round.matches.some(hasRealSwissResult)) {
     if (!confirm("本輪已有比賽結果，重新配對會清除本輪結果。確定？")) return;
   }
   // Remove current unlocked round and regenerate
@@ -3610,13 +3625,13 @@ function applyManualPairings(pairIds) {
     toast("無法調整", "error");
     return;
   }
-  if (round.matches.some((m) => m.done)) {
+  if (round.matches.some(hasRealSwissResult)) {
     if (!confirm("本輪已有結果，手動調整會清除。確定？")) return;
   }
   const all = pairIds.flat().filter(Boolean);
   const need = getPairingPlayerCount();
   if (new Set(all).size !== need || all.length !== need) {
-    toast(`請確保 ${need} 位選手恰好各出現一次（單數可一人自動獲勝）`, "error");
+    toast(`請確保 ${need} 位選手恰好各出現一次（單數可一人坐場）`, "error");
     return;
   }
   round.matches = assignMatchZones(
@@ -5274,7 +5289,8 @@ function renderHistory() {
           const opp = playerById(oppId);
           const myBp = m.p1 === p.id ? m.p1Bp : m.p2Bp;
           const oppBp = m.p1 === p.id ? m.p2Bp : m.p1Bp;
-          const matchDone = !!(m.done && m.winner);
+          const isBye = isByeMatch(m);
+          const matchDone = !!m.done;
           const won = matchDone && m.winner === p.id;
           ensureMatchBeyOrders(m);
           const battles = normalizeBattles(m.battles || []);
@@ -5300,9 +5316,13 @@ function renderHistory() {
             battleHtml = `<div class="meta">舊資料：只有總分 ${myBp}–${oppBp}（無逐場 Battle）</div>`;
           }
           const resultCls = !matchDone ? "hist-live" : won ? "hist-win" : "hist-lose";
-          const resultTxt = !matchDone
-            ? `進行中 ${myBp}–${oppBp}`
-            : `${won ? "勝" : "負"} ${myBp}–${oppBp}`;
+          let resultTxt;
+          if (!matchDone) resultTxt = `進行中 ${myBp}–${oppBp}`;
+          else if (m.lateSitLoss) resultTxt = "負 0–4（遲到坐場）";
+          else if (isBye) resultTxt = "自動獲勝";
+          else if (m.lateForfeit) resultTxt = `${won ? "勝" : "負"} ${myBp}–${oppBp}（遲到 0–4）`;
+          else resultTxt = `${won ? "勝" : "負"} ${myBp}–${oppBp}`;
+          const oppLabel = isBye ? "（無對手）" : opp?.name || "?";
           const headLeft = m.stage === "ko"
             ? `${escapeHtml(m.roundLabel)}${m.tableLabel ? " · " + escapeHtml(m.tableLabel) : ""}`
             : `${escapeHtml(m.roundLabel)}${m.tableLabel ? " · " + escapeHtml(m.tableLabel) : ""}`;
@@ -5310,7 +5330,7 @@ function renderHistory() {
             <div class="hist-match ${matchDone ? "" : "is-live"} ${m.stage === "ko" ? "is-ko" : ""}">
               <div class="hist-match-head">
                 <span>${headLeft}</span>
-                <span>vs <strong>${escapeHtml(opp?.name || "?")}</strong></span>
+                <span>vs <strong>${escapeHtml(oppLabel)}</strong></span>
                 <span class="${resultCls}">${resultTxt}</span>
               </div>
               <div class="hist-battles">${battleHtml}</div>
@@ -6376,11 +6396,11 @@ function openManualModal() {
       <div class="manual-pair-row">
         <select class="input select man-bye">${options}</select>
         <span style="font-weight:900;color:var(--muted)">→</span>
-        <span class="meta">自動獲勝（計 1 勝）</span>
+        <span class="meta" id="manByeHint">準時坐場＝自動勝 +1；遲到坐場＝0–4 負</span>
       </div>`;
   }
   body.innerHTML = `
-    <div class="hint">每位選手只能出現一次。儲存後會覆蓋本輪配對。${odd ? "單數請指定自動獲勝者。" : ""}</div>
+    <div class="hint">每位選手只能出現一次。儲存後會覆蓋本輪配對。${odd ? "單數請指定坐場者：準時＝自動勝，遲到＝0–4 負。" : ""}</div>
     <div class="manual-list">${rows}</div>
     <div class="btn-row mt-16">
       <button class="btn btn-primary" id="btnSaveManual">儲存配對</button>
@@ -6396,10 +6416,21 @@ function openManualModal() {
     }
   });
   const byeMatch = round.matches.find((m) => isByeMatch(m));
+  const syncManByeHint = () => {
+    const hint = body.querySelector("#manByeHint");
+    const sel = body.querySelector(".man-bye");
+    if (!hint || !sel) return;
+    const pl = playerById(sel.value);
+    hint.textContent = isLatePlayer(pl)
+      ? "遲到坐場＝0–4 負（唔計勝）"
+      : "準時坐場＝自動獲勝 +1";
+  };
   if (odd && byeMatch) {
     const sel = body.querySelector(".man-bye");
     if (sel) sel.value = byeMatch.p1;
   }
+  body.querySelector(".man-bye")?.addEventListener("change", syncManByeHint);
+  syncManByeHint();
 
   document.getElementById("btnSaveManual").addEventListener("click", () => {
     const pairs = [];
