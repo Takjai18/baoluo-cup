@@ -353,6 +353,7 @@ function normalizePlayer(p) {
     p.beys = p.beys.slice(0, 3);
   }
   if (typeof p.deckChecked !== "boolean") p.deckChecked = false;
+  if (typeof p.late !== "boolean") p.late = false;
   return p;
 }
 

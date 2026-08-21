@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&family=Oswald:wght@600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260820n" />
+  <link rel="stylesheet" href="styles.css?v=20260820p" />
 </head>
 <body>
   <!-- 官方風格螢光黃綠 Banner：教會 | 寶螺盃 | BX Logo -->
@@ -471,7 +471,7 @@
           </div>
 
           <div class="add-player-panel">
-            <h3 class="section-label">預先登記姓名</h3>
+            <h3 class="section-label" id="addPlayerHeading">預先登記姓名</h3>
             <div class="add-player-form">
               <input type="text" id="newName" class="input" placeholder="姓名" maxlength="20" />
               <div class="church-checks" id="newChurchChecks" role="radiogroup" aria-label="所屬教會">
@@ -488,7 +488,8 @@
             </div>
             <div class="church-summary mt-12" id="churchSummary"></div>
             <div class="hint mt-12" style="margin-bottom:0">
-              點選一個教會（二選一），輸入姓名後按「預先登記」。
+              點選一個教會（二選一），輸入姓名後按「預先登記」。比賽開始後仍可「加入遲到選手」。
+              選手卡可勾「遲到」：單數場盡量避免準時選手對上遲到選手；若對上，遲到方自動 0–4。
               上蓋：<strong>BX49</strong> / <strong>UX15</strong> / <strong>CX07</strong> / <strong>CX15</strong>（Enter 確認）。
               CX 可選紋章＋主刃＋輔助（Expand 另需超越戰刃）。固鎖完整列表；軸心代碼（H、LR、J…）。
             </div>
@@ -834,8 +835,8 @@
   <script src="firebase-config.js?v=20260819e"></script>
   <script src="sync.js?v=20260819e"></script>
   <!-- cache-bust：確保 GitHub Pages 載入最新 JS -->
-  <script src="parts.js?v=20260819e"></script>
+  <script src="parts.js?v=20260820p"></script>
   <script src="cutoff.js?v=20260820i"></script>
-  <script src="app.js?v=20260820n"></script>
+  <script src="app.js?v=20260820p"></script>
 </body>
 </html>

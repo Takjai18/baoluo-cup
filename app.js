@@ -1282,6 +1282,13 @@ function isKoQualified(playerId) {
  *
  * n≤20：限時 backtracking；n≥24：greedy（防 UI 卡死）
  */
+function isLatePlayer(p) {
+  if (!p) return false;
+  if (p.late === true) return true;
+  const full = playerById(p.id);
+  return !!(full && full.late);
+}
+
 function pairQuality(p1, p2, playedSet, lastOpp, hardNoRematch) {
   const key = pairKey(p1.id, p2.id);
   if (hardNoRematch && playedSet.has(key)) return -Infinity;
@@ -1289,6 +1296,11 @@ function pairQuality(p1, p2, playedSet, lastOpp, hardNoRematch) {
   let q = 0;
   const scoreDiff = Math.abs(p1.swissPoints - p2.swissPoints);
   q -= scoreDiff * 10000;
+
+  const late1 = isLatePlayer(p1);
+  const late2 = isLatePlayer(p2);
+  if (late1 !== late2) q -= 40000;
+  else if (late1 && late2) q += 800;
 
   if (p1.church !== p2.church) q += 1000;
   else q -= 200;
@@ -1417,6 +1429,9 @@ function pickByePlayer(players) {
   const lastRound = remainingRoundsAfterThis() === 0;
   const rankOf = currentRankMap();
   list.sort((a, b) => {
+    const aLate = isLatePlayer(a) ? 0 : 1;
+    const bLate = isLatePlayer(b) ? 0 : 1;
+    if (aLate !== bLate) return aLate - bLate;
     const aOk = byeCount(a.id) === minBye ? 0 : 1;
     const bOk = byeCount(b.id) === minBye ? 0 : 1;
     if (aOk !== bOk) return aOk - bOk;
@@ -1436,10 +1451,25 @@ function pickByePlayer(players) {
   return list[0] || null;
 }
 
+function pairPlayersList(pool, playedSet, lastOpp, roundOne) {
+  if (!pool.length) return [];
+  if (pool.length % 2 !== 0) return [];
+  if (roundOne) return pairRoundOne(pool).filter((pr) => pr[0] && pr[1]);
+  const n = pool.length;
+  let pairs;
+  if (n >= 24) {
+    pairs = greedyPairPreferNoRematch(pool, playedSet, lastOpp);
+  } else {
+    pairs = bestPairingSearch(pool, playedSet, lastOpp, { timeMs: 250 });
+    if (!pairs) pairs = greedyPairPreferNoRematch(pool, playedSet, lastOpp);
+  }
+  return pairs || [];
+}
+
 function generateSwissPairings() {
   const stats = state.players.map((p) => {
     const s = getPlayerStats(p.id);
-    return { ...p, ...s };
+    return { ...p, ...s, late: !!p.late };
   });
 
   stats.sort((a, b) => {
@@ -1450,6 +1480,7 @@ function generateSwissPairings() {
 
   const playedSet = buildPlayedSet();
   const lastOpp = buildLastOppMap();
+  const roundOne = state.rounds.length === 0;
 
   let pool = stats;
   let bye = null;
@@ -1458,25 +1489,32 @@ function generateSwissPairings() {
     if (bye) pool = pool.filter((p) => p.id !== bye.id);
   }
 
-  // 第 1 輪：教會交叉；之後一般瑞士配對
-  let pairs;
-  if (state.rounds.length === 0) {
-    pairs = pairRoundOne(pool);
-  } else {
-    const n = pool.length;
-    if (n >= 24) {
-      pairs = greedyPairPreferNoRematch(pool, playedSet, lastOpp);
-    } else {
-      pairs = bestPairingSearch(pool, playedSet, lastOpp, { timeMs: 250 });
-      if (!pairs) pairs = greedyPairPreferNoRematch(pool, playedSet, lastOpp);
-    }
-    pairs = pairs || [];
-  }
+  const ontime = pool.filter((p) => !isLatePlayer(p));
+  const late = pool.filter((p) => isLatePlayer(p));
+
+  const splitEven = (group) => {
+    const g = [...group];
+    let leftover = null;
+    if (g.length % 2 === 1) leftover = g.pop();
+    const pairs = g.length ? pairPlayersList(g, playedSet, lastOpp, roundOne) : [];
+    return { pairs, leftover };
+  };
+
+  const a = splitEven(ontime);
+  const b = splitEven(late);
+  const pairs = [...(a.pairs || []), ...(b.pairs || [])];
+  if (a.leftover && b.leftover) pairs.push([a.leftover, b.leftover]);
+  else if (a.leftover) pairs.push([a.leftover, null]);
+  else if (b.leftover) pairs.push([b.leftover, null]);
   if (bye) pairs.push([bye, null]);
 
   const rem = countRematches(pairs.filter((pr) => pr[0] && pr[1]), playedSet);
   if (rem > 0) {
     setTimeout(() => toast(`注意：本輪有 ${rem} 對重賽（無法完全避免時會允許）`, "error"), 0);
+  }
+  const mixed = pairs.filter(([x, y]) => x && y && isLatePlayer(x) !== isLatePlayer(y)).length;
+  if (mixed > 0) {
+    setTimeout(() => toast(`有 ${mixed} 場對上遲到選手：遲到方自動 0–4`, "error"), 80);
   }
   return pairs;
 }
@@ -1756,12 +1794,35 @@ function formatBeyOrderCompact(player, order) {
     .join(" → ");
 }
 
+function applyLateForfeitIfNeeded(m) {
+  if (!m || m.bye || !m.p1 || !m.p2) return m;
+  const l1 = isLatePlayer(playerById(m.p1));
+  const l2 = isLatePlayer(playerById(m.p2));
+  if (l1 === l2) return m;
+  const winnerId = l1 ? m.p2 : m.p1;
+  m.lateForfeit = true;
+  m.done = true;
+  m.draw = false;
+  m.winner = winnerId;
+  m.p1Bp = winnerId === m.p1 ? MATCH_TARGET : 0;
+  m.p2Bp = winnerId === m.p2 ? MATCH_TARGET : 0;
+  m.battles = [0, 1, 2, 3].map(() => ({
+    id: uid("b"),
+    p1BeyIndex: 0,
+    p2BeyIndex: 0,
+    winnerId,
+    finishType: "spin",
+    points: 1,
+  }));
+  return m;
+}
+
 function createRoundFromPairs(pairs, roundNum) {
   const raw = pairs.map((pair, i) => {
     const p1 = pair[0];
     const p2 = pair[1];
     const bye = !p2;
-    return {
+    const m = {
       id: uid("m"),
       table: i + 1,
       p1: p1.id,
@@ -1775,6 +1836,8 @@ function createRoundFromPairs(pairs, roundNum) {
       p2BeyOrder: emptyBeyOrder(),
       battles: emptyBattles(),
     };
+    if (!bye) applyLateForfeitIfNeeded(m);
+    return m;
   });
   return {
     round: roundNum,
@@ -1997,29 +2060,101 @@ function makePlayer(name, church, beys) {
   });
 }
 
-function addPlayer(name, church) {
+function addPlayer(name, church, opts = {}) {
   name = (name || "").trim();
   if (!name) {
     toast("請輸入姓名", "error");
     return false;
   }
-  if (state.players.length >= getTotalPlayers()) {
-    toast(`已滿 ${getTotalPlayers()} 人`, "error");
+  const lateJoin = !!(opts.late || (state.phase !== "setup" && state.phase !== "done"));
+  if (state.phase === "done") {
+    toast("比賽已結束，無法再加入選手", "error");
     return false;
   }
-  if (state.phase !== "setup") {
-    toast("比賽已開始，無法新增選手（可改名或補登陀螺）", "error");
+  if (state.players.length >= 128) {
+    toast("最多 128 人", "error");
     return false;
+  }
+  if (state.players.length >= getTotalPlayers()) {
+    if (state.phase === "setup") {
+      toast(`已滿 ${getTotalPlayers()} 人`, "error");
+      return false;
+    }
+    const next = state.players.length + 1;
+    state.settings.playerCount = next;
+    state.settings.playerPreset = PLAYER_PRESETS.includes(next) ? String(next) : "other";
   }
   if (!CHURCH[church]) {
     toast("教會無效", "error");
     return false;
   }
-  state.players.push(makePlayer(name, church));
+  const p = makePlayer(name, church);
+  p.late = lateJoin || !!opts.late;
+  state.players.push(p);
   saveState();
   render();
-  toast(`已預先登記：${name}`, "success");
+  if (p.late && state.phase === "swiss") {
+    maybeIncludeLateInCurrentRound(p);
+  } else {
+    toast(p.late ? `已加入遲到選手：${name}` : `已預先登記：${name}`, "success");
+  }
   return true;
+}
+
+function maybeIncludeLateInCurrentRound(player) {
+  const round = currentRoundObj();
+  if (!round || round.locked) {
+    toast(`${player.name} 已加入（遲到）。本輪已鎖定，下一輪開始配對。`, "success");
+    return;
+  }
+  const realDone = round.matches.some((m) => m.done && !isByeMatch(m) && !m.lateForfeit);
+  if (realDone) {
+    toast(`${player.name} 已加入（遲到）。本輪已有賽果，下一輪開始配對。`, "success");
+    return;
+  }
+  if (
+    confirm(
+      `${player.name} 已標為遲到。\n將重新產生本輪對戰表，盡量唔好讓準時選手對上遲到選手。\n若對上，遲到方自動 0–4。重配？`
+    )
+  ) {
+    state.rounds = state.rounds.filter((r) => r.round !== round.round);
+    const pairs = generateSwissPairings();
+    state.rounds.push(createRoundFromPairs(pairs, state.currentRound));
+    state.rounds.sort((a, b) => a.round - b.round);
+    saveState();
+    render();
+    toast("已加入遲到選手並重配本輪", "success");
+    return;
+  }
+  toast(`${player.name} 已加入（遲到）。未重配，可由下一輪開始。`, "success");
+}
+
+function setPlayerLate(id, late) {
+  const p = playerById(id);
+  if (!p) return;
+  p.late = !!late;
+  const round = currentRoundObj();
+  if (round && !round.locked) {
+    round.matches.forEach((m) => {
+      if (isByeMatch(m)) return;
+      if (m.lateForfeit) {
+        const l1 = isLatePlayer(playerById(m.p1));
+        const l2 = isLatePlayer(playerById(m.p2));
+        if (l1 === l2) {
+          m.lateForfeit = false;
+          m.done = false;
+          m.winner = null;
+          m.p1Bp = 0;
+          m.p2Bp = 0;
+          m.battles = emptyBattles();
+        }
+      } else if (!m.done) {
+        applyLateForfeitIfNeeded(m);
+      }
+    });
+  }
+  saveState();
+  render();
 }
 
 function removePlayer(id) {
@@ -2114,7 +2249,7 @@ function startTournament() {
     ) {
       return;
     }
-  } else if (!confirm("確定開始比賽並產生第 1 輪配對？開始後不可刪除選手。")) {
+  } else if (!confirm("確定開始比賽並產生第 1 輪配對？開始後不可刪除選手，但仍可加入遲到選手。")) {
     return;
   }
 
@@ -3261,6 +3396,10 @@ function saveMatchResult(matchId, winnerId, p1Bp, p2Bp) {
     toast("自動獲勝場無需輸入結果", "error");
     return false;
   }
+  if (m.lateForfeit) {
+    toast("遲到對戰已自動 0–4，無需輸入結果", "error");
+    return false;
+  }
 
   // 若有 battle 明細，以 battles 為準（強制完場必須經 resolveForceWinner，同分唔靜默）
   if (Array.isArray(m.battles) && m.battles.length > 0) {
@@ -3330,6 +3469,10 @@ function clearMatchResult(matchId) {
   if (!found) return;
   const { match: m, round, playoff } = found;
   if (!playoff && (!round || round.locked)) return;
+  if (m.lateForfeit) {
+    toast("遲到自動 0–4 唔好手動清除；可改遲到標記或重新配對", "error");
+    return;
+  }
   m.winner = null;
   m.p1Bp = 0;
   m.p2Bp = 0;
@@ -3442,7 +3585,7 @@ function applyManualPairings(pairIds) {
       const p1 = pair[0];
       const p2 = pair[1] || null;
       const bye = !p2;
-      return {
+      const m = {
         id: uid("m"),
         table: i + 1,
         p1,
@@ -3456,6 +3599,8 @@ function applyManualPairings(pairIds) {
         p2BeyOrder: emptyBeyOrder(),
         battles: emptyBattles(),
       };
+      if (!bye) applyLateForfeitIfNeeded(m);
+      return m;
     })
   );
   saveState();
@@ -4025,6 +4170,7 @@ function renderPlayers() {
     <span class="ds-item ok">陀螺齊 3 隻 <strong>${deckDone}</strong></span>
     <span class="ds-item warn">部分登記 <strong>${deckPartial}</strong></span>
     <span class="ds-item">未登陀螺 <strong>${deckNone}</strong></span>
+    <span class="ds-item warn">遲到 <strong>${state.players.filter((p) => p.late).length}</strong></span>
   `;
 
   syncPlayerFilterChips();
@@ -4068,7 +4214,7 @@ function renderPlayers() {
           .join("");
 
         return `
-        <div class="player-card ${cardClass}" data-id="${p.id}">
+        <div class="player-card ${cardClass}${p.late ? " is-late" : ""}" data-id="${p.id}">
           <div class="pc-top">
             <span class="pc-num">#${i + 1}</span>
             <div class="pc-name">
@@ -4086,6 +4232,10 @@ function renderPlayers() {
                 <span>基蔭</span>
               </label>
             </div>
+            <label class="pc-late-check ${p.late ? "on" : ""}">
+              <input type="checkbox" class="pc-late-input" data-id="${p.id}" ${p.late ? "checked" : ""} />
+              <span>遲到</span>
+            </label>
             <span class="pc-status ${statusClass}">${statusText}</span>
             <div class="pc-actions">
               <button type="button" class="btn btn-primary btn-sm btn-deck" data-id="${p.id}">
@@ -4122,6 +4272,15 @@ function renderPlayers() {
   list.querySelectorAll(".btn-deck").forEach((btn) => {
     btn.addEventListener("click", () => openDeckModal(btn.dataset.id));
   });
+  list.querySelectorAll(".pc-late-input").forEach((inp) => {
+    inp.addEventListener("change", () => setPlayerLate(inp.dataset.id, inp.checked));
+  });
+
+  const addBtn = document.getElementById("btnAddPlayer");
+  const addLabel = document.getElementById("addPlayerHeading");
+  const started = state.phase !== "setup";
+  if (addBtn) addBtn.textContent = started ? "加入遲到選手" : "預先登記";
+  if (addLabel) addLabel.textContent = started ? "遲到後加入" : "預先登記姓名";
 
   const startBtn = document.getElementById("btnStartTournament");
   startBtn.disabled = !(state.phase === "setup" && state.players.length >= 2);
@@ -4184,6 +4343,35 @@ function renderMatchCardStaff(m, round, statsMap) {
   // 次序只作內部登記，畫面唔顯示具體陀螺（避免被人偷睇）
   const orderReady =
     isBeyOrderComplete(m.p1BeyOrder) && isBeyOrderComplete(m.p2BeyOrder);
+
+  if (m.lateForfeit) {
+    return `
+    <div class="match-card done" data-zone="${zCode}">
+      <div class="match-top">
+        <span class="match-num">場次 ${m.table}</span>
+        <span class="zone-badge zone-${zCode}">報到：${escapeHtml(zLabel)}</span>
+        <span class="vs-tag same">遲到 0–4</span>
+      </div>
+      <div class="match-players">
+        <div class="player-side ${m.winner === m.p1 ? "winner" : "loser"}">
+          <div class="p-name">${escapeHtml(p1?.name || "?")}${isLatePlayer(p1) ? ` <span class="late-badge">遲到</span>` : ""}</div>
+          <div class="p-meta"><span class="church-tag ${p1?.church}">${churchLabel(p1?.church)}</span></div>
+          <div class="p-meta">本輪前 ${pre1} 勝</div>
+          <div class="p-bp">${m.p1Bp}</div>
+        </div>
+        <div class="vs-center">VS</div>
+        <div class="player-side ${m.winner === m.p2 ? "winner" : "loser"}">
+          <div class="p-name">${escapeHtml(p2?.name || "?")}${isLatePlayer(p2) ? ` <span class="late-badge">遲到</span>` : ""}</div>
+          <div class="p-meta"><span class="church-tag ${p2?.church}">${churchLabel(p2?.church)}</span></div>
+          <div class="p-meta">本輪前 ${pre2} 勝</div>
+          <div class="p-bp">${m.p2Bp}</div>
+        </div>
+      </div>
+      <div class="match-actions">
+        <button class="btn btn-ghost btn-sm" disabled>遲到自動 0–4</button>
+      </div>
+    </div>`;
+  }
 
   if (bye) {
     return `
@@ -4292,6 +4480,18 @@ function renderProjectionBoard(round) {
                 <span class="zg-p">（無對手）</span>
               </div>
               <span class="zg-score">自動獲勝</span>
+            </div>`;
+          }
+          if (m.lateForfeit) {
+            const lp2 = playerById(m.p2);
+            return `
+            <div class="zg-match is-done">
+              <div class="zg-pair">
+                <span class="zg-p ${m.winner === m.p1 ? "is-win" : "is-lose"}">${escapeHtml(p1?.name || "?")}</span>
+                <span class="zg-vs">VS</span>
+                <span class="zg-p ${m.winner === m.p2 ? "is-win" : "is-lose"}">${escapeHtml(lp2?.name || "?")}</span>
+              </div>
+              <span class="zg-score">${m.p1Bp}–${m.p2Bp} · 遲到</span>
             </div>`;
           }
           const p2 = playerById(m.p2);
@@ -4721,7 +4921,7 @@ function renderSettings() {
         <strong>可用報到站：${stations}</strong>
         ＝ min(裁判 ${s.referees}，對戰盤 ${s.stadiums}) · 分派：<strong>${zones}</strong><br>
         瑞士制 <strong>${s.swissRounds}</strong> 輪 · 淘汰賽 <strong>${s.koSize} 強</strong> · 入圍 <strong>${qualifyRuleLabel(s.qualifyRule)}</strong>
-        ${lockedPlayers ? "<br><span class='meta'>比賽已開始，參賽人數已鎖定；仍可改裁判／對戰盤／輪次／淘汰名額／入圍規則（未鎖定輪會重分區）。</span>" : ""}
+        ${lockedPlayers ? "<br><span class='meta'>比賽已開始，設定人數唔好喺呢度改；遲到選手請去「選手」頁加入。仍可改裁判／對戰盤／輪次／淘汰名額／入圍規則。</span>" : ""}
       </div>`;
   }
 }
@@ -5701,6 +5901,10 @@ function openScoreModal(matchId) {
   const found = findMatchById(matchId);
   const m = found?.match;
   if (!m) return;
+  if (m.lateForfeit) {
+    toast("遲到對戰已自動 0–4，無需輸入結果", "error");
+    return;
+  }
   ensureMatchBeyOrders(m);
   scoreModalMatchId = matchId;
   koModalRef = null;

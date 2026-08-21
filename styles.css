@@ -2197,6 +2197,45 @@ tr.top4-row td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
 .player-card.deck-partial {
   border-color: rgba(251, 191, 36, 0.45);
 }
+.pc-late-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.28);
+  font-weight: 800;
+  font-size: 0.82rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.pc-late-check.on,
+.pc-late-check:has(input:checked) {
+  border-color: rgba(251, 191, 36, 0.55);
+  color: var(--warning);
+  background: rgba(251, 191, 36, 0.12);
+}
+.pc-late-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--warning);
+}
+.late-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--warning);
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  background: rgba(251, 191, 36, 0.12);
+  vertical-align: middle;
+}
 .pc-top {
   display: flex;
   flex-wrap: wrap;

@@ -860,6 +860,70 @@ console.log("\n── cutoff B: 8 人 3 席繼續產生夠勝者──");
   assert(out.resolved && out.qualifierIds.length === 4, "6 人 4 席最終 4 人入圍");
 }
 
+console.log("\n── late join pairing ──");
+function pickByePreferLate(players) {
+  return [...players].sort((a, b) => {
+    const aLate = a.late ? 0 : 1;
+    const bLate = b.late ? 0 : 1;
+    if (aLate !== bLate) return aLate - bLate;
+    if (b.swissPoints !== a.swissPoints) return b.swissPoints - a.swissPoints;
+    return a.name.localeCompare(b.name, "zh-Hant");
+  })[0];
+}
+function splitLatePairs(players) {
+  const bye = players.length % 2 === 1 ? pickByePreferLate(players) : null;
+  const pool = bye ? players.filter((p) => p.id !== bye.id) : players.slice();
+  const ontime = pool.filter((p) => !p.late);
+  const late = pool.filter((p) => p.late);
+  const take = (g) => {
+    const x = g.slice();
+    let leftover = null;
+    if (x.length % 2 === 1) leftover = x.pop();
+    const pairs = [];
+    for (let i = 0; i < x.length; i += 2) pairs.push([x[i].id, x[i + 1].id]);
+    return { pairs, leftover };
+  };
+  const a = take(ontime);
+  const b = take(late);
+  const mixed = a.leftover && b.leftover ? [[a.leftover.id, b.leftover.id]] : [];
+  return { bye: bye && bye.id, mixed };
+}
+{
+  const players = [
+    { id: "a", name: "A", late: false, swissPoints: 3 },
+    { id: "b", name: "B", late: false, swissPoints: 2 },
+    { id: "c", name: "C", late: true, swissPoints: 0 },
+  ];
+  const bye = pickByePreferLate(players);
+  assert(bye.id === "c", "單數：遲到者優先坐場，避免準時選手抽到");
+}
+{
+  const r = splitLatePairs([
+    { id: "a", name: "A", late: false, swissPoints: 2 },
+    { id: "b", name: "B", late: false, swissPoints: 2 },
+    { id: "c", name: "C", late: true, swissPoints: 0 },
+  ]);
+  assert(r.bye === "c" && r.mixed.length === 0, "16 準時節奏：1 遲到 → 遲到坐場，無混合對");
+}
+{
+  const r = splitLatePairs([
+    { id: "a", name: "A", late: false, swissPoints: 2 },
+    { id: "b", name: "B", late: false, swissPoints: 1 },
+    { id: "c", name: "C", late: false, swissPoints: 1 },
+    { id: "d", name: "D", late: true, swissPoints: 0 },
+  ]);
+  assert(r.bye == null && r.mixed.length === 1, "雙數但遲到單數：必有一場混合對（遲到自動 0–4）");
+  assert(r.mixed[0].includes("d"), "混合對包含遲到者");
+}
+{
+  const winnerId = "ontime";
+  const m = { p1: "ontime", p2: "late", p1Bp: 0, p2Bp: 0 };
+  m.winner = winnerId;
+  m.p1Bp = 4;
+  m.p2Bp = 0;
+  assert(m.winner === "ontime" && m.p1Bp === 4 && m.p2Bp === 0, "遲到對戰：準時 4–0");
+}
+
 console.log("\n════════════════════════");
 console.log(`結果：${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);
