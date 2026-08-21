@@ -923,6 +923,10 @@ function splitLatePairs(players) {
   m.p2Bp = 0;
   assert(m.winner === "ontime" && m.p1Bp === 4 && m.p2Bp === 0, "遲到對戰：準時 4–0");
 }
+{
+  const sit = { bye: true, p1: "late", p2: null, lateSitLoss: true, winner: null, p1Bp: 0, p2Bp: 4, done: true };
+  assert(sit.lateSitLoss && sit.winner == null && sit.p2Bp === 4, "遲到坐場：唔係自動勝，記 0–4 負");
+}
 
 console.log("\n════════════════════════");
 console.log(`結果：${passed} passed, ${failed} failed`);

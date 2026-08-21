@@ -840,6 +840,21 @@ function getPlayerStats(playerId) {
   for (const m of swissMatchesOnly()) {
     if (m.p1 !== playerId && m.p2 !== playerId) continue;
     if (isByeMatch(m)) {
+      if (m.lateSitLoss) {
+        if (m.p1 === playerId) {
+          losses++;
+          netPoints -= MATCH_TARGET;
+          matchLog.push({
+            round: m.round,
+            oppId: null,
+            won: false,
+            draw: false,
+            myBp: 0,
+            oppBp: MATCH_TARGET,
+          });
+        }
+        continue;
+      }
       if (m.winner === playerId) {
         wins++;
         byes++;
@@ -1355,6 +1370,17 @@ function byeCount(playerId) {
   let n = 0;
   for (const r of state.rounds || []) {
     for (const m of r.matches || []) {
+      if (isByeMatch(m) && m.p1 === playerId && m.winner === playerId && !m.lateSitLoss) n++;
+    }
+  }
+  return n;
+}
+
+/** 坐場次數（含遲到坐場 0–4），用來輪流坐，避免同一人連坐 */
+function sitCount(playerId) {
+  let n = 0;
+  for (const r of state.rounds || []) {
+    for (const m of r.matches || []) {
       if (isByeMatch(m) && m.p1 === playerId) n++;
     }
   }
@@ -1418,22 +1444,22 @@ function lastRoundByeBucket(player) {
 
 /**
  * 單數人「無對手」優先序：
- * 全程：未曾自動獲勝者（人人都有過先第二圈）
- * 僅最後一輪：已穩入圍 → 已無希望入圍
+ * 遲到者優先坐場（坐場計 0–4 負，唔係自動勝）
+ * 其後輪流坐 → 最後一輪：已穩入圍 → 已無希望
  * 其後：勝場最多 → 曾打過更高名次 → BP 較高
  */
 function pickByePlayer(players) {
   const list = [...players];
   if (!list.length) return null;
-  const minBye = Math.min(...list.map((p) => byeCount(p.id)));
+  const minSit = Math.min(...list.map((p) => sitCount(p.id)));
   const lastRound = remainingRoundsAfterThis() === 0;
   const rankOf = currentRankMap();
   list.sort((a, b) => {
     const aLate = isLatePlayer(a) ? 0 : 1;
     const bLate = isLatePlayer(b) ? 0 : 1;
     if (aLate !== bLate) return aLate - bLate;
-    const aOk = byeCount(a.id) === minBye ? 0 : 1;
-    const bOk = byeCount(b.id) === minBye ? 0 : 1;
+    const aOk = sitCount(a.id) === minSit ? 0 : 1;
+    const bOk = sitCount(b.id) === minSit ? 0 : 1;
     if (aOk !== bOk) return aOk - bOk;
     if (lastRound) {
       const ia = lastRoundByeBucket(a);
@@ -1794,6 +1820,18 @@ function formatBeyOrderCompact(player, order) {
     .join(" → ");
 }
 
+function applyLateSitLossIfNeeded(m) {
+  if (!m || !isByeMatch(m) || !m.p1) return m;
+  if (!isLatePlayer(playerById(m.p1))) return m;
+  m.lateSitLoss = true;
+  m.winner = null;
+  m.p1Bp = 0;
+  m.p2Bp = MATCH_TARGET;
+  m.done = true;
+  m.draw = false;
+  return m;
+}
+
 function applyLateForfeitIfNeeded(m) {
   if (!m || m.bye || !m.p1 || !m.p2) return m;
   const l1 = isLatePlayer(playerById(m.p1));
@@ -1836,7 +1874,8 @@ function createRoundFromPairs(pairs, roundNum) {
       p2BeyOrder: emptyBeyOrder(),
       battles: emptyBattles(),
     };
-    if (!bye) applyLateForfeitIfNeeded(m);
+    if (bye) applyLateSitLossIfNeeded(m);
+    else applyLateForfeitIfNeeded(m);
     return m;
   });
   return {
@@ -2114,7 +2153,7 @@ function maybeIncludeLateInCurrentRound(player) {
   }
   if (
     confirm(
-      `${player.name} 已標為遲到。\n將重新產生本輪對戰表，盡量唔好讓準時選手對上遲到選手。\n若對上，遲到方自動 0–4。重配？`
+      `${player.name} 已標為遲到。\n將重新產生本輪對戰表，盡量唔好讓準時選手對上遲到選手。\n單數時遲到者優先坐場（坐場計 0–4 負，唔係自動勝）。若對上，遲到方自動 0–4。重配？`
     )
   ) {
     state.rounds = state.rounds.filter((r) => r.round !== round.round);
@@ -3599,7 +3638,8 @@ function applyManualPairings(pairIds) {
         p2BeyOrder: emptyBeyOrder(),
         battles: emptyBattles(),
       };
-      if (!bye) applyLateForfeitIfNeeded(m);
+      if (bye) applyLateSitLossIfNeeded(m);
+      else applyLateForfeitIfNeeded(m);
       return m;
     })
   );
@@ -4374,27 +4414,29 @@ function renderMatchCardStaff(m, round, statsMap) {
   }
 
   if (bye) {
+    const lateSit = !!m.lateSitLoss;
     return `
     <div class="match-card done" data-zone="${zCode}">
       <div class="match-top">
         <span class="match-num">場次 ${m.table}</span>
         <span class="zone-badge zone-${zCode}">報到：${escapeHtml(zLabel)}</span>
-        <span class="vs-tag diff">自動獲勝</span>
+        <span class="vs-tag ${lateSit ? "same" : "diff"}">${lateSit ? "遲到坐場 0–4" : "自動獲勝"}</span>
       </div>
       <div class="match-players">
-        <div class="player-side winner">
-          <div class="p-name">${escapeHtml(p1?.name || "?")}</div>
+        <div class="player-side ${lateSit ? "loser" : "winner"}">
+          <div class="p-name">${escapeHtml(p1?.name || "?")}${lateSit ? ` <span class="late-badge">遲到</span>` : ""}</div>
           <div class="p-meta"><span class="church-tag ${p1?.church}">${churchLabel(p1?.church)}</span></div>
           <div class="p-meta">本輪前 ${pre1} 勝</div>
+          ${lateSit ? `<div class="p-bp">0</div>` : ""}
         </div>
         <div class="vs-center">VS</div>
         <div class="player-side">
           <div class="p-name">（無對手）</div>
-          <div class="p-meta">自動獲勝 · 計 1 勝</div>
+          <div class="p-meta">${lateSit ? "遲到坐場 · 計 0–4 負" : "自動獲勝 · 計 1 勝"}</div>
         </div>
       </div>
       <div class="match-actions">
-        <button class="btn btn-ghost btn-sm" disabled>自動獲勝</button>
+        <button class="btn btn-ghost btn-sm" disabled>${lateSit ? "遲到坐場 0–4" : "自動獲勝"}</button>
       </div>
     </div>`;
   }
@@ -4472,14 +4514,15 @@ function renderProjectionBoard(round) {
         .map((m) => {
           const p1 = playerById(m.p1);
           if (isByeMatch(m)) {
+            const lateSit = !!m.lateSitLoss;
             return `
             <div class="zg-match is-done">
               <div class="zg-pair">
-                <span class="zg-p is-win">${escapeHtml(p1?.name || "?")}</span>
+                <span class="zg-p ${lateSit ? "is-lose" : "is-win"}">${escapeHtml(p1?.name || "?")}</span>
                 <span class="zg-vs">VS</span>
                 <span class="zg-p">（無對手）</span>
               </div>
-              <span class="zg-score">自動獲勝</span>
+              <span class="zg-score">${lateSit ? "0–4 · 遲到坐場" : "自動獲勝"}</span>
             </div>`;
           }
           if (m.lateForfeit) {
